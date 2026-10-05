@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controllers and PLCs</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .io-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 520px) { .io-grid { grid-template-columns: minmax(0, 1fr); } }
+  .io-grid label { font-weight: 600; font-size: 14px; display: block; }
+  .io-grid input[type=number] { width: 100%; font: 14px var(--mono); padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+  .toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .toggles button { font: 600 13px var(--font); padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  .toggles button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .toggles button.fail[aria-pressed=true] { background: var(--bad); border-color: var(--bad); color: #fff; }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 12px 0; white-space: pre; max-width: 100%; }
+  pre.code .c { color: var(--muted); }
+  pre.code .k { color: var(--accent); font-weight: 600; }
+  svg .on-s { stroke: var(--ok) !important; }
+  svg .on-f { fill: var(--ok) !important; }
+  svg .bad-s { stroke: var(--bad) !important; }
+  svg .wire-off { stroke: var(--muted); stroke-width: 3; fill: none; }
+  .demo .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="8">
+<div class="content">
+  <div class="kicker">Chapter 08</div>
+  <h1>Controllers and PLCs</h1>
+  <p class="lead">The boxes in the panel that actually run the plant. How a controller executes its program,
+    how it is wired to sensors and actuators, how it is programmed, and why it must keep working when everything
+    above it fails.</p>
+
+  <!-- 8.1 -->
+  <section class="lesson" id="s1" data-num="8.1">
+    <h2>8.1 DDC controllers vs. PLCs</h2>
+    <p>Two families of controllers run buildings. A <strong>DDC controller</strong> (Direct Digital Control) is made for
+      HVAC. A <strong>PLC</strong> (Programmable Logic Controller) comes from factory automation. Inside, both are a
+      small real-time computer with I/O. The difference is in what they are optimised for, how they are programmed and
+      which protocols they speak out of the box.</p>
+    <p>"Direct digital" was a contrast to the pneumatic and analogue electronic controllers of the 1970s. Instead of a
+      bellows or an op-amp circuit computing the valve position, a microprocessor samples the sensor, runs a PID
+      algorithm in software and writes an output. Every modern building controller is "DDC" in that sense. Today the
+      term means a controller sold into building automation, with HVAC libraries and a building protocol, usually
+      BACnet.</p>
+
+    <h3>The cyclic program</h3>
+    <p>Both run their logic in a loop called the <strong>scan</strong> or <strong>cycle</strong>:</p>
+    <ol>
+      <li><strong>Read inputs.</strong> All physical inputs are copied into an input image in memory.</li>
+      <li><strong>Execute.</strong> The program runs top to bottom using only that image. Inputs do not change mid-scan.</li>
+      <li><strong>Write outputs.</strong> The output image is copied to the physical outputs.</li>
+      <li><strong>Housekeeping.</strong> Communication, diagnostics, the watchdog reset.</li>
+    </ol>
+    <p>A PLC scan is typically 1 to 20 ms. A DDC controller often runs its HVAC programs every 100 ms to 1 s, since a
+      room temperature changes in minutes. The consequence: any input pulse shorter than one scan can be missed,
+      unless the input module latches it or counts it in hardware.</p>
+
+    <figure class="viz" id="scan">
+      <div class="controls">
+        <div class="demo" style="flex:1 1 220px;margin:0;border:0;padding:0">
+          <label>Scan time: <output data-o="t">20</output> ms</label>
+          <input type="range" min="1" max="500" value="20" data-k="t" aria-label="Scan time">
+          <label>Input pulse width: <output data-o="w">50</output> ms</label>
+          <input type="range" min="5" max="300" value="50" data-k="w" aria-label="Pulse width">
+        </div>
+        <button class="btn secondary" data-act="pulse">New pulse</button>
+      </div>
+      <svg viewBox="0 0 600 230" role="img" aria-label="Scan cycle phases and a timeline showing where inputs are sampled">
+        <g id="scanRing"></g>
+        <g id="scanTl"></g>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Top: the four phases of one scan. Bottom: 600 ms of time. Ticks are input reads. The bar is a
+        physical pulse. A tick inside the bar means the program saw it.</figcaption>
+    </figure>
+
+    <p>Since the scan is cyclic, a program never "waits". A delay is a timer block that is checked each scan. A
+      controller that hangs in a loop would stop updating outputs, so a hardware <strong>watchdog</strong> resets or
+      stops the CPU if a scan exceeds a limit (often 100–500 ms on PLCs), and outputs go to a defined safe state.</p>
+
+    <h3>Where they differ</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Aspect</th><th>DDC building controller</th><th>PLC</th></tr>
+      <tr><td>Origin</td><td>HVAC and building services</td><td>Machines, process, factories</td></tr>
+      <tr><td>Typical scan</td><td>100 ms – 1 s per program</td><td>1 – 20 ms, deterministic</td></tr>
+      <tr><td>Native protocol</td><td>BACnet/IP or MS/TP, often Modbus, KNX, LON</td><td>PROFINET, EtherNet/IP, Modbus TCP; BACnet is an add-on</td></tr>
+      <tr><td>Programming</td><td>Graphical HVAC libraries, templates for AHU, boiler, room</td><td>IEC 61131-3 (LD, FBD, ST, SFC), general purpose</td></tr>
+      <tr><td>Built-in objects</td><td>Schedules, trend logs, alarms, calendars as BACnet objects</td><td>You build them yourself, or buy a library</td></tr>
+      <tr><td>I/O</td><td>Universal I/O (one terminal can be AI, AO or DI)</td><td>Fixed-type modules, high density, fast counters</td></tr>
+      <tr><td>Operator</td><td>Built-in web pages, room units</td><td>Separate HMI panel or SCADA</td></tr>
+      <tr><td>Cost per point</td><td>Low for HVAC, little engineering</td><td>Low hardware, more engineering</td></tr>
+    </table></div>
+    <p>The lines blur. Many building controllers are programmable in IEC 61131-3 (for example those built on the
+      CODESYS runtime), and PLCs from Siemens, Beckhoff or WAGO have BACnet libraries. The real decision is usually
+      about the protocol at the top and the engineering tools the integrator knows.</p>
+
+    <div class="callout example">A large AHU with heat recovery, two fans and frost protection is controlled by a DDC
+      controller with a vendor AHU template: about 40 points, configured in a day, BACnet objects for every point
+      appear automatically. The same building's sprinkler pump room or a stage machinery system uses a PLC, because it
+      needs millisecond response, safety functions and a PROFINET drive bus.</div>
+
+    <div class="classify" data-cats="DDC,PLC">
+      <div class="item" data-cat="DDC" data-why="Native BACnet with schedules and trends is the DDC strength."><span class="label">Office floor heating and ventilation that must appear as BACnet objects in the BMS.</span></div>
+      <div class="item" data-cat="PLC" data-why="Fast deterministic scan and fieldbus to drives."><span class="label">A conveyor with 12 drives on PROFINET and 5 ms response to light curtains.</span></div>
+      <div class="item" data-cat="DDC" data-why="Vendor templates for boiler cascades and weather compensation exist."><span class="label">A boiler room with weather-compensated flow temperature and a holiday calendar.</span></div>
+      <div class="item" data-cat="PLC" data-why="Sequences with interlocks and many motors are PLC territory."><span class="label">A theatre fly system with motion interlocks and position encoders.</span></div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A flow meter sends 20 ms pulses. The controller scans every 100 ms on a normal DI. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The input image is only refreshed at scan start.">Every pulse is counted</button>
+        <button class="opt" data-opt="b" data-why="The pulse is shorter than the scan, so roughly 4 of 5 are missed. Use a hardware counter input.">Most pulses are missed</button>
+        <button class="opt" data-opt="c" data-why="The watchdog watches scan time, not input pulses.">The watchdog trips</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Both execute a cyclic scan: read inputs, execute, write outputs.</li>
+      <li>Pulses shorter than a scan need hardware counters or latching inputs.</li>
+      <li>DDC = HVAC libraries and BACnet built in. PLC = fast, general purpose, industrial fieldbus.</li>
+    </ul>
+  </section>
+
+  <!-- 8.2 -->
+  <section class="lesson" id="s2" data-num="8.2">
+    <h2>8.2 Siemens building controllers</h2>
+    <p>Siemens is one of the largest building automation vendors, next to Honeywell, Johnson Controls, Schneider
+      Electric, Distech, Sauter and others. Its range is a good case study, because it shows the typical layers
+      every vendor offers: a management platform, automation stations, room controllers, I/O and OEM unit
+      controllers. The names change over the years. The structure does not.</p>
+
+    <div class="explorer">
+      <div class="layers">
+        <button class="layer" data-target="sx-cc" data-w="1">Desigo CC</button>
+        <button class="layer" data-target="sx-pxc" data-w="2">Desigo PXC</button>
+        <button class="layer" data-target="sx-room">Room automation</button>
+        <button class="layer" data-target="sx-io">I/O modules</button>
+        <button class="layer" data-target="sx-oem">Climatix and Synco</button>
+        <button class="layer" data-target="sx-plc">SIMATIC S7 and LOGO!</button>
+      </div>
+      <div class="panel" aria-live="polite">
+        <template id="sx-cc"><h4>Desigo CC (management level)</h4>
+          <p>The supervisory software: graphics, alarms, trends, reports. It speaks BACnet/IP to the automation stations
+            and can integrate fire, security and third-party systems. It is not needed for control to run.</p></template>
+        <template id="sx-pxc"><h4>Desigo PXC automation stations</h4>
+          <p>Native BACnet/IP controllers for plant: AHUs, heating and cooling plants. The current generation (PXC4,
+            PXC5, PXC7) is engineered with the ABT tool; older PXC Compact and Modular used Xworks Plus.</p>
+          <ul><li>Onboard universal I/O on compact models</li><li>Expandable with TX-I/O modules</li>
+            <li>Built-in schedules, trends, alarm objects, web server</li></ul></template>
+        <template id="sx-room"><h4>Room automation (Desigo TRA, DXR, PXC3)</h4>
+          <p>Controllers per room or per few rooms. They combine HVAC, lighting and blinds in one application,
+            usually over BACnet, with KNX or DALI for the lights and room units such as the QMX series.</p></template>
+        <template id="sx-io"><h4>TX-I/O</h4>
+          <p>DIN-rail I/O modules on an island bus next to the PXC. Many points are configurable per channel, with
+            LED status and manual override switches on some modules.</p></template>
+        <template id="sx-oem"><h4>Climatix and Synco</h4>
+          <p><strong>Climatix</strong> controllers are sold to OEMs who build packaged AHUs, chillers and heat pumps.
+            The unit arrives with its controller programmed and exposes BACnet or Modbus.</p>
+          <p><strong>Synco</strong> is a configurable (not programmable) range for small and medium plants.</p></template>
+        <template id="sx-plc"><h4>SIMATIC S7-1200/1500 and LOGO!</h4>
+          <p>Factory PLCs from the same company, programmed in TIA Portal with IEC 61131-3 languages. Used in
+            buildings for special systems, often linked to the BMS via Modbus TCP, OPC UA or a BACnet library.</p></template>
+      </div>
+    </div>
+
+    <figure class="viz">
+      <svg viewBox="0 0 600 250" role="img" aria-label="Typical vendor hierarchy: management, automation stations, room controllers and field devices">
+        <rect class="box lit" x="200" y="10" width="200" height="40" rx="8"/><text x="300" y="35" text-anchor="middle">Management (BMS server)</text>
+        <line class="arrow" x1="300" y1="50" x2="300" y2="75"/>
+        <rect class="fill-accent-soft" x="20" y="75" width="560" height="4"/>
+        <text class="small" x="24" y="72">BACnet/IP building network</text>
+        <rect class="box" x="30" y="100" width="150" height="44" rx="8"/><text x="105" y="120" text-anchor="middle">Plant controller</text><text class="small" x="105" y="136" text-anchor="middle">AHU, boilers</text>
+        <rect class="box" x="225" y="100" width="150" height="44" rx="8"/><text x="300" y="120" text-anchor="middle">Room controllers</text><text class="small" x="300" y="136" text-anchor="middle">1 per room or zone</text>
+        <rect class="box" x="420" y="100" width="150" height="44" rx="8"/><text x="495" y="120" text-anchor="middle">OEM unit controller</text><text class="small" x="495" y="136" text-anchor="middle">chiller, heat pump</text>
+        <line class="arrow" x1="105" y1="79" x2="105" y2="100"/><line class="arrow" x1="300" y1="79" x2="300" y2="100"/><line class="arrow" x1="495" y1="79" x2="495" y2="100"/>
+        <line class="arrow" x1="105" y1="144" x2="105" y2="180"/><line class="arrow" x1="300" y1="144" x2="300" y2="180"/><line class="arrow" x1="495" y1="144" x2="495" y2="180"/>
+        <rect class="box" x="30" y="180" width="150" height="50" rx="8"/><text class="small" x="105" y="200" text-anchor="middle">I/O island: sensors,</text><text class="small" x="105" y="216" text-anchor="middle">valves, fan VFDs</text>
+        <rect class="box" x="225" y="180" width="150" height="50" rx="8"/><text class="small" x="300" y="200" text-anchor="middle">Room unit, KNX/DALI,</text><text class="small" x="300" y="216" text-anchor="middle">valve actuators</text>
+        <rect class="box" x="420" y="180" width="150" height="50" rx="8"/><text class="small" x="495" y="200" text-anchor="middle">Internal compressors,</text><text class="small" x="495" y="216" text-anchor="middle">EEV, safety chain</text>
+      </svg>
+      <figcaption>Every major vendor's range maps onto this shape. Only the product names differ.</figcaption>
+    </figure>
+
+    <h3>Engineering workflow</h3>
+    <p>A typical project with a vendor's building controllers runs like this:</p>
+    <ol>
+      <li><strong>Points list.</strong> Every sensor and actuator with its type, range and name.</li>
+      <li><strong>Choose templates.</strong> The vendor library has applications for an AHU, a heating circuit, a
+        room. You select options (heat recovery: plate or wheel; humidifier: yes or no).</li>
+      <li><strong>Assign I/O.</strong> The tool maps logical points to terminals and prints wiring diagrams.</li>
+      <li><strong>Download and commission.</strong> Load the program, check each point (point-to-point test), tune
+        loops.</li>
+      <li><strong>Hand over to the BMS.</strong> BACnet objects are discovered or imported by the management station.</li>
+    </ol>
+
+    <div class="callout warn">Engineering tools are usually licensed and tied to the vendor's partner network. A
+      building owner can be locked into one integrator for every change. Ask at tender stage for the project files,
+      the tool version and a licence path, and keep backups of every controller program.</div>
+
+    <div class="callout example">A hospital wing has 14 PXC-class plant controllers and about 300 room controllers.
+      The management station shows 25 000 BACnet objects. When the management server is replaced by another vendor's
+      platform ten years later, the controllers stay, because they are plain BACnet devices.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A packaged rooftop unit arrives with an OEM controller that exposes Modbus. What is its usual role?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The OEM controller runs the unit; the BMS only reads and sets setpoints.">The BMS replaces it with its own controller</button>
+        <button class="opt" data-opt="b" data-why="It is a controller, not a management station.">It becomes the BMS front end</button>
+        <button class="opt" data-opt="c" data-why="It runs the unit's internal logic and safeties; the BMS integrates it via the protocol.">It runs the unit; the BMS reads values and writes setpoints</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Vendor ranges follow one shape: management, plant controllers, room controllers, I/O, OEM controllers.</li>
+      <li>Templates make HVAC engineering fast, but tools and licences can lock owners in.</li>
+      <li>Open protocols at the controller level let the management layer be replaced independently.</li>
+    </ul>
+  </section>
+
+  <!-- 8.3 -->
+  <section class="lesson" id="s3" data-num="8.3">
+    <h2>8.3 IEC 61131-3 programming basics</h2>
+    <p><strong>IEC 61131-3</strong> is the international standard for PLC programming languages. It defines data
+      types, variables, program organisation units and five languages. The third edition (2013) added object-oriented
+      features and marked Instruction List as deprecated.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Language</th><th>Style</th><th>Good for</th></tr>
+      <tr><td><strong>LD</strong> Ladder Diagram</td><td>Graphical, relay contacts and coils</td><td>Interlocks, simple Boolean logic, electricians reading it</td></tr>
+      <tr><td><strong>FBD</strong> Function Block Diagram</td><td>Graphical, blocks wired together</td><td>Control loops, signal flow, most HVAC programs</td></tr>
+      <tr><td><strong>ST</strong> Structured Text</td><td>Textual, Pascal-like</td><td>Calculations, loops, arrays, anything algorithmic</td></tr>
+      <tr><td><strong>SFC</strong> Sequential Function Chart</td><td>Steps and transitions</td><td>Sequences: start-up, defrost, boiler cascade</td></tr>
+      <tr><td><strong>IL</strong> Instruction List</td><td>Assembly-like</td><td>Legacy only (deprecated)</td></tr>
+    </table></div>
+
+    <h3>Program organisation units</h3>
+    <ul>
+      <li><strong>Function (FUN).</strong> No memory. Same inputs give the same output. <code>ADD</code>, <code>LIMIT</code>, <code>SEL</code>.</li>
+      <li><strong>Function block (FB).</strong> Has internal state, used as an instance. <code>TON</code> timer,
+        <code>CTU</code> counter, <code>R_TRIG</code> edge detector, a PID block. Each instance has its own memory, like an object.</li>
+      <li><strong>Program (PRG).</strong> The top level, assigned to a <strong>task</strong> that runs cyclically, for
+        example every 10 ms or every 1 s.</li>
+    </ul>
+
+    <h3>Try it: a motor start/stop with seal-in</h3>
+    <p>The classic first program. A <em>Start</em> push button starts a fan. It keeps running after you let go,
+      because its own run contact "seals in" the rung. <em>Stop</em> (wired normally closed) or an overload trip
+      stops it. Toggle the inputs and watch the scan evaluate the rungs.</p>
+
+    <figure class="viz" id="ladder">
+      <div class="toggles">
+        <button data-in="start" aria-pressed="false">Start (hold)</button>
+        <button data-in="stop" aria-pressed="false">Stop pressed</button>
+        <button data-in="ovl" class="fail" aria-pressed="false">Overload trip</button>
+        <button data-in="flow" aria-pressed="false">Airflow switch</button>
+      </div>
+      <div class="seg" style="margin-bottom:10px">
+        <button data-view="ld" aria-pressed="true">Ladder</button>
+        <button data-view="fbd" aria-pressed="false">FBD</button>
+        <button data-view="st" aria-pressed="false">ST</button>
+      </div>
+      <svg viewBox="0 0 600 250" role="img" aria-label="Program view, energised paths shown in green"></svg>
+      <pre class="code" hidden></pre>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Rung 1: motor seal-in. Rung 2: if the fan runs but no airflow is proven for 5 s, raise an alarm
+        (TON timer). Green means TRUE / energised.</figcaption>
+    </figure>
+
+    <h3>Standard timers</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Block</th><th>Behaviour</th><th>HVAC use</th></tr>
+      <tr><td><code>TON</code></td><td>Output goes TRUE after IN has been TRUE for PT</td><td>Prove airflow 30 s after fan start; alarm delay</td></tr>
+      <tr><td><code>TOF</code></td><td>Output stays TRUE for PT after IN goes FALSE</td><td>Pump overrun after boiler stops; fan run-on after electric heater</td></tr>
+      <tr><td><code>TP</code></td><td>Fixed-length pulse on rising edge</td><td>A 2 s reset pulse to a drive</td></tr>
+    </table></div>
+
+    <p>Structured Text is closest to what a software developer knows. A small heating curve function:</p>
+    <pre class="code"><span class="k">FUNCTION</span> HeatingCurve : REAL
+<span class="k">VAR_INPUT</span>
+  tOutside : REAL;  <span class="c">// °C</span>
+  slope    : REAL := 1.4;
+  tRoom    : REAL := 20.0;
+<span class="k">END_VAR</span>
+HeatingCurve := LIMIT(25.0, tRoom + slope * (tRoom - tOutside), 75.0);
+<span class="k">END_FUNCTION</span></pre>
+    <p>At −10 °C outside this gives 20 + 1.4 × 30 = 62 °C flow temperature. Real heating curves are often slightly
+      curved, but the structure is the same.</p>
+
+    <div class="callout warn">Every graphical language compiles to the same scan. Order matters: if rung 5 reads a
+      value that rung 9 writes, rung 5 sees last scan's value. In FBD, check the execution order numbers the tool
+      shows on each block. Many hard-to-find bugs are one-scan delays or a variable written in two places.</div>
+
+    <div class="callout example">CODESYS is a vendor-neutral IEC 61131-3 runtime and IDE used by hundreds of
+      hardware makers, including several building controller brands. A developer who knows it can program
+      controllers from WAGO, Beckhoff (TwinCAT is built on similar concepts), Eaton and many others.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A fan must keep running 3 minutes after an electric heater switches off. Which block?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="TOF holds the output for PT after its input goes FALSE.">TOF with PT = T#3m</button>
+        <button class="opt" data-opt="b" data-why="TON delays switching on, not off.">TON with PT = T#3m</button>
+        <button class="opt" data-opt="c" data-why="A counter counts edges; it does not measure time.">CTU with PV = 180</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Five languages, one execution model. FBD dominates HVAC, ST suits calculations, SFC suits sequences.</li>
+      <li>Function blocks have memory; each instance is like an object.</li>
+      <li>Execution order inside the scan creates one-scan delays. Watch it.</li>
+    </ul>
+  </section>
+
+  <!-- 8.4 -->
+  <section class="lesson" id="s4" data-num="8.4">
+    <h2>8.4 I/O modules and wiring</h2>
+    <p>Every physical point is one of four types. Chapter 1 introduced them; here is what happens electrically.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>Common signals</th><th>Examples</th></tr>
+      <tr><td><strong>AI</strong> analogue input</td><td>Pt1000, NTC 10k, Ni1000, 0–10 V, 4–20 mA</td><td>Temperature, pressure, humidity, CO₂</td></tr>
+      <tr><td><strong>AO</strong> analogue output</td><td>0–10 V (or 2–10 V), 4–20 mA</td><td>Valve actuator, fan speed to a VFD</td></tr>
+      <tr><td><strong>DI</strong> digital input</td><td>Dry contact, 24 V DC, pulse</td><td>Pump status, filter alarm, energy meter pulses</td></tr>
+      <tr><td><strong>DO</strong> digital output</td><td>Relay contact, 24 V AC triac</td><td>Pump start, 3-point valve open/close</td></tr>
+    </table></div>
+
+    <figure class="viz">
+      <svg viewBox="0 0 600 270" role="img" aria-label="Wiring of four point types to a controller">
+        <rect class="box" x="230" y="15" width="140" height="240" rx="10"/>
+        <text class="big" x="300" y="40" text-anchor="middle">Controller</text>
+        <g class="small">
+          <text x="300" y="80" text-anchor="middle">AI · M</text>
+          <text x="300" y="135" text-anchor="middle">AO · M</text>
+          <text x="300" y="190" text-anchor="middle">DI · M</text>
+          <text x="300" y="240" text-anchor="middle">DO · C/NO</text>
+        </g>
+        <rect class="box" x="20" y="60" width="150" height="36" rx="6"/><text x="95" y="83" text-anchor="middle">Pt1000 sensor</text>
+        <path class="wire stroke" d="M170 72 H230 M170 86 H230"/>
+        <text class="small" x="200" y="66" text-anchor="middle">2 wires</text>
+        <rect class="box" x="430" y="115" width="150" height="40" rx="6"/><text x="505" y="132" text-anchor="middle">Valve actuator</text><text class="small" x="505" y="147" text-anchor="middle">24 VAC, 0–10 V</text>
+        <path class="wire stroke" d="M370 128 H430 M370 142 H430"/>
+        <rect class="box" x="20" y="170" width="150" height="36" rx="6"/><text x="95" y="193" text-anchor="middle">Pump status contact</text>
+        <path class="wire stroke" d="M170 182 H230 M170 196 H230"/>
+        <text class="small" x="200" y="176" text-anchor="middle">dry contact</text>
+        <rect class="box" x="430" y="220" width="150" height="36" rx="6"/><text x="505" y="243" text-anchor="middle">Pump contactor coil</text>
+        <path class="wire stroke" d="M370 232 H430 M370 246 H430"/>
+        <text class="small" x="400" y="226" text-anchor="middle">relay</text>
+      </svg>
+      <figcaption>Inputs on the left, outputs on the right. A relay output only switches; the coil voltage comes from
+        the panel's own supply.</figcaption>
+    </figure>
+
+    <h3>Analogue scaling</h3>
+    <p>The controller measures a raw electrical value and scales it linearly to an engineering value. For a 4–20 mA
+      pressure transmitter with range 0–10 bar: <code>p = (I − 4) / 16 × 10</code>. 12 mA means 5 bar. The "live
+      zero" at 4 mA is the point: 0 mA means a broken wire, not zero pressure. The NAMUR NE43 recommendation treats
+      values below about 3.6 mA or above 21 mA as a fault. A 0–10 V signal has no live zero, so 0 V could be a
+      broken wire or a real zero.</p>
+    <p>A Pt1000 is a resistor: 1000 Ω at 0 °C, about 3.85 Ω per kelvin. At 21 °C it reads about 1081 Ω. An open
+      circuit reads infinite, a short reads 0 Ω; good controllers flag both.</p>
+
+    <figure class="viz" id="scale">
+      <div class="seg" style="margin-bottom:10px">
+        <button data-sig="ma" aria-pressed="true">4–20 mA</button>
+        <button data-sig="v" aria-pressed="false">0–10 V</button>
+        <button data-sig="pt" aria-pressed="false">Pt1000</button>
+      </div>
+      <div class="io-grid" style="margin-bottom:10px">
+        <div><label for="scLo">Range low</label><input id="scLo" type="number" value="0" step="any"></div>
+        <div><label for="scHi">Range high</label><input id="scHi" type="number" value="10" step="any"></div>
+        <div><label for="scUnit">Unit</label><input id="scUnit" type="text" value="bar" style="width:100%;font:14px var(--mono);padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)"></div>
+      </div>
+      <label style="font-weight:600">Raw signal: <output data-o="raw"></output></label>
+      <input type="range" min="0" max="1000" value="500" data-k="raw" style="width:100%" aria-label="Raw signal">
+      <svg viewBox="0 0 600 110" role="img" aria-label="Signal bar with fault zones"></svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>Universal I/O and practical wiring</h3>
+    <ul>
+      <li><strong>Universal inputs/outputs (UI/UIO).</strong> One terminal configurable as AI, DI or AO in software.
+        Common on building controllers. Flexible during commissioning, but check per-terminal limits.</li>
+      <li><strong>Common reference.</strong> Many AIs share one ground "M". A 24 VAC actuator sharing that ground
+        with a sensor can shift readings by tenths of a degree if wiring is long or the ground wire is shared. Run
+        separate signal grounds.</li>
+      <li><strong>Shielding.</strong> Use shielded cable for analogue signals near VFDs and earth the shield at one
+        end only.</li>
+      <li><strong>Relay ratings.</strong> A 2 A relay must not switch a pump motor directly. Switch a contactor coil.</li>
+      <li><strong>Hand/Off/Auto.</strong> Many panels have override switches per output, with the switch position fed
+        back as a DI so the BMS knows someone overrode it.</li>
+    </ul>
+
+    <div class="callout warn">A 10k NTC and a Pt1000 look identical on a cable label. Configure the wrong type and a
+      room reads, for example, 60 °C or −40 °C. During point-to-point testing, warm every sensor in your hand and watch
+      the value move.</div>
+
+    <div class="callout example">A supply air duct sensor reads 0.8 K high. Cause: 60 m of 0.5 mm² cable on a
+      2-wire Pt1000. Loop resistance is about 2.1 Ω, which a Pt1000 reads as roughly 0.55 K, plus a shared ground
+      with an actuator. Options: a cable offset correction in the controller, a 4-wire connection, or a transmitter
+      with 4–20 mA.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A 4–20 mA, 0–50 °C transmitter reads 2.1 mA. What should the controller report?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Scaling below 4 mA gives a negative value, but that is not real.">−5.9 °C</button>
+        <button class="opt" data-opt="b" data-why="Clamping hides a fault.">0 °C</button>
+        <button class="opt" data-opt="c" data-why="Below about 3.6 mA is outside the valid range: a wire break or failed transmitter.">A sensor fault</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>AI, AO, DI, DO. Each has a typical electrical signal and limits.</li>
+      <li>4–20 mA has a live zero: below ~3.6 mA is a fault, not a value.</li>
+      <li>Grounds, shielding and cable resistance cause most "wrong value" problems.</li>
+    </ul>
+  </section>
+
+  <!-- 8.5 -->
+  <section class="lesson" id="s5" data-num="8.5">
+    <h2>8.5 Local autonomy when the BMS is down</h2>
+    <p>A good architecture follows one rule: <strong>control runs in the lowest layer that has all the data it
+      needs</strong>. A heating loop's sensor, PID and valve sit on one controller. The BMS server only sets the
+      setpoint and reads the result. If the server dies, the loop keeps the last setpoint and keeps controlling.</p>
+    <p>This is called <strong>local autonomy</strong> or <strong>stand-alone operation</strong>. EN ISO 16484 and
+      typical specifications require that each automation station runs its plant without the management level.
+      Some go further: a room controller must run its room even without the plant controller.</p>
+
+    <h3>What must live where</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Function</th><th>Must be local?</th><th>Why</th></tr>
+      <tr><td>PID loops, safeties, frost protection</td><td>Yes</td><td>Seconds matter; no network in the path</td></tr>
+      <tr><td>Time schedules</td><td>Yes, a copy</td><td>The building must still go to night mode</td></tr>
+      <tr><td>Trend buffer</td><td>Yes, a ring buffer</td><td>Upload later; no gap in history</td></tr>
+      <tr><td>Alarm detection</td><td>Yes</td><td>Delivery may be delayed, detection must not be</td></tr>
+      <tr><td>Optimisation across systems</td><td>No</td><td>Lose it, and the plant falls back to local defaults</td></tr>
+      <tr><td>Dashboards, reports, notifications</td><td>No</td><td>Management level by nature</td></tr>
+    </table></div>
+
+    <h3>Try it: break things</h3>
+    <figure class="viz" id="fail">
+      <div class="toggles">
+        <button class="fail" data-f="srv" aria-pressed="false">BMS server down</button>
+        <button class="fail" data-f="net" aria-pressed="false">Building network down</button>
+        <button class="fail" data-f="plant" aria-pressed="false">Plant controller down</button>
+        <button class="fail" data-f="oat" aria-pressed="false">Outdoor sensor broken</button>
+      </div>
+      <div class="sys-grid"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Each tile is a function. Green runs normally, amber runs in a fallback, red is lost.</figcaption>
+    </figure>
+
+    <h3>Design for failure</h3>
+    <ul>
+      <li><strong>Fallback values.</strong> Every value received over the network has a timeout and a default. If the
+        outdoor temperature from another controller is older than, say, 10 minutes, use a fixed value like 0 °C.</li>
+      <li><strong>Output fail states.</strong> What does the output do if the controller dies? A spring-return
+        actuator closes an outdoor-air damper; a heating valve may be specified to fail open to prevent freezing.</li>
+      <li><strong>Hardwired safety.</strong> Frost thermostats, fire dampers and high-limit thermostats act on the
+        hardware directly, not only through software.</li>
+      <li><strong>Commands with priority.</strong> In BACnet, writes go to a priority array. If the BMS dies, its
+        last command at priority 8 stays. A relinquish default defines what happens when all commands are released.</li>
+      <li><strong>Battery and clock.</strong> After a power cut the controller needs the right time for schedules.
+        A buffered RTC and NTP or BACnet time sync on reconnect.</li>
+    </ul>
+
+    <div class="callout warn">A common anti-pattern: a dashboard or home-grown integration server runs the control
+      loop itself, reading a sensor and writing a valve every few seconds over the network. It works until the
+      server reboots for updates at 3 am in January. Keep loops in controllers.</div>
+
+    <div class="callout example">During a 6-hour BMS server outage after a failed update, a school's heating plant
+      ran normally: the boiler controller had the schedule and weather compensation locally. The only loss was the
+      alarm notifications and 6 hours of trend data on the server, which the controllers' trend buffers filled in
+      afterwards.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Controller A uses an outdoor temperature read over BACnet from controller B. B goes offline. What is the right behaviour?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A stale value may be hours old and wrong.">Keep using the last value forever</button>
+        <button class="opt" data-opt="b" data-why="Detect staleness and switch to a safe, documented fallback, plus an alarm.">After a timeout, use a fallback value and raise an alarm</button>
+        <button class="opt" data-opt="c" data-why="Stopping the plant may freeze the building.">Stop the plant until B returns</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Control runs at the lowest level that has its data. The BMS supervises.</li>
+      <li>Every network value needs a timeout and a fallback.</li>
+      <li>Define fail states for outputs and keep safeties hardwired.</li>
+    </ul>
+  </section>
+
+  <!-- 8.6 -->
+  <section class="lesson" id="s6" data-num="8.6">
+    <h2>8.6 Room controllers and thermostats</h2>
+    <p>The room is where users feel the building. A room controller reads room temperature (and often CO₂,
+      presence, window contacts), and drives a radiator valve, an underfloor manifold actuator, a fan coil or a VAV
+      box. A thermostat is the simplest kind: on/off with a switching difference.</p>
+
+    <h3>Operating modes</h3>
+    <p>Rooms do not have one setpoint. They have a mode, set by schedule, presence or the user. The names come from
+      the European standards and KNX:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Mode</th><th>Typical heating setpoint</th><th>Typical cooling setpoint</th><th>When</th></tr>
+      <tr><td>Comfort</td><td>21 °C</td><td>24 °C</td><td>Occupied</td></tr>
+      <tr><td>Pre-comfort / Standby</td><td>19 °C</td><td>26 °C</td><td>Scheduled but nobody present</td></tr>
+      <tr><td>Economy</td><td>16–17 °C</td><td>28 °C</td><td>Night, weekend</td></tr>
+      <tr><td>Building protection</td><td>5–8 °C</td><td>35 °C</td><td>Window open, long absence</td></tr>
+    </table></div>
+    <p>A window contact typically forces protection mode, so heating does not fight an open window.</p>
+
+    <h3>On/off vs PI control</h3>
+    <p>An on/off thermostat turns heat on below <em>setpoint − hysteresis/2</em> and off above <em>setpoint +
+      hysteresis/2</em>. With a slow radiator, the room overshoots. A PI room controller instead modulates a valve
+      or uses pulse width modulation on a thermal actuator: for example a 10-minute cycle, valve open 3 minutes =
+      30 %. The result is a flatter temperature.</p>
+
+    <figure class="viz" id="room">
+      <div class="seg" style="margin-bottom:8px">
+        <button data-mode="21" aria-pressed="true">Comfort</button>
+        <button data-mode="19" aria-pressed="false">Pre-comfort</button>
+        <button data-mode="17" aria-pressed="false">Economy</button>
+        <button data-mode="7" aria-pressed="false">Protection</button>
+      </div>
+      <div class="seg" style="margin-bottom:8px">
+        <button data-ctl="onoff" aria-pressed="true">On/off</button>
+        <button data-ctl="pi" aria-pressed="false">PI</button>
+      </div>
+      <div class="demo" style="margin:8px 0">
+        <label>Hysteresis (on/off): <output data-o="h">1.0</output> K</label>
+        <input type="range" min="2" max="30" value="10" data-k="h" aria-label="Hysteresis">
+        <label>Outdoor temperature: <output data-o="o">0</output> °C</label>
+        <input type="range" min="-15" max="15" value="0" data-k="o" aria-label="Outdoor temperature">
+      </div>
+      <svg viewBox="0 0 600 220" role="img" aria-label="Room temperature over 6 hours"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Six simulated hours starting at 15 °C. The radiator has thermal lag, so on/off overshoots. Dashed
+        line: setpoint. Shaded: heating demand.</figcaption>
+    </figure>
+
+    <h3>Kinds of room devices</h3>
+    <ul>
+      <li><strong>Standalone thermostat.</strong> Switch, setpoint knob, on/off output. No network. Cheap.</li>
+      <li><strong>Communicating thermostat.</strong> Same, plus Modbus, KNX or BACnet MS/TP, so the BMS can set mode
+        and read temperature.</li>
+      <li><strong>Room controller with room unit.</strong> Logic in a controller in the ceiling or a cabinet. The
+        wall unit only senses and shows. Several rooms per controller is common.</li>
+      <li><strong>Wireless radiator valve heads.</strong> Battery thermostatic heads on Zigbee, Z-Wave, EnOcean or
+        proprietary radio. Common in retrofit.</li>
+    </ul>
+
+    <div class="callout warn">Do not put the room sensor on an outside wall, in sunlight, above a radiator or next to
+      a printer. A sensor 1 K wrong costs comfort for the whole room and about 6 % heating energy per kelvin of
+      overheating (a common rule of thumb, varying with climate).</div>
+
+    <div class="callout example">An office with underfloor heating used on/off thermostats with 0.5 K hysteresis.
+      Because the slab responds over hours, rooms swung by ±1.5 K. Switching the thermal actuators to PWM with PI
+      control and a 15-minute cycle reduced the swing to about ±0.3 K without new hardware.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A user opens a window in winter. What should a well-configured room controller do?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The window contact forces protection mode, so the valve closes but frost protection stays.">Switch to building protection mode</button>
+        <button class="opt" data-opt="b" data-why="That heats the outdoors.">Open the valve fully to keep comfort</button>
+        <button class="opt" data-opt="c" data-why="Full shutdown risks frozen pipes.">Turn off all control including frost protection</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Rooms run in modes: comfort, pre-comfort, economy, protection.</li>
+      <li>On/off with slow emitters overshoots. PI with modulating or PWM output is flatter.</li>
+      <li>Sensor placement matters as much as the algorithm.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. During one PLC scan, an input changes after the "read inputs" phase. When does the program see it?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The program uses the input image, frozen at scan start.">Immediately, in the same scan</button>
+        <button class="opt" data-opt="b" data-why="It is copied into the image at the start of the next scan.">In the next scan</button>
+        <button class="opt" data-opt="c" data-why="No watchdog involvement.">After the watchdog resets</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. Which IEC 61131-3 language fits a heat pump defrost sequence of steps best?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="IL is deprecated and not suited to sequences.">IL</button>
+        <button class="opt" data-opt="b" data-why="LD can do it but gets messy for sequences.">LD</button>
+        <button class="opt" data-opt="c" data-why="SFC models steps and transitions directly.">SFC</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. A 4–20 mA, 0–100 % humidity sensor reads 16 mA. Value?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="(16 − 4) / 16 × 100 = 75 %.">75 %</button>
+        <button class="opt" data-opt="b" data-why="That ignores the 4 mA live zero.">80 %</button>
+        <button class="opt" data-opt="c" data-why="16 mA is in range.">Fault</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. Which function should NOT depend on the BMS server?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Reports are a management task.">Monthly energy report</button>
+        <button class="opt" data-opt="b" data-why="Dashboards are management level.">Dashboard graphics</button>
+        <button class="opt" data-opt="c" data-why="Can be lost temporarily.">Cross-building optimisation</button>
+        <button class="opt" data-opt="d" data-why="Frost protection must run locally, in the controller or in hardware.">AHU frost protection</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. A room with slow underfloor heating overshoots by 1.5 K on an on/off thermostat. Best first fix?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Bigger hysteresis makes the swing bigger.">Increase hysteresis</button>
+        <button class="opt" data-opt="b" data-why="PI with PWM matches heat input to load and reduces overshoot.">PI control with PWM on the actuators</button>
+        <button class="opt" data-opt="c" data-why="Mode does not change the control quality.">Switch to economy mode</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="07-integration.html">← Chapter 07</a>
+    <a class="btn" href="09-heat-generation.html">Chapter 09 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 8 visualizations.
+const press = (root, attr, val) => root.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute("aria-pressed", b.getAttribute(attr) === val));
+
+// 8.1 Scan cycle and input sampling.
+(() => {
+  const fig = document.getElementById("scan");
+  const ring = fig.querySelector("#scanRing"), tl = fig.querySelector("#scanTl"), out = fig.querySelector(".readout");
+  const T = fig.querySelector('[data-k="t"]'), W = fig.querySelector('[data-k="w"]');
+  const PH = ["Read inputs", "Execute", "Write outputs", "Comms + watchdog"];
+  let start = 120, phase = 0;
+  const drawRing = () => {
+    let s = "";
+    PH.forEach((p, i) => {
+      const x = 20 + i * 145;
+      s += `<rect class="box${i === phase ? " lit" : ""}" x="${x}" y="10" width="125" height="40" rx="8"/><text x="${x + 62}" y="35" text-anchor="middle" class="small">${p}</text>`;
+      if (i < 3) s += `<line class="arrow" x1="${x + 125}" y1="30" x2="${x + 145}" y2="30"/>`;
+    });
+    s += `<path class="arrow" d="M558 50 V68 H82 V50"/>`;
+    ring.innerHTML = s;
+  };
+  const drawTl = () => {
+    const t = +T.value, w = +W.value;
+    fig.querySelector('[data-o="t"]').textContent = t;
+    fig.querySelector('[data-o="w"]').textContent = w;
+    const px = (ms) => 20 + ms * (560 / 600);
+    let s = `<line class="arrow" x1="20" y1="170" x2="580" y2="170"/>`;
+    s += `<rect class="fill-accent-soft" x="${px(start)}" y="110" width="${Math.max(1, w * 560 / 600)}" height="50" rx="3"/>`;
+    s += `<text class="small" x="${px(start)}" y="104">pulse ${w} ms</text>`;
+    let hits = 0;
+    for (let m = 0; m <= 600; m += t) {
+      const hit = m >= start && m < start + w;
+      if (hit) hits++;
+      s += `<line x1="${px(m)}" y1="${hit ? 110 : 160}" x2="${px(m)}" y2="178" style="stroke:${hit ? "var(--ok)" : "var(--muted)"};stroke-width:${hit ? 3 : 1}"/>`;
+    }
+    s += `<text class="small" x="20" y="198">0 ms</text><text class="small" x="580" y="198" text-anchor="end">600 ms</text>`;
+    tl.innerHTML = s;
+    const p = Math.min(100, Math.round((w / t) * 100));
+    out.textContent = hits
+      ? `Seen in ${hits} scan(s). Chance of seeing a ${w} ms pulse at ${t} ms scan: ${p} %.`
+      : `MISSED. The pulse fell between two input reads. Chance of seeing it: ${p} %.`;
+  };
+  [T, W].forEach((i) => i.addEventListener("input", drawTl));
+  fig.querySelector('[data-act="pulse"]').addEventListener("click", () => { start = Math.round(Math.random() * 400 + 20); drawTl(); });
+  drawRing(); drawTl();
+  setInterval(() => { phase = (phase + 1) % 4; drawRing(); }, 700);
+})();
+
+// 8.3 Ladder / FBD / ST views of one program.
+(() => {
+  const fig = document.getElementById("ladder");
+  const svg = fig.querySelector("svg"), pre = fig.querySelector("pre"), out = fig.querySelector(".readout");
+  const I = { start: false, stop: false, ovl: false, flow: false };
+  let run = false, tAcc = 0, alarm = false, view = "ld";
+  const g = (v) => (v ? "on-s" : "");
+  const contact = (x, y, label, nc, pass) =>
+    `<line class="wire-off ${g(pass)}" x1="${x}" y1="${y - 14}" x2="${x}" y2="${y + 14}"/><line class="wire-off ${g(pass)}" x1="${x + 16}" y1="${y - 14}" x2="${x + 16}" y2="${y + 14}"/>` +
+    (nc ? `<line class="wire-off ${g(pass)}" x1="${x - 4}" y1="${y + 14}" x2="${x + 20}" y2="${y - 14}"/>` : "") +
+    `<text class="small" x="${x + 8}" y="${y - 20}" text-anchor="middle">${label}</text>`;
+  const coil = (x, y, label, on) =>
+    `<circle cx="${x}" cy="${y}" r="14" class="wire-off ${g(on)}" style="fill:${on ? "var(--ok-soft)" : "none"}"/><text class="small" x="${x}" y="${y - 20}" text-anchor="middle">${label}</text>`;
+  const scanOnce = () => {
+    const stopOk = !I.stop, ovlOk = !I.ovl;
+    run = (I.start || run) && stopOk && ovlOk;
+    tAcc = run && !I.flow ? tAcc : 0;
+    alarm = tAcc >= 5;
+  };
+  const drawLd = () => {
+    const stopOk = !I.stop, ovlOk = !I.ovl;
+    const a = I.start || run, b = a && stopOk, c = b && ovlOk;
+    const noFlow = !I.flow, r2a = run, r2b = run && noFlow;
+    let s = `<line class="stroke" x1="20" y1="20" x2="20" y2="240" style="stroke-width:3"/><line class="stroke" x1="580" y1="20" x2="580" y2="240" style="stroke-width:3"/>`;
+    s += `<text class="small" x="28" y="16">Rung 1</text>`;
+    s += `<line class="wire-off on-s" x1="20" y1="70" x2="90" y2="70"/>` + contact(90, 70, "Start", false, I.start);
+    s += `<line class="wire-off ${g(a)}" x1="106" y1="70" x2="190" y2="70"/>`;
+    s += `<path class="wire-off on-s" d="M50 70 V120 H90"/>` + contact(90, 120, "Run", false, run) + `<path class="wire-off ${g(run)}" d="M106 120 H150 V70"/>`;
+    s += contact(190, 70, "Stop (NC)", true, stopOk) + `<line class="wire-off ${g(b)}" x1="206" y1="70" x2="290" y2="70"/>`;
+    s += contact(290, 70, "Overload (NC)", true, ovlOk) + `<line class="wire-off ${g(c)}" x1="306" y1="70" x2="486" y2="70"/>`;
+    s += coil(500, 70, "Run", run) + `<line class="wire-off ${g(c)}" x1="514" y1="70" x2="580" y2="70"/>`;
+    s += `<text class="small" x="28" y="160">Rung 2</text>`;
+    s += `<line class="wire-off on-s" x1="20" y1="200" x2="90" y2="200"/>` + contact(90, 200, "Run", false, r2a);
+    s += `<line class="wire-off ${g(r2a)}" x1="106" y1="200" x2="190" y2="200"/>` + contact(190, 200, "Flow (NC)", true, noFlow);
+    s += `<line class="wire-off ${g(r2b)}" x1="206" y1="200" x2="300" y2="200"/>`;
+    s += `<rect class="box${r2b ? " lit" : ""}" x="300" y="176" width="90" height="48" rx="6"/><text x="345" y="196" text-anchor="middle">TON</text><text class="small" x="345" y="214" text-anchor="middle">PT 5 s · ${tAcc.toFixed(0)} s</text>`;
+    s += `<line class="wire-off ${g(alarm)}" x1="390" y1="200" x2="486" y2="200"/>` + coil(500, 200, "Alarm", alarm) + `<line class="wire-off ${g(alarm)}" x1="514" y1="200" x2="580" y2="200"/>`;
+    return s;
+  };
+  const blk = (x, y, w, h, t, on) => `<rect class="box${on ? " lit" : ""}" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/><text x="${x + w / 2}" y="${y + h / 2 + 5}" text-anchor="middle">${t}</text>`;
+  const sig = (x1, y1, x2, y2, on) => `<path class="wire-off ${g(on)}" d="M${x1} ${y1} H${(x1 + x2) / 2} V${y2} H${x2}"/>`;
+  const lbl = (x, y, t) => `<text class="small" x="${x}" y="${y + 4}" text-anchor="end">${t}</text>`;
+  const drawFbd = () => {
+    let s = "";
+    s += lbl(90, 30, "Start") + sig(95, 30, 160, 40, I.start) + lbl(90, 80, "Run") + sig(95, 80, 160, 60, run);
+    s += blk(160, 25, 60, 50, "OR", I.start || run);
+    s += sig(220, 50, 290, 45, I.start || run);
+    s += lbl(260, 100, "NOT Stop") + sig(265, 100, 290, 65, !I.stop);
+    s += lbl(260, 130, "NOT Ovl") + sig(265, 130, 290, 80, !I.ovl);
+    s += blk(290, 30, 60, 60, "AND", run) + sig(350, 60, 460, 60, run);
+    s += `<text x="470" y="64">Run := ${run}</text>`;
+    s += lbl(90, 180, "Run") + sig(95, 180, 160, 175, run) + lbl(90, 220, "NOT Flow") + sig(95, 220, 160, 195, !I.flow);
+    s += blk(160, 160, 60, 50, "AND", run && !I.flow) + sig(220, 185, 290, 185, run && !I.flow);
+    s += blk(290, 160, 90, 50, "TON 5 s", run && !I.flow) + sig(380, 185, 460, 185, alarm);
+    s += `<text x="470" y="189">Alarm := ${alarm}</text>`;
+    s += `<text class="small" x="300" y="245" text-anchor="middle">ET = ${tAcc.toFixed(0)} s</text>`;
+    return s;
+  };
+  const st = () =>
+    `<span class="c">// Inputs: Start=${I.start}  Stop=${I.stop}  Ovl=${I.ovl}  Flow=${I.flow}</span>\n` +
+    `Run := (Start <span class="k">OR</span> Run) <span class="k">AND NOT</span> Stop <span class="k">AND NOT</span> Ovl;   <span class="c">// ${run}</span>\n` +
+    `tonFlow(IN := Run <span class="k">AND NOT</span> Flow, PT := T#5s);  <span class="c">// ET = ${tAcc.toFixed(0)} s</span>\n` +
+    `Alarm := tonFlow.Q;                          <span class="c">// ${alarm}</span>`;
+  const draw = () => {
+    svg.hidden = view === "st"; pre.hidden = view !== "st";
+    if (view === "ld") svg.innerHTML = drawLd();
+    else if (view === "fbd") svg.innerHTML = drawFbd();
+    else pre.innerHTML = st();
+    out.textContent = alarm ? "ALARM: fan commanded but no airflow proven for 5 s."
+      : run ? (I.flow ? "Fan running, airflow proven." : `Fan running, waiting for airflow… ${tAcc.toFixed(0)} s`)
+      : "Fan stopped.";
+  };
+  fig.querySelectorAll("[data-in]").forEach((b) => b.addEventListener("click", () => {
+    I[b.dataset.in] = !I[b.dataset.in];
+    b.setAttribute("aria-pressed", I[b.dataset.in]);
+    scanOnce(); draw();
+  }));
+  fig.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => { view = b.dataset.view; press(fig, "data-view", view); draw(); }));
+  // One "second" of program time per real second, for the timer.
+  setInterval(() => { if (run && !I.flow && tAcc < 5) tAcc += 1; scanOnce(); draw(); }, 1000);
+  draw();
+})();
+
+// 8.4 Analogue input scaling with fault detection.
+(() => {
+  const fig = document.getElementById("scale");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  const raw = fig.querySelector('[data-k="raw"]');
+  const lo = fig.querySelector("#scLo"), hi = fig.querySelector("#scHi"), unit = fig.querySelector("#scUnit");
+  // Raw slider range per signal type: [min, max, valid low, valid high, unit].
+  const SIG = {
+    ma: [0, 24, 3.6, 21, "mA"],
+    v: [0, 11, 0, 10.5, "V"],
+    pt: [700, 1500, 803, 1460, "Ω"],
+  };
+  let sig = "ma";
+  const draw = () => {
+    const [mn, mx, vl, vh, u] = SIG[sig];
+    const r = mn + (raw.value / 1000) * (mx - mn);
+    fig.querySelector('[data-o="raw"]').textContent = `${r.toFixed(sig === "pt" ? 0 : 2)} ${u}`;
+    const L = +lo.value, H = +hi.value, un = unit.value;
+    let val, fault = r < vl || r > vh;
+    if (sig === "ma") val = L + ((r - 4) / 16) * (H - L);
+    else if (sig === "v") val = L + (r / 10) * (H - L);
+    else val = (r / 1000 - 1) / 0.00385;
+    const px = (x) => 20 + ((x - mn) / (mx - mn)) * 560;
+    let s = `<rect class="fill-ok" x="${px(vl)}" y="30" width="${px(vh) - px(vl)}" height="24" rx="3" opacity=".25"/>`;
+    s += `<rect class="fill-bad" x="20" y="30" width="${px(vl) - 20}" height="24" opacity=".25"/><rect class="fill-bad" x="${px(vh)}" y="30" width="${580 - px(vh)}" height="24" opacity=".25"/>`;
+    s += `<rect class="box" x="20" y="30" width="560" height="24" rx="3" style="fill:none"/>`;
+    s += `<line x1="${px(r)}" y1="20" x2="${px(r)}" y2="64" class="stroke" style="stroke-width:3"/>`;
+    s += `<text class="small" x="${px(vl)}" y="80" text-anchor="middle">${vl}</text><text class="small" x="${px(vh)}" y="80" text-anchor="middle">${vh}</text>`;
+    s += `<text class="small" x="20" y="100">fault</text><text class="small" x="300" y="100" text-anchor="middle">valid range</text><text class="small" x="580" y="100" text-anchor="end">fault</text>`;
+    svg.innerHTML = s;
+    if (sig === "pt") out.textContent = fault ? "FAULT: resistance outside the sensor range (open or short circuit)." : `${val.toFixed(1)} °C (Pt1000, linear approximation)`;
+    else if (fault) out.textContent = sig === "ma" ? "FAULT: below 3.6 mA or above 21 mA. Wire break or failed transmitter." : "FAULT: above range. Note 0 V cannot be told apart from a broken wire.";
+    else out.textContent = `${val.toFixed(2)} ${un}` + (sig === "v" && r < 0.05 ? "  (0 V: real zero or broken wire?)" : "");
+    lo.disabled = hi.disabled = unit.disabled = sig === "pt";
+  };
+  [raw, lo, hi, unit].forEach((i) => i.addEventListener("input", draw));
+  fig.querySelectorAll("[data-sig]").forEach((b) => b.addEventListener("click", () => { sig = b.dataset.sig; press(fig, "data-sig", sig); draw(); }));
+  draw();
+})();
+
+// 8.5 Failure simulator.
+(() => {
+  const fig = document.getElementById("fail");
+  const grid = fig.querySelector(".sys-grid"), out = fig.querySelector(".readout");
+  const F = { srv: false, net: false, plant: false, oat: false };
+  const FN = [
+    ["Boiler PID loop", (f) => f.plant ? ["down", "Controller dead. Valve at fail position, boiler on its own safety controls."] : ["ok", "Runs locally."]],
+    ["Weather compensation", (f) => f.plant ? ["down", "Lost with the controller."] : f.oat ? ["warn", "Fallback outdoor temp 0 °C. Alarm raised."] : ["ok", "Local sensor."]],
+    ["Night setback schedule", (f) => f.plant ? ["down", "Lost."] : ["ok", "Local schedule copy."]],
+    ["Frost protection", () => ["ok", "Hardwired frost thermostat, independent of software."]],
+    ["Room controllers", (f) => f.net || f.plant ? ["warn", "Run their rooms on local setpoints; no plant demand signal."] : ["ok", "Normal."]],
+    ["Trend history", (f) => f.srv || f.net ? ["warn", "Buffered in controllers, uploaded later."] : f.plant ? ["down", "Gap for the dead controller."] : ["ok", "Stored on server."]],
+    ["Alarm notification", (f) => f.srv || f.net ? ["down", "Detected locally, but nobody is told."] : ["ok", "Delivered."]],
+    ["Dashboards", (f) => f.srv || f.net ? ["down", "Not available."] : ["ok", "Available."]],
+    ["Energy optimisation", (f) => f.srv || f.net ? ["warn", "Falls back to local default curves."] : ["ok", "Active."]],
+  ];
+  const draw = () => {
+    grid.innerHTML = FN.map(([n, fn]) => { const [st, why] = fn(F); return `<div class="sys ${st}"><b>${n}</b><div class="st">${why}</div></div>`; }).join("");
+    const down = FN.filter(([, fn]) => fn(F)[0] === "down").length;
+    out.textContent = down ? `${down} function(s) lost.` : "No function lost.";
+  };
+  fig.querySelectorAll("[data-f]").forEach((b) => b.addEventListener("click", () => {
+    F[b.dataset.f] = !F[b.dataset.f]; b.setAttribute("aria-pressed", F[b.dataset.f]); draw();
+  }));
+  draw();
+})();
+
+// 8.6 Room temperature simulation: on/off vs PI.
+(() => {
+  const fig = document.getElementById("room");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  const H = fig.querySelector('[data-k="h"]'), O = fig.querySelector('[data-k="o"]');
+  let sp = 21, ctl = "onoff";
+  const draw = () => {
+    const hys = H.value / 10, tOut = +O.value;
+    fig.querySelector('[data-o="h"]').textContent = hys.toFixed(1);
+    fig.querySelector('[data-o="o"]').textContent = tOut;
+    // Two-node model: radiator water temp and room air temp, 1-minute steps.
+    let room = 15, rad = 20, heat = false, integ = 0;
+    const pts = [], dem = [];
+    for (let m = 0; m <= 360; m++) {
+      let u;
+      if (ctl === "onoff") {
+        if (room < sp - hys / 2) heat = true;
+        if (room > sp + hys / 2) heat = false;
+        u = heat ? 1 : 0;
+      } else {
+        const e = sp - room;
+        integ = Math.max(-2, Math.min(40, integ + e / 30));
+        u = Math.max(0, Math.min(1, 0.5 * e + 0.1 * integ));
+      }
+      rad += (u * 70 - (rad - room) * 0.6 - (rad - 20) * 0) / 25 * 1;
+      rad = Math.max(room, rad);
+      room += ((rad - room) * 0.035 - (room - tOut) * 0.006);
+      pts.push(room); dem.push(u);
+    }
+    const x = (m) => 30 + m * (550 / 360), y = (t) => 190 - (t - 4) * (170 / 22);
+    let s = "";
+    dem.forEach((u, m) => { if (u > 0.01) s += `<rect class="fill-example-soft" x="${x(m)}" y="${190 - u * 30}" width="1.6" height="${u * 30}"/>`; });
+    [5, 10, 15, 20, 25].forEach((t) => (s += `<line x1="30" x2="580" y1="${y(t)}" y2="${y(t)}" class="muted-s" style="stroke-width:.5;opacity:.5"/><text class="small" x="26" y="${y(t) + 4}" text-anchor="end">${t}</text>`));
+    s += `<line x1="30" x2="580" y1="${y(sp)}" y2="${y(sp)}" class="stroke" style="stroke-dasharray:5 4;stroke-width:1"/>`;
+    s += `<polyline fill="none" style="stroke:var(--accent);stroke-width:2.5" points="${pts.map((t, m) => `${x(m).toFixed(1)},${y(t).toFixed(1)}`).join(" ")}"/>`;
+    for (let h = 0; h <= 6; h++) s += `<text class="small" x="${x(h * 60)}" y="208" text-anchor="middle">${h} h</text>`;
+    svg.innerHTML = s;
+    const tail = pts.slice(180);
+    const mx = Math.max(...tail), mn = Math.min(...tail);
+    out.textContent = `Setpoint ${sp} °C · last 3 h: ${mn.toFixed(1)}–${mx.toFixed(1)} °C (swing ${(mx - mn).toFixed(1)} K)` +
+      (mn < sp - 1 && ctl === "pi" ? " · heater too small for this outdoor temperature" : "");
+  };
+  [H, O].forEach((i) => i.addEventListener("input", draw));
+  fig.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => { sp = +b.dataset.mode; press(fig, "data-mode", b.dataset.mode); draw(); }));
+  fig.querySelectorAll("[data-ctl]").forEach((b) => b.addEventListener("click", () => { ctl = b.dataset.ctl; press(fig, "data-ctl", ctl); draw(); }));
+  draw();
+})();
+</script>
+</body>
+</html>

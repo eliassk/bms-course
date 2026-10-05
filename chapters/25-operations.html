@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commissioning and Operations</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .ck-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+  .ck-list li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 14px; min-width: 0; }
+  .ck-list li.on { border-color: var(--ok); background: var(--ok-soft); }
+  .ck-list input { margin-top: 4px; flex: none; }
+  .ck-list .g { font: 600 11px var(--mono); color: var(--muted); text-transform: uppercase; display: block; }
+  .ck-meter { height: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; overflow: hidden; margin-top: 8px; }
+  .ck-meter span { display: block; height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+  .ck-gate { font-weight: 700; padding: 6px 10px; border-radius: 8px; display: inline-block; margin-top: 8px; }
+  .ck-gate.ok { background: var(--ok-soft); color: var(--ok); }
+  .ck-gate.bad { background: var(--bad-soft); color: var(--bad); }
+  .stepper { display: grid; gap: 10px; }
+  .step-dots { display: flex; flex-wrap: wrap; gap: 6px; }
+  .step-dots button { font: 600 12px var(--mono); width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  .step-dots button[aria-current=true] { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .step-dots button.seen { border-color: var(--accent); }
+  .step-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--surface); min-height: 150px; }
+  .step-card h4 { margin: 0 0 6px; }
+  .step-nav { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+  .tree { list-style: none; padding-left: 0; margin: 0; font-size: 14px; }
+  .tree ul { list-style: none; padding-left: 18px; margin: 2px 0; border-left: 1px dashed var(--border); }
+  .tree button { font: 14px var(--font); color: var(--text); background: none; border: 0; padding: 3px 6px; border-radius: 6px; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+  .tree button:hover { background: var(--surface); }
+  .tree button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tree-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 640px) { .tree-grid { grid-template-columns: minmax(0, 1fr); } }
+  .tree-info { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--surface); font-size: 14px; }
+  .cal { display: grid; grid-template-columns: minmax(90px, 1.6fr) repeat(12, minmax(0, 1fr)); gap: 2px; font-size: 11px; }
+  .cal div { padding: 4px 2px; text-align: center; border-radius: 3px; min-width: 0; overflow: hidden; }
+  .cal .h { font: 600 10px var(--mono); color: var(--muted); }
+  .cal .t { text-align: left; font-size: 12px; overflow-wrap: anywhere; padding-left: 4px; }
+  .cal .c { background: var(--surface); border: 1px solid var(--border); min-height: 20px; }
+  .cal .c.x { background: var(--accent); border-color: var(--accent); }
+  .cal .c.x.dim { background: var(--accent-soft); border-color: var(--accent-soft); }
+  .cal .t.dim { color: var(--muted); }
+  .ts-path { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .ts-path span { font: 600 12px var(--mono); padding: 3px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); }
+  .ts-path span.ok { border-color: var(--ok); color: var(--ok); }
+  .ts-path span.bad { border-color: var(--bad); color: var(--bad); }
+  .ts-q { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--surface); }
+  .ts-q .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .ts-q .lay { font: 600 11px var(--mono); text-transform: uppercase; color: var(--accent); }
+  .layer-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .fmt { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; }
+  .fmt div { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface); font-size: 13px; }
+  .fmt b { font-family: var(--mono); display: block; }
+  .calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+  .calc label { font-size: 13px; font-weight: 600; color: var(--muted); display: grid; gap: 4px; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="25">
+<div class="content">
+  <div class="kicker">Chapter 25</div>
+  <h1>Commissioning, maintenance and troubleshooting</h1>
+  <p class="lead">A BMS is only as good as the day it was proven to work, and every day after that. This chapter covers
+    how systems are tested and accepted, which documents must exist, how drawings are used, how to keep a
+    system healthy, how to find faults methodically, and how to work with the people who build it.</p>
+
+  <!-- 25.1 -->
+  <section class="lesson" id="s1" data-num="25.1">
+    <h2>25.1 Commissioning and acceptance tests</h2>
+    <p><strong>Commissioning (Cx)</strong> is the documented process of proving that installed systems do what the
+      design intent says they should. It is not "switching it on". A system can run, show green on every graphic and
+      still be wrong: a valve wired in reverse, a sensor in the wrong duct, a sequence that never enters free cooling.</p>
+    <p>Commissioning starts long before installation. Good practice, described in guidance such as ASHRAE Guideline 0
+      and Standard 202, the CIBSE commissioning codes and BSRIA guides in the UK, and VDI 6039 in Germany, runs through
+      the whole project. The names vary by country, but the stages look alike.</p>
+
+    <h3>The phases</h3>
+    <figure class="viz" id="cxPhases">
+      <svg viewBox="0 0 640 170" role="img" aria-label="Commissioning phases from design intent to seasonal testing">
+        <g id="cxG"></g>
+      </svg>
+      <div class="readout" id="cxText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Click a phase. Each phase produces evidence that the next one relies on.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Test</th><th>Where</th><th>Proves</th><th>Typical evidence</th></tr>
+      <tr><td><strong>FAT</strong> (factory acceptance test)</td><td>Panel builder's workshop</td><td>Panel wiring, I/O, program loaded, graphics exist</td><td>Signed I/O sheet, photos, software version</td></tr>
+      <tr><td><strong>Installation check</strong></td><td>Site</td><td>Devices mounted, labelled, powered, terminated</td><td>Checklist per device, cable test results</td></tr>
+      <tr><td><strong>Point-to-point</strong></td><td>Site</td><td>Each field point reaches the right object with the right value and sign</td><td>Point list with tick, value, initials, date</td></tr>
+      <tr><td><strong>SAT / FPT</strong> (site acceptance / functional performance)</td><td>Site</td><td>Sequences behave as specified, alarms raise, safeties act</td><td>Scripted test, trend logs attached</td></tr>
+      <tr><td><strong>IST</strong> (integrated systems test)</td><td>Whole building</td><td>Cross-system behaviour: fire alarm stops AHUs, power loss and restart</td><td>Witnessed scenario reports</td></tr>
+      <tr><td><strong>Seasonal tests</strong></td><td>Site, months later</td><td>Heating and cooling modes under real load</td><td>Trend review, deferred test sign-off</td></tr>
+    </table></div>
+
+    <h3>What a functional test looks like</h3>
+    <p>A functional test is a script. It states the initial condition, the action, and the expected result with a
+      tolerance and a time limit. "AHU works" is not a test. This is:</p>
+    <ol>
+      <li>Initial: AHU running, occupied mode, supply setpoint 19 °C, outdoor 8 °C.</li>
+      <li>Action: override supply setpoint to 23 °C.</li>
+      <li>Expected: heating valve opens, supply temperature reaches 23 ± 0.5 °C within 10 min, no overshoot above 24 °C, recovery wheel at 100 %.</li>
+      <li>Record: trend export of setpoint, supply temp, valve position, wheel speed. Pass / fail. Initials of both witnesses.</li>
+    </ol>
+    <p>Test the failure paths too. What happens when the frost thermostat trips, the supply sensor reads open circuit
+      (for example below 3.6 mA), or the controller loses power and restarts? Many faults show up only in these
+      paths, because normal operation is what everyone watches.</p>
+
+    <h3>Interactive: a commissioning checklist</h3>
+    <figure class="viz" id="cxList">
+      <ul class="ck-list"></ul>
+      <div class="ck-meter"><span></span></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Tick items as you would on site. Critical items (marked ★) gate the handover. The page does not save your ticks.</figcaption>
+    </figure>
+
+    <div class="callout example">An office AHU passes its point-to-point test. In the functional test the engineer forces a high
+      return CO₂ reading of 1,400 ppm. The outdoor damper should open to 100 %, but it stays at 30 %. The cause: the CO₂ sensor
+      was configured as 0–10 V for 0–2,000 ppm in the controller, but the transmitter was set to 0–5,000 ppm. The BMS showed
+      560 ppm. Point-to-point had only checked that "a value arrives", not that it matched a reference meter.</div>
+
+    <div class="callout warn">Never accept "tested by the contractor" without evidence. A tick with no value, no trend and no
+      date is a promise, not a test. Ask for a sample of tests to be repeated in front of you, around 10 % is a common choice.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Which test proves that a fire alarm signal actually shuts down the supply fans?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="FAT is in the workshop. The fire panel and fans are not there.">Factory acceptance test</button>
+        <button class="opt" data-opt="b" data-why="Point-to-point proves the input reaches the controller, not the whole cause-and-effect chain.">Point-to-point test</button>
+        <button class="opt" data-opt="c" data-why="Cross-system behaviour is the job of the integrated systems test.">Integrated systems test</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Commissioning proves design intent with evidence. Running is not the same as correct.</li>
+      <li>FAT → installation → point-to-point → functional → integrated → seasonal.</li>
+      <li>A test has an initial state, an action, an expected result with tolerance, and a record.</li>
+      <li>Test failure paths, not only normal operation.</li>
+    </ul>
+  </section>
+
+  <!-- 25.2 -->
+  <section class="lesson" id="s2" data-num="25.2">
+    <h2>25.2 Point lists and as-built documentation</h2>
+    <p>The <strong>point list</strong> (also I/O list or points schedule) is the single most useful document in a BMS. It
+      lists every physical and virtual point, where it lives and what it means. If the point list is right, almost every
+      later task gets easier: tests, graphics, alarm setup, integration, troubleshooting.</p>
+
+    <h3>Columns that matter</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Column</th><th>Example</th><th>Why</th></tr>
+      <tr><td>Point name / tag</td><td><code>AHU01-SAT</code></td><td>Unique, follows a naming convention</td></tr>
+      <tr><td>Description</td><td>AHU 1 supply air temperature</td><td>Plain language for operators</td></tr>
+      <tr><td>Type</td><td>AI</td><td>AI / AO / DI / DO / virtual</td></tr>
+      <tr><td>Controller and terminal</td><td>DDC-03, UI4</td><td>Where to put the meter</td></tr>
+      <tr><td>Signal and range</td><td>NTC10k, −50…+150 °C</td><td>How to read and scale it</td></tr>
+      <tr><td>Protocol address</td><td>BACnet AI:4 / Modbus 30005</td><td>How to reach it over the network</td></tr>
+      <tr><td>Unit, resolution</td><td>°C, 0.1</td><td>Display and history</td></tr>
+      <tr><td>Alarm limits, priority</td><td>&lt; 12 °C / &gt; 30 °C, P2</td><td>Feeds the alarm system</td></tr>
+      <tr><td>Trend</td><td>COV 0.2 K, or 5 min</td><td>History settings</td></tr>
+      <tr><td>Cable / device ID</td><td>W-0312, TT-101</td><td>Links to drawings and labels</td></tr>
+      <tr><td>Test status</td><td>✓ 21.4 °C vs ref 21.3 °C, AB, 12 Mar</td><td>Commissioning evidence</td></tr>
+    </table></div>
+
+    <h3>The point-to-point test</h3>
+    <p>Point-to-point (P2P) proves the chain from the field device to the supervisory screen, one point at a time.
+      It usually needs two people: one in the field with a reference meter and radio or phone, one at the
+      workstation. Step through the workflow below.</p>
+
+    <figure class="viz" id="p2p">
+      <div class="stepper">
+        <div class="step-dots"></div>
+        <div class="step-card" aria-live="polite"></div>
+        <div class="step-nav">
+          <button class="btn secondary" data-dir="-1">← Back</button>
+          <button class="btn" data-dir="1">Next →</button>
+        </div>
+      </div>
+      <figcaption>A point-to-point workflow for one analog input and one digital output.</figcaption>
+    </figure>
+
+    <h3>As-built documentation</h3>
+    <p>The design drawings show what was planned. The <strong>as-built</strong> (or record) set shows what was actually
+      installed, including every change made on site. Without it, the next engineer must reverse-engineer the building.
+      Explore a typical structure:</p>
+
+    <figure class="viz" id="docTree">
+      <div class="tree-grid">
+        <ul class="tree"></ul>
+        <div class="tree-info" aria-live="polite"></div>
+      </div>
+      <figcaption>Click a folder or file. This is one sensible layout, not a standard.</figcaption>
+    </figure>
+
+    <div class="callout example">A school renovation replaces a boiler and the hot water circuit pump. The contractor rewires the
+      pump's run feedback to a spare input, DI7, because DI3 was damaged. Nobody updates the point list. Two years later the
+      graphic shows the pump "stopped" while it runs, and a service engineer spends half a day tracing a fault that is just
+      a documentation gap.</div>
+
+    <div class="callout warn">Software is part of the as-built. Controller programs, BMS database, graphics, and the exact tool
+      and firmware versions MUST be handed over. A PDF of the wiring is useless if nobody can open the controller project.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">During point-to-point, a room sensor shows 22.0 °C on the BMS. The reference meter reads 22.1 °C. What else must you check?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="0.1 K is well inside a normal tolerance.">Nothing. The values agree.</button>
+        <button class="opt" data-opt="b" data-why="Two sensors in similar rooms can read the same. Warm the sensor and watch the right point move.">That it is the right sensor: change the reading locally and confirm this point responds</button>
+        <button class="opt" data-opt="c" data-why="Firmware is not part of a point check.">The controller firmware version</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The point list is the backbone: tag, location, signal, address, alarm, trend, test status.</li>
+      <li>P2P proves identity (right point), value (against a reference) and direction (sign, polarity).</li>
+      <li>As-built includes software, versions and passwords transfer, not only drawings.</li>
+    </ul>
+  </section>
+
+  <!-- 25.3 -->
+  <section class="lesson" id="s3" data-num="25.3">
+    <h2>25.3 CAD/DWG drawings for BMS work</h2>
+    <p>Most building drawings live in <strong>DWG</strong>, the native format of AutoCAD. Other tools such as BricsCAD,
+      DraftSight and many others also read and write it. <strong>DXF</strong> is a documented exchange format, readable
+      by more programs, including open-source ones. For viewing only, free viewers exist from Autodesk and others.
+      Larger projects increasingly use <strong>BIM</strong> models, exchanged as <strong>IFC</strong>, but BMS engineers
+      still spend most of their time with 2D plans and schematics.</p>
+
+    <h3>Drawings a BMS engineer uses</h3>
+    <div class="fmt">
+      <div><b>Floor plans</b>Where sensors, controllers, panels and room devices sit.</div>
+      <div><b>Schematics</b>Plant diagrams: AHU, boiler, chiller with every sensor and actuator tagged.</div>
+      <div><b>Panel drawings</b>Cabinet layout, terminal strips, power, fusing.</div>
+      <div><b>Wiring diagrams</b>Terminal-to-terminal connections, cable numbers.</div>
+      <div><b>Network riser</b>Controllers, switches, bus segments per floor.</div>
+      <div><b>Cable routes</b>Trays, risers, fire-stopping penetrations.</div>
+    </div>
+
+    <h3>Layers and external references</h3>
+    <p>A DWG is organised in <strong>layers</strong>: walls on one, ducts on another, BMS devices on a third. You can hide
+      what you don't need. A disciplined project uses a layer naming standard (for example based on ISO 13567 or the US
+      National CAD Standard) so that <code>M-HVAC-DUCT</code> or <code>E-BMS-DEV</code> mean the same thing everywhere.</p>
+    <p><strong>External references (xrefs)</strong> let one drawing show another. The BMS plan references the architect's
+      floor plan instead of copying it. When the architect moves a wall, the BMS plan updates. The catch: if you send the
+      BMS drawing without its xrefs, the recipient sees devices floating in empty space. Use the CAD tool's
+      "eTransmit" or "bind" function to package them.</p>
+
+    <figure class="viz" id="cadLayers">
+      <div class="controls" id="cadBtns"></div>
+      <svg viewBox="0 0 600 300" role="img" aria-label="Floor plan with toggleable layers">
+        <g data-layer="arch">
+          <rect x="30" y="30" width="540" height="240" fill="none" class="stroke" stroke-width="4"/>
+          <path d="M210,30 V180 M210,220 V270 M390,30 V120 M390,160 V270 M30,150 H210" class="stroke" stroke-width="3" fill="none"/>
+          <text class="small" x="120" y="60" text-anchor="middle">Office 1.01</text>
+          <text class="small" x="120" y="250" text-anchor="middle">Office 1.02</text>
+          <text class="small" x="300" y="60" text-anchor="middle">Meeting 1.03</text>
+          <text class="small" x="480" y="60" text-anchor="middle">Plant 1.04</text>
+        </g>
+        <g data-layer="hvac">
+          <path d="M480,240 V100 H300 V230 M300,100 H120 V200" fill="none" class="muted-s" stroke-width="10" opacity=".35"/>
+          <rect x="450" y="200" width="60" height="40" class="box"/>
+          <text class="small" x="480" y="224" text-anchor="middle">AHU-01</text>
+        </g>
+        <g data-layer="bms">
+          <circle cx="90" cy="100" r="9" class="fill-accent"/><text x="104" y="104" class="small">TT-101</text>
+          <circle cx="90" cy="210" r="9" class="fill-accent"/><text x="104" y="214" class="small">TT-102</text>
+          <circle cx="340" cy="180" r="9" class="fill-accent"/><text x="354" y="184" class="small">QT-103 CO₂</text>
+          <rect x="530" y="140" width="28" height="44" class="fill-accent" rx="3"/><text x="544" y="200" class="small" text-anchor="middle">DDC-03</text>
+        </g>
+        <g data-layer="cable">
+          <path d="M544,140 V40 H90 V91 M300,40 V171 H331 M60,40 V210 H81" fill="none" stroke="var(--example)" stroke-width="2" stroke-dasharray="6 4"/>
+          <text x="250" y="36" class="small">W-0312…0314</text>
+        </g>
+      </svg>
+      <figcaption>Toggle layers. On site you usually want architecture plus BMS devices plus cable routes, and nothing else.</figcaption>
+    </figure>
+
+    <h3>Practical skills</h3>
+    <ul>
+      <li><strong>Scale and units.</strong> Check whether the model is in millimetres or metres before measuring. A 6 m cable run measured as 6 mm is a classic error.</li>
+      <li><strong>Blocks with attributes.</strong> A device symbol can carry tag, type and address as attributes. These can be extracted to a table and compared with the point list.</li>
+      <li><strong>Redlines.</strong> On site, mark changes in red on a printed or PDF plan. These redlines become the input for the as-built.</li>
+      <li><strong>Revision control.</strong> Every sheet has a revision letter or number and a revision table. Never work from an unrevisioned print.</li>
+    </ul>
+
+    <div class="callout example">An integrator extracts all <code>BMS-DEVICE</code> block attributes from 14 floor plans into a spreadsheet:
+      612 devices. The point list has 598 room-level points. A simple join finds 19 devices on drawings that are missing from the
+      list and 5 in the list that are on no drawing. Fixing that before installation took one afternoon. After installation it
+      would have meant 24 site investigations.</div>
+
+    <div class="callout warn">Do not treat a PDF export as the drawing. It loses layers, attributes and xrefs. Ask for the
+      native DWG (or IFC) and keep PDFs only as a printable copy.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">You open a BMS floor plan and see sensor symbols but no walls. The most likely reason is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The architectural plan was an external reference and was not sent with the file.">A missing external reference</button>
+        <button class="opt" data-opt="b" data-why="DWG versions are mostly backwards readable. A version problem usually stops the file from opening at all.">The DWG version is too new</button>
+        <button class="opt" data-opt="c" data-why="Wrong units would distort sizes, not remove walls.">Wrong drawing units</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>DWG is native, DXF is exchange, IFC is BIM. PDF is for printing.</li>
+      <li>Layers and xrefs organise drawings. Send xrefs with the drawing.</li>
+      <li>Device blocks with attributes can be checked against the point list automatically.</li>
+    </ul>
+  </section>
+
+  <!-- 25.4 -->
+  <section class="lesson" id="s4" data-num="25.4">
+    <h2>25.4 Preventive maintenance</h2>
+    <p>Maintenance comes in three styles. <strong>Corrective</strong> maintenance fixes things after they break.
+      <strong>Preventive</strong> maintenance does work on a schedule, whether or not anything looks wrong.
+      <strong>Condition-based</strong> (or predictive) maintenance uses data to act when a measured value says it is needed.
+      A BMS can drive the third style, because it already measures runtime, pressure drops and temperatures.
+      European terminology for these is defined in EN 13306. In the UK, SFG20 is widely used as a library of
+      maintenance tasks and intervals.</p>
+
+    <h3>What to maintain on the BMS itself</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Item</th><th>Typical task</th><th>Typical interval</th></tr>
+      <tr><td>Critical sensors (supply temp, CO₂, pressure)</td><td>Check against a calibrated reference</td><td>Yearly; CO₂ sensors per maker, often with auto-calibration</td></tr>
+      <tr><td>Actuators and valves</td><td>Stroke 0–100 %, check feedback and end positions</td><td>Yearly, before each season</td></tr>
+      <tr><td>Controller and server backups</td><td>Back up, then test a restore</td><td>Backup after every change; restore test yearly</td></tr>
+      <tr><td>Software and firmware</td><td>Review vendor advisories, patch in a planned window</td><td>Quarterly review</td></tr>
+      <tr><td>Controller batteries (RTC, RAM)</td><td>Replace</td><td>Per vendor, often 3–5 years</td></tr>
+      <tr><td>UPS batteries (VRLA)</td><td>Self-test, then replace</td><td>Test monthly; replace about every 3–5 years</td></tr>
+      <tr><td>Alarm system</td><td>Send a test alarm end to end; review chattering alarms</td><td>Monthly test; quarterly review</td></tr>
+      <tr><td>Time sync</td><td>Check NTP, controller clocks, DST change</td><td>After DST changes</td></tr>
+      <tr><td>Overrides</td><td>List all points in manual or operator override and clear stale ones</td><td>Weekly or monthly</td></tr>
+      <tr><td>Panels</td><td>Visual check, terminal tightness, fans and filters in cabinets</td><td>Yearly</td></tr>
+    </table></div>
+
+    <h3>Interactive: a maintenance calendar</h3>
+    <figure class="viz" id="mCal">
+      <div class="controls"><div class="seg" id="mCalSeg">
+        <button data-f="all" aria-pressed="true">All</button>
+        <button data-f="M">Monthly</button>
+        <button data-f="Q">Quarterly</button>
+        <button data-f="S">Seasonal</button>
+        <button data-f="Y">Yearly</button>
+      </div></div>
+      <div class="cal" id="mCalGrid"></div>
+      <div class="readout" id="mCalText" aria-live="polite"></div>
+      <figcaption>Northern-hemisphere example. Heating checks go in September, cooling checks in April. Filter to see the load per month.</figcaption>
+    </figure>
+
+    <h3>Condition-based: let the BMS tell you</h3>
+    <p>A filter is a good example. A fixed schedule might swap it every 6 months. A pressure sensor across the filter
+      shows when it is actually loaded. Clean, a bag filter might show about 60–80 Pa. A typical change point is
+      around 200–250 Pa, or whatever the filter maker specifies as final pressure drop. Try the estimator:</p>
+
+    <figure class="viz">
+      <div class="calc">
+        <label>Clean pressure drop (Pa) <input type="range" id="fClean" min="40" max="120" value="70"><output id="fCleanO"></output></label>
+        <label>Rise per 1,000 run hours (Pa) <input type="range" id="fRise" min="5" max="60" value="25"><output id="fRiseO"></output></label>
+        <label>Change at (Pa) <input type="range" id="fLimit" min="150" max="350" step="10" value="220"><output id="fLimitO"></output></label>
+        <label>Run hours per week <input type="range" id="fHours" min="40" max="168" value="60"><output id="fHoursO"></output></label>
+      </div>
+      <svg viewBox="0 0 600 200" role="img" aria-label="Filter pressure drop over time">
+        <line x1="50" y1="170" x2="580" y2="170" class="muted-s"/>
+        <line x1="50" y1="20" x2="50" y2="170" class="muted-s"/>
+        <line id="fLimLine" x1="50" x2="580" class="stroke" stroke-dasharray="5 4"/>
+        <polyline id="fCurve" fill="none" stroke="var(--accent)" stroke-width="3"/>
+        <text x="315" y="194" class="small" text-anchor="middle">weeks (0–104)</text>
+        <text x="16" y="96" class="small" transform="rotate(-90 16 96)" text-anchor="middle">Pa</text>
+        <text id="fLimTxt" x="575" class="small" text-anchor="end">change point</text>
+      </svg>
+      <div class="readout" id="fOut" aria-live="polite"></div>
+      <figcaption>Linear model for illustration. Real loading curves are steeper near the end and depend on season and outdoor air quality.</figcaption>
+    </figure>
+
+    <div class="callout example">A building with 40 fan coil units and 4 AHUs logs runtime hours per fan. Instead of changing all
+      filters twice a year, the work orders are triggered by runtime: every 2,500 h for fan coils, and by differential pressure
+      for AHUs. Meeting rooms used twice a week now get filters every 18 months, the busy reception every 7 months.</div>
+
+    <div class="callout warn">The most common long-term BMS fault is a forgotten override. A valve left at 100 % "for testing"
+      or a pump forced on in summer can run for years. An override report is the cheapest maintenance task there is.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">You have a nightly backup of the BMS server. What is still missing for a reliable recovery?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="More frequent backups help with data loss, not with knowing the restore works.">Hourly backups</button>
+        <button class="opt" data-opt="b" data-why="A backup you have never restored is a hope. Test restores, and back up controller programs too.">A tested restore, including controller programs and the tool versions to load them</button>
+        <button class="opt" data-opt="c" data-why="Cloud storage is one location option, not proof that recovery works.">A copy in the cloud</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Corrective, preventive, condition-based. A BMS enables the third.</li>
+      <li>Maintain the BMS itself: sensors, actuators, backups, firmware, batteries, alarms, clocks.</li>
+      <li>Schedule seasonal checks before the season, not when the first complaint arrives.</li>
+      <li>Review overrides regularly.</li>
+    </ul>
+  </section>
+
+  <!-- 25.5 -->
+  <section class="lesson" id="s5" data-num="25.5">
+    <h2>25.5 Troubleshooting method: layer by layer</h2>
+    <p>Most failed troubleshooting is unstructured: change something, see if it helps, change something else. A faster
+      method is to walk the layers, bottom up, and prove each one before moving on. It mirrors the network model you know
+      from software: there is no point debugging the application if the cable is unplugged.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Layer</th><th>Question</th><th>Tools</th></tr>
+      <tr><td><strong>Physical</strong></td><td>Is there power? Is the signal on the terminals? Is the device healthy?</td><td>Multimeter, LEDs, loop calibrator, eyes</td></tr>
+      <tr><td><strong>Network</strong></td><td>Can the nodes reach each other? Is the bus terminated and biased?</td><td>ping, switch port status, RS-485 checks, oscilloscope</td></tr>
+      <tr><td><strong>Protocol</strong></td><td>Are requests answered correctly? Right address, function, data type?</td><td>Wireshark, Modbus poll tools, BACnet explorers, MQTT clients</td></tr>
+      <tr><td><strong>Application</strong></td><td>Is the logic, scaling, schedule, mode or override right?</td><td>Controller tool, trend logs, BMS event log</td></tr>
+    </table></div>
+
+    <h3>Before you start</h3>
+    <ol>
+      <li><strong>Define the symptom precisely.</strong> "Room 2.14 is cold" becomes "room 2.14 reads 18.5 °C at 10:00 on weekdays, setpoint 21 °C".</li>
+      <li><strong>Ask what changed.</strong> Software update, new contractor, season change, DST change, power cut.</li>
+      <li><strong>Look at trends first.</strong> Five minutes of history often saves an hour on site. Did it ever work? When did it stop?</li>
+      <li><strong>Change one thing at a time</strong> and write down what you changed, so you can undo it.</li>
+    </ol>
+
+    <h3>Interactive: a troubleshooting tree</h3>
+    <figure class="viz" id="tsTree">
+      <div class="controls"><div class="seg" id="tsSeg">
+        <button data-case="modbus" aria-pressed="true">Modbus meter shows no value</button>
+        <button data-case="room">Room too cold</button>
+      </div></div>
+      <div class="ts-path" id="tsPath"></div>
+      <div class="ts-q" id="tsQ" aria-live="polite"></div>
+      <figcaption>Answer each question as if you were on site. The path shows the layers you have proven.</figcaption>
+    </figure>
+
+    <h3>Half-splitting</h3>
+    <p>When a signal passes through many stages, test in the middle. A temperature crosses sensor → cable → controller
+      input → controller object → gateway → BMS server → graphic. If the controller tool shows the right value, the fault is
+      on the right-hand half. One measurement removes half the suspects. With 7 stages, three measurements are enough to
+      find the stage.</p>
+
+    <div class="callout example">A Modbus RTU bus with 12 energy meters works for weeks, then meters 9–12 start timing out at
+      random. The logs show CRC errors. Physical layer: a new meter was added at the far end and the 120 Ω terminator was moved
+      to it, but the old terminator was left in place in the middle. Two mid-line terminators and a long stub created reflections.
+      Fixing termination, not software, cleared it.</div>
+
+    <div class="callout warn">Do not "fix" a symptom in the application layer. Adding a +3 K offset to a sensor that reads
+      low because it sits in a draught hides the real fault and confuses the next person. Fix the cause, or document the
+      workaround clearly in the point list.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A BACnet controller value on the BMS has been frozen at 21.3 °C for two days. Ping to the controller works. What next?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The network is proven. Next is the protocol: is the subscription or poll still active, and what is the object's status flag?">Check the protocol: COV subscription or polling status, and the object's reliability / status flags</button>
+        <button class="opt" data-opt="b" data-why="Replacing hardware before testing the layers above is expensive guessing.">Replace the sensor</button>
+        <button class="opt" data-opt="c" data-why="Restarting may hide the cause. Find it first, then restart if needed.">Restart the BMS server</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Bottom up: physical → network → protocol → application.</li>
+      <li>Define the symptom, ask what changed, read trends before going on site.</li>
+      <li>Half-split long signal chains. Change one thing at a time.</li>
+      <li>Fix causes, not symptoms.</li>
+    </ul>
+  </section>
+
+  <!-- 25.6 -->
+  <section class="lesson" id="s6" data-num="25.6">
+    <h2>25.6 Working with contractors</h2>
+    <p>Building automation sits between trades. The mechanical contractor installs valves, the electrician pulls cables,
+      the panel builder wires cabinets, the controls integrator programs controllers, IT runs the network, and each
+      equipment vendor owns its own controller. Most problems happen at the boundaries between them.</p>
+
+    <h3>Define the interfaces</h3>
+    <p>A <strong>responsibility matrix</strong> (often called a RACI or a division-of-works list) says who supplies, installs,
+      wires, configures and tests each item. Write it before tendering, not after the first argument.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Item</th><th>Supply</th><th>Install</th><th>Wire</th><th>Configure</th><th>Test</th></tr>
+      <tr><td>Control valve + actuator</td><td>Controls</td><td>Mechanical</td><td>Electrical</td><td>Controls</td><td>Controls, witnessed</td></tr>
+      <tr><td>Chiller Modbus interface</td><td>Chiller vendor</td><td>Chiller vendor</td><td>Controls</td><td>Both</td><td>Joint test</td></tr>
+      <tr><td>BMS network switches</td><td>IT</td><td>IT</td><td>IT</td><td>IT (VLANs agreed with controls)</td><td>IT + controls</td></tr>
+      <tr><td>Fire alarm interface relays</td><td>Fire contractor</td><td>Fire contractor</td><td>Electrical</td><td>—</td><td>IST, all parties</td></tr>
+    </table></div>
+
+    <h3>Whose job is it?</h3>
+    <div class="classify" data-cats="Controls,Mechanical,Vendor,Owner">
+      <div class="item" data-cat="Controls" data-why="Scaling and range in the controller are part of controls configuration."><span class="label">Setting the 4–20 mA range of a pressure input in the controller</span></div>
+      <div class="item" data-cat="Mechanical" data-why="The sensor pocket is a pipework item, fitted by the mechanical contractor (often supplied by controls)."><span class="label">Fitting an immersion pocket into a pipe</span></div>
+      <div class="item" data-cat="Vendor" data-why="The vendor knows its own register map and must document it."><span class="label">Providing the Modbus register map of a heat pump</span></div>
+      <div class="item" data-cat="Owner" data-why="The owner decides comfort targets and operating hours, which drive the sequences."><span class="label">Deciding occupied hours and room setpoints</span></div>
+      <div class="item" data-cat="Owner" data-why="The owner must hold admin credentials and licences after handover."><span class="label">Holding the admin passwords and software licences</span></div>
+      <div class="item" data-cat="Controls" data-why="Writing and proving the sequence of operation in software is the integrator's core job."><span class="label">Programming the AHU frost protection sequence</span></div>
+    </div>
+    <p style="font-size:14px;color:var(--muted)">Splits vary by contract. These answers show a common arrangement.</p>
+
+    <h3>Specifications that work</h3>
+    <ul>
+      <li><strong>Sequences of operation</strong> written in testable language, with numbers: "If supply temperature &lt; 5 °C for 10 s, stop fan, close outdoor damper, open heating valve 100 %, raise P1 alarm."</li>
+      <li><strong>Naming convention</strong> and point list template provided by the owner, so every contractor uses the same.</li>
+      <li><strong>Open interfaces</strong> required by contract: documented protocol, register maps, no per-point licence surprises.</li>
+      <li><strong>Deliverables list</strong> with acceptance criteria and retention money tied to it.</li>
+    </ul>
+
+    <h3>Interactive: a handover checklist</h3>
+    <figure class="viz" id="hoList">
+      <ul class="ck-list"></ul>
+      <div class="ck-meter"><span></span></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>What the owner should hold on the day the contractor leaves. Critical items are marked ★.</figcaption>
+    </figure>
+
+    <div class="callout example">A hotel retains 5 % of the controls contract until three conditions are met: all functional tests
+      signed, seasonal cooling test done in July, and a restore of the BMS server from the handed-over backup performed by the
+      hotel's own engineer. The restore failed the first time because a licence file was missing. That was found in week 2 of
+      operation, not during a crisis three years later.</div>
+
+    <div class="callout warn">Watch for "soft lock-in": encrypted controller programs, admin accounts kept by the contractor, or
+      tools only the original integrator can buy. Write into the contract that the owner receives full admin access, source
+      programs and the right to use another integrator.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A chiller's Modbus values do not appear in the BMS. Controls says the chiller is wrong, the vendor says the BMS is wrong. What resolves it fastest?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Escalation without evidence only adds people to the argument.">Escalate to both companies' management</button>
+        <button class="opt" data-opt="b" data-why="Swapping hardware without a diagnosis is guessing.">Replace the gateway</button>
+        <button class="opt" data-opt="c" data-why="A neutral protocol test shows which side is at fault, and the matrix shows who must fix it.">A joint test with a laptop Modbus client at the interface, against the agreed register map</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Problems live at interfaces. Write a responsibility matrix early.</li>
+      <li>Specify testable sequences, a naming convention and open interfaces.</li>
+      <li>Tie retention money to handover deliverables, including a proven restore.</li>
+      <li>The owner MUST hold admin access, source programs and licences.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. Which of these is a proper functional test step?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="No condition, no expected value, no tolerance.">"Check that the AHU heating works."</button>
+        <button class="opt" data-opt="b" data-why="It has an action, an expected result with tolerance and a time limit.">"Raise supply setpoint to 23 °C; supply reaches 23 ± 0.5 °C within 10 min."</button>
+        <button class="opt" data-opt="c" data-why="That is a point check, not a functional test.">"Confirm the heating valve point exists."</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. A damper opens when the BMS commands 0 % and closes at 100 %. Which test should have caught this?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The damper is not connected in the workshop.">FAT</button>
+        <button class="opt" data-opt="b" data-why="Seasonal testing is far too late for a reversed actuator.">Seasonal test</button>
+        <button class="opt" data-opt="c" data-why="Point-to-point checks direction as well as presence.">Point-to-point</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Why ask for native DWG instead of PDF drawings at handover?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Layers, attributes and xrefs are needed to maintain and update the drawings.">PDF loses layers, block attributes and references needed for later edits</button>
+        <button class="opt" data-opt="b" data-why="PDF files are usually smaller.">PDF files are too large</button>
+        <button class="opt" data-opt="c" data-why="PDF prints fine.">PDF cannot be printed to scale</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">4. Filters are changed when differential pressure reaches the limit, not every 6 months. This is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Preventive is calendar or runtime based.">Preventive maintenance</button>
+        <button class="opt" data-opt="b" data-why="Action is triggered by a measured condition.">Condition-based maintenance</button>
+        <button class="opt" data-opt="c" data-why="Corrective is after failure.">Corrective maintenance</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">5. A Modbus RTU device times out. The other devices on the bus answer. What do you check first?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The application layer comes last.">The scaling of its registers</button>
+        <button class="opt" data-opt="b" data-why="Other devices answer, so the master and its port work. Rebuilding the server is drastic.">Reinstall the BMS server</button>
+        <button class="opt" data-opt="c" data-why="Start with the device's own power and wiring, then its address and serial settings.">The device's power and wiring, then its slave address and baud rate / parity</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="24-energy.html">← Chapter 24</a>
+    <a class="btn" href="../index.html">All chapters →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// 25.1 Commissioning phases.
+(() => {
+  const P = [
+    ["Design", "Owner's project requirements and basis of design. Write the sequences and the test plan now, so the design is testable."],
+    ["FAT", "Factory acceptance test. Panels are checked in the workshop: I/O, power, program loaded. Cheapest place to fix wiring."],
+    ["Install", "Installation verification. Every device mounted, labelled and terminated. Cables tested. Photos before ceilings close."],
+    ["P2P", "Point-to-point. Each field point proven: right identity, right value against a reference, right direction."],
+    ["FPT", "Functional performance tests. Scripted tests of sequences, alarms and safeties, with trends as evidence."],
+    ["IST", "Integrated systems test. Fire alarm, power loss and restart, cross-system scenarios with all trades present."],
+    ["Season", "Deferred seasonal tests, months later, under real heating or cooling load. Then the end of the defects period."],
+  ];
+  const g = document.getElementById("cxG"), txt = document.getElementById("cxText");
+  const w = 82, gap = 8;
+  g.innerHTML = P.map(([n], i) => {
+    const x = 10 + i * (w + gap);
+    return `<g role="button" tabindex="0" data-i="${i}" aria-label="${n}">
+      <rect class="box" x="${x}" y="50" width="${w}" height="60" rx="8"/>
+      <text x="${x + w / 2}" y="85" text-anchor="middle" font-weight="650">${n}</text>
+      ${i < P.length - 1 ? `<path class="arrow" d="M${x + w},80 L${x + w + gap},80"/>` : ""}
+      <text class="small" x="${x + w / 2}" y="132" text-anchor="middle">${i + 1}</text></g>`;
+  }).join("") + `<text class="small" x="320" y="30" text-anchor="middle">design → handover → operation</text>`;
+  const show = (i) => {
+    g.querySelectorAll("[data-i]").forEach((b) => b.querySelector("rect").classList.toggle("lit", Number(b.dataset.i) === i));
+    txt.innerHTML = `<strong>${P[i][0]}.</strong> ${P[i][1]}`;
+  };
+  g.querySelectorAll("[data-i]").forEach((b) => {
+    const i = Number(b.dataset.i);
+    b.addEventListener("click", () => show(i));
+    b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); show(i); } });
+  });
+  show(0);
+})();
+
+// Shared checklist builder for 25.1 and 25.6.
+function buildChecklist(id, items, doneMsg) {
+  const fig = document.getElementById(id);
+  const ul = fig.querySelector(".ck-list"), bar = fig.querySelector(".ck-meter span"), out = fig.querySelector(".readout");
+  ul.innerHTML = items.map(([grp, t, crit], i) =>
+    `<li><input type="checkbox" id="${id}-${i}"><label for="${id}-${i}"><span class="g">${grp}${crit ? " ★" : ""}</span>${t}</label></li>`).join("");
+  const boxes = [...ul.querySelectorAll("input")];
+  const draw = () => {
+    const n = boxes.filter((b) => b.checked).length;
+    const open = items.filter((it, i) => it[2] && !boxes[i].checked).length;
+    boxes.forEach((b) => b.closest("li").classList.toggle("on", b.checked));
+    bar.style.width = `${Math.round((n / items.length) * 100)}%`;
+    out.innerHTML = `${n} / ${items.length} done · ` + (open
+      ? `<span class="ck-gate bad">${open} critical item${open > 1 ? "s" : ""} open: not ready</span>`
+      : `<span class="ck-gate ok">${doneMsg}</span>`);
+  };
+  boxes.forEach((b) => b.addEventListener("change", draw));
+  draw();
+}
+
+// 25.1 Commissioning checklist.
+(() => {
+  buildChecklist("cxList", [
+    ["Docs", "Point list issued, current revision, matches drawings", true],
+    ["Docs", "Sequences of operation approved by the designer", true],
+    ["Install", "All devices labelled with tag matching the point list", false],
+    ["Install", "Cable insulation and continuity tests recorded", false],
+    ["P2P", "Every AI checked against a reference meter", true],
+    ["P2P", "Every AO/DO stroked, direction and feedback confirmed", true],
+    ["FPT", "Each sequence tested with trend logs attached", true],
+    ["FPT", "Alarms raised and received at the operator and on-call phone", true],
+    ["Safety", "Frost, high-limit and fire interlocks tested in hardware", true],
+    ["Restart", "Power-loss restart tested: correct start-up order and modes", false],
+    ["Network", "Controller IP addresses, VLANs and time sync documented", false],
+    ["Training", "Operators trained, attendance recorded", false],
+  ], "All critical items closed: ready for handover");
+})();
+
+// 25.2 Point-to-point stepper.
+(() => {
+  const S = [
+    ["Prepare", "Print or open the point list for the controller. Agree a call sign and channel with your partner. Check the reference meter's calibration date. Put the AHU in a safe manual state."],
+    ["Identify (AI)", "Field: find device TT-101 by its label. Workstation: open AHU01-SAT. Field warms the sensor by hand or with a heat gun. Workstation confirms <em>this</em> point rises. Identity proven."],
+    ["Value (AI)", "Field: reference probe next to the sensor reads 18.4 °C. Workstation reads 18.6 °C. Tolerance ±0.5 K: pass. Record both values. If off by a fixed amount, check sensor type (NTC10k vs PT1000) before adding an offset."],
+    ["Fault state (AI)", "Field: disconnect one wire. Workstation must show a fault or out-of-range value, not a believable number, and raise a sensor-fault alarm. Reconnect."],
+    ["Command (DO)", "Workstation: command pump P-01 on. Field: confirm the contactor pulls in and the pump runs. Command off: it stops."],
+    ["Feedback (DO)", "Field: open the pump's isolator while commanded on. Workstation must show 'commanded on, not running' and raise a failure alarm after the set delay, for example 30 s."],
+    ["Record", "Tick the point list row: measured value, reference value, pass/fail, both initials, date. Any deviation goes to an issue log with an owner and a due date."],
+  ];
+  const fig = document.getElementById("p2p");
+  const dots = fig.querySelector(".step-dots"), card = fig.querySelector(".step-card");
+  let cur = 0;
+  dots.innerHTML = S.map((s, i) => `<button aria-label="Step ${i + 1}: ${s[0]}">${i + 1}</button>`).join("");
+  const db = [...dots.children];
+  const draw = () => {
+    db.forEach((b, i) => { b.setAttribute("aria-current", i === cur); if (i <= cur) b.classList.add("seen"); });
+    card.innerHTML = `<h4>Step ${cur + 1} of ${S.length}: ${S[cur][0]}</h4><p style="margin:0">${S[cur][1]}</p>`;
+    fig.querySelector('[data-dir="-1"]').disabled = cur === 0;
+    fig.querySelector('[data-dir="1"]').disabled = cur === S.length - 1;
+  };
+  db.forEach((b, i) => b.addEventListener("click", () => { cur = i; draw(); }));
+  fig.querySelectorAll("[data-dir]").forEach((b) => b.addEventListener("click", () => {
+    cur = Math.min(S.length - 1, Math.max(0, cur + Number(b.dataset.dir))); draw();
+  }));
+  draw();
+})();
+
+// 25.2 As-built document tree.
+(() => {
+  const T = [
+    ["01 Design intent", "Owner's requirements, basis of design, approved sequences of operation. The reference for every test.", [
+      ["Sequences_of_operation_revC.pdf", "Written per plant item, with setpoints, timings and alarm limits. Revision C is the as-built version."],
+    ]],
+    ["02 Drawings", "Native DWG with xrefs, plus PDF copies. Every sheet with a revision table.", [
+      ["Schematics/", "One per plant: AHU, heating, cooling, DHW. Every device tagged."],
+      ["Floor_plans/", "Device locations per floor, cable routes."],
+      ["Panels/", "Cabinet layouts and wiring diagrams, terminal by terminal."],
+      ["Network_riser.dwg", "Controllers, switches, bus segments, IP addresses."],
+    ]],
+    ["03 Point list", "Spreadsheet or database export. The master list of every point.", [
+      ["Pointlist_asbuilt.xlsx", "Includes test status column. MUST match the controller database."],
+    ]],
+    ["04 Software", "What you need to rebuild the system from nothing.", [
+      ["Controller_programs/", "Source projects, not only compiled files. One folder per controller."],
+      ["BMS_database_backup/", "Latest server backup, with date and the restore procedure."],
+      ["Tools_and_versions.txt", "Engineering tool names, versions, licences and firmware per device."],
+    ]],
+    ["05 Network", "IP plan, VLANs, firewall rules, remote-access method, time source.", []],
+    ["06 Test records", "Signed FAT, P2P, functional and integrated test sheets with trends.", [
+      ["Issue_log.xlsx", "Every defect found, who fixed it, when, and how it was retested."],
+    ]],
+    ["07 O&amp;M manuals", "Datasheets, maintenance tasks and intervals, spare parts list.", []],
+    ["08 Credentials", "Held by the owner, in a password manager or sealed envelope, never in this shared folder.", []],
+  ];
+  const fig = document.getElementById("docTree");
+  const tree = fig.querySelector(".tree"), info = fig.querySelector(".tree-info");
+  tree.innerHTML = T.map(([n, d, kids], i) =>
+    `<li><button data-d="${i}">📁 ${n}</button>${kids.length ? `<ul>${kids.map(([k], j) =>
+      `<li><button data-d="${i}.${j}">${k.endsWith("/") ? "📁" : "📄"} ${k}</button></li>`).join("")}</ul>` : ""}</li>`).join("");
+  const btns = tree.querySelectorAll("button");
+  btns.forEach((b) => b.addEventListener("click", () => {
+    btns.forEach((x) => x.setAttribute("aria-pressed", x === b));
+    const [i, j] = b.dataset.d.split(".").map(Number);
+    const it = j === undefined ? T[i] : T[i][2][j];
+    info.innerHTML = `<strong>${it[0]}</strong><p style="margin:6px 0 0">${it[1]}</p>`;
+  }));
+  btns[0].click();
+})();
+
+// 25.3 CAD layer toggles.
+(() => {
+  const L = [["arch", "Architecture"], ["hvac", "HVAC ducts"], ["bms", "BMS devices"], ["cable", "Cable routes"]];
+  const box = document.getElementById("cadBtns"), fig = document.getElementById("cadLayers");
+  const seg = document.createElement("div");
+  seg.className = "seg";
+  seg.innerHTML = L.map(([k, n]) => `<button data-l="${k}" aria-pressed="true">${n}</button>`).join("");
+  box.appendChild(seg);
+  seg.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    const on = b.getAttribute("aria-pressed") !== "true";
+    b.setAttribute("aria-pressed", on);
+    fig.querySelector(`[data-layer="${b.dataset.l}"]`).style.display = on ? "" : "none";
+  }));
+})();
+
+// 25.4 Maintenance calendar.
+(() => {
+  // Months are 0-based.
+  const TASKS = [
+    ["Override report", "M", [0,1,2,3,4,5,6,7,8,9,10,11], "Clear stale manual overrides."],
+    ["Test alarm end to end", "M", [0,1,2,3,4,5,6,7,8,9,10,11], "From point to on-call phone."],
+    ["UPS self-test", "M", [0,1,2,3,4,5,6,7,8,9,10,11], "Read result, check runtime estimate."],
+    ["Firmware / advisories", "Q", [0,3,6,9], "Review vendor security notes, plan patches."],
+    ["Alarm review", "Q", [1,4,7,10], "Top 10 chattering alarms, fix or re-tune."],
+    ["Restore test", "Y", [1], "Restore a backup to a test machine."],
+    ["Cooling pre-season", "S", [3], "Stroke cooling valves, check chiller interface, free-cooling logic."],
+    ["DST clock check", "S", [2,9], "After daylight-saving change: schedules, controller clocks."],
+    ["Heating pre-season", "S", [8], "Stroke heating valves, frost protection, weather compensation curve."],
+    ["Sensor calibration", "Y", [5], "Critical sensors against a reference."],
+    ["Panel inspection", "Y", [6], "Terminals, cabinet fans, labels, cleanliness."],
+  ];
+  const M = ["J","F","M","A","M","J","J","A","S","O","N","D"];
+  const grid = document.getElementById("mCalGrid"), txt = document.getElementById("mCalText");
+  let f = "all";
+  const draw = () => {
+    const show = (t) => f === "all" || t[1] === f;
+    grid.innerHTML = `<div class="h"></div>` + M.map((m) => `<div class="h">${m}</div>`).join("") +
+      TASKS.map((t) => `<div class="t ${show(t) ? "" : "dim"}" title="${t[3]}">${t[0]}</div>` +
+        M.map((m, i) => `<div class="c ${t[2].includes(i) ? "x" : ""} ${show(t) ? "" : "dim"}"></div>`).join("")).join("");
+    const load = M.map((m, i) => TASKS.filter((t) => show(t) && t[2].includes(i)).length);
+    const max = Math.max(...load), peak = M.map((m, i) => (load[i] === max ? ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i] : null)).filter(Boolean);
+    txt.textContent = `${TASKS.filter(show).length} tasks shown · busiest: ${peak.join(", ")} (${max} tasks)`;
+  };
+  document.querySelectorAll("#mCalSeg button").forEach((b) => b.addEventListener("click", () => {
+    f = b.dataset.f;
+    document.querySelectorAll("#mCalSeg button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    draw();
+  }));
+  draw();
+})();
+
+// 25.4 Filter pressure estimator.
+(() => {
+  const ids = ["fClean", "fRise", "fLimit", "fHours"];
+  const el = Object.fromEntries(ids.map((k) => [k, document.getElementById(k)]));
+  const curve = document.getElementById("fCurve"), lim = document.getElementById("fLimLine"), limT = document.getElementById("fLimTxt");
+  const out = document.getElementById("fOut");
+  const y = (pa) => 170 - (Math.min(pa, 400) / 400) * 150, x = (wk) => 50 + (wk / 104) * 530;
+  const draw = () => {
+    const c = +el.fClean.value, r = +el.fRise.value, L = +el.fLimit.value, h = +el.fHours.value;
+    ids.forEach((k) => (document.getElementById(k + "O").textContent = el[k].value));
+    const perWeek = (r * h) / 1000;
+    const pts = [];
+    for (let wk = 0; wk <= 104; wk += 2) pts.push(`${x(wk)},${y(c + perWeek * wk)}`);
+    curve.setAttribute("points", pts.join(" "));
+    lim.setAttribute("y1", y(L)); lim.setAttribute("y2", y(L)); limT.setAttribute("y", y(L) - 5);
+    const weeks = L > c ? (L - c) / perWeek : 0;
+    const hrs = weeks * h;
+    out.textContent = `Change after ≈ ${Math.round(weeks)} weeks (${Math.round(hrs).toLocaleString("en")} run hours, ~${(weeks / 4.33).toFixed(1)} months)`;
+  };
+  ids.forEach((k) => el[k].addEventListener("input", draw));
+  draw();
+})();
+
+// 25.5 Troubleshooting decision tree.
+(() => {
+  // Node: [layer, question, yesNext, noNext] or a string leaf (result).
+  const CASES = {
+    modbus: {
+      start: "p1",
+      p1: ["Physical", "Does the meter have power (display on)?", "p2", "L:Physical fault: restore supply, check fuse or MCB."],
+      p2: ["Physical", "Are A/B wired correctly, with 120 Ω termination only at both ends, and a common reference?", "n1", "L:Physical fault: fix polarity, termination or the missing reference wire. Swapped A/B is very common."],
+      n1: ["Network", "Do other devices on the same bus answer?", "r1", "L:Network fault on the segment: check the gateway or serial port, bias resistors, cable breaks."],
+      r1: ["Protocol", "Does the meter's slave address, baud rate and parity match the master's settings?", "r2", "L:Protocol fault: align the address and serial settings (for example 9600 8E1 on both sides)."],
+      r2: ["Protocol", "Does a laptop Modbus client reading the same register get a plausible value?", "a1", "L:Protocol fault: wrong register, wrong function code (03 vs 04) or off-by-one register offset."],
+      a1: ["Application", "Does the BMS point use the right data type, word order and scaling?", "L:Data reaches the BMS correctly. Check the graphic binding and the point's enabled/poll state.", "L:Application fault: fix data type (e.g. float32), word swap or scale factor."],
+    },
+    room: {
+      start: "p1",
+      p1: ["Physical", "Does a reference thermometer agree with the room sensor within ±0.5 K?", "p2", "L:Physical fault: sensor badly placed, wrong type or faulty. Fix the cause, not with an offset."],
+      p2: ["Physical", "Is the radiator or terminal unit getting hot water, and does the valve actually move?", "n1", "L:Physical fault: stuck valve pin, failed actuator, air in the circuit or no flow from the plant."],
+      n1: ["Network", "Is the room controller online and reporting fresh values?", "r1", "L:Network fault: controller offline, bus or IP problem. The room runs on fallback values."],
+      r1: ["Protocol", "Are setpoint writes from the BMS reaching the controller (value changes in the controller tool)?", "a1", "L:Protocol fault: write rejected, wrong priority level (BACnet priority array) or object mapped wrong."],
+      a1: ["Application", "Are schedule, mode and setpoint correct (occupied, 21 °C), with no override in place?", "L:Logic looks correct. Check the plant: is flow temperature high enough for this weather?", "L:Application fault: wrong schedule, holiday calendar, DST shift or forgotten override."],
+    },
+  };
+  const pathEl = document.getElementById("tsPath"), q = document.getElementById("tsQ");
+  let C, node, path;
+  const leaf = (t, bad) => {
+    q.innerHTML = `<div class="lay">Result</div><p style="margin:4px 0 0"><strong>${t.slice(2)}</strong></p>
+      <div class="acts"><button class="btn secondary" data-r>Start over</button></div>`;
+    q.querySelector("[data-r]").addEventListener("click", reset);
+  };
+  const drawPath = () => {
+    pathEl.innerHTML = path.map(([l, ok]) => `<span class="${ok ? "ok" : "bad"}">${l} ${ok ? "✓" : "✗"}</span>`).join("") || `<span>No layer proven yet</span>`;
+  };
+  const go = (id) => {
+    if (id.startsWith("L:")) { drawPath(); return leaf(id); }
+    node = C[id];
+    drawPath();
+    q.innerHTML = `<div class="lay">${node[0]} layer</div><p style="margin:4px 0 0">${node[1]}</p>
+      <div class="acts"><button class="btn" data-a="y">Yes</button><button class="btn secondary" data-a="n">No</button></div>`;
+    q.querySelectorAll("[data-a]").forEach((b) => b.addEventListener("click", () => {
+      const yes = b.dataset.a === "y";
+      path.push([node[0], yes]);
+      go(yes ? node[2] : node[3]);
+    }));
+  };
+  const reset = () => { path = []; go(C.start); };
+  const pick = (k) => {
+    C = CASES[k];
+    document.querySelectorAll("#tsSeg button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.case === k));
+    reset();
+  };
+  document.querySelectorAll("#tsSeg button").forEach((b) => b.addEventListener("click", () => pick(b.dataset.case)));
+  pick("modbus");
+})();
+
+// 25.6 Handover checklist.
+(() => {
+  buildChecklist("hoList", [
+    ["Docs", "As-built drawings in native DWG with xrefs, plus PDF", true],
+    ["Docs", "As-built point list matching the controller database", true],
+    ["Software", "Controller source programs, unlocked", true],
+    ["Software", "BMS server backup and a successful restore test", true],
+    ["Software", "Engineering tool names, versions and licences", true],
+    ["Access", "Admin credentials transferred; contractor accounts removed or limited", true],
+    ["Tests", "Signed test records and closed issue log", true],
+    ["Tests", "Deferred seasonal tests scheduled with dates", false],
+    ["O&amp;M", "Maintenance tasks, intervals and spare parts list", false],
+    ["People", "Operator training done; contact list for defects period", false],
+    ["Contract", "Warranty start date and defects period end date agreed", false],
+  ], "All critical items closed: release the retention");
+})();
+</script>
+</body>
+</html>

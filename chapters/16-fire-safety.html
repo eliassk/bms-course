@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fire Safety Systems</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .fs-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .fs-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .fs-row output { font: 600 13px var(--mono); color: var(--text); }
+  svg .seg-hit { stroke: transparent; stroke-width: 16; fill: none; cursor: pointer; }
+  svg .cable { stroke: var(--muted); stroke-width: 3; fill: none; }
+  svg .cable.short { stroke: var(--bad); stroke-width: 5; }
+  svg .cable.open { stroke: var(--bad); stroke-dasharray: 3 6; }
+  svg .cable.dead { stroke: var(--border); }
+  svg .dev { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+  svg .dev.dead { fill: var(--bad-soft); stroke: var(--bad); }
+  svg .iso { fill: var(--example-soft); stroke: var(--example); stroke-width: 2; }
+  svg .iso.tripped { fill: var(--bad); stroke: var(--bad); }
+  svg .fill-ok-soft { fill: var(--ok-soft); }
+  svg .s-ok { stroke: var(--ok); }
+  svg .s-bad { stroke: var(--bad); }
+  svg .s-ex { stroke: var(--example); }
+  svg .alarm { fill: var(--bad-soft) !important; stroke: var(--bad) !important; }
+  svg .alert { fill: var(--example-soft) !important; stroke: var(--example) !important; }
+  svg .flow { stroke: var(--accent); stroke-width: 3; fill: none; stroke-dasharray: 6 5; }
+  svg .flow-bad { stroke: var(--bad); stroke-width: 3; fill: none; stroke-dasharray: 6 5; }
+  svg .hidden { opacity: 0; }
+  .matrix { border-collapse: collapse; font-size: 13px; width: 100%; }
+  .matrix th, .matrix td { border: 1px solid var(--border); padding: 5px 6px; text-align: center; }
+  .matrix th.rot { font-weight: 600; font-size: 12px; vertical-align: bottom; }
+  .matrix td.lbl { text-align: left; }
+  .matrix tr.in-row button { font: 600 12px var(--font); text-align: left; width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; cursor: pointer; }
+  .matrix tr.in-row button[aria-pressed=true] { background: var(--bad); color: #fff; border-color: var(--bad); }
+  .matrix td.x { color: var(--muted); font-weight: 700; }
+  .matrix td.x.on { background: var(--bad-soft); color: var(--bad); }
+  .matrix th.on { background: var(--bad-soft); color: var(--bad); }
+  .outs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 6px; margin-top: 10px; }
+  .outs div { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 13px; background: var(--surface); }
+  .outs div.on { border-color: var(--bad); background: var(--bad-soft); }
+  .outs div.on::before { content: "● "; color: var(--bad); }
+  .outs div.wait { border-color: var(--example); background: var(--example-soft); }
+  .outs div.wait::before { content: "◔ "; color: var(--example); }
+  .floors { display: grid; gap: 4px; margin-top: 10px; }
+  .floor { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--surface); font-size: 13px; cursor: pointer; text-align: left; color: var(--text); font-family: var(--font); }
+  .floor b { font-family: var(--mono); }
+  .floor .msg { overflow-wrap: anywhere; }
+  .floor.evac { border-color: var(--bad); background: var(--bad-soft); }
+  .floor.alrt { border-color: var(--example); background: var(--example-soft); }
+  .floor.fire { outline: 2px solid var(--bad); }
+  .floor .spk { font-size: 15px; }
+  .meter { height: 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); overflow: hidden; margin-top: 6px; }
+  .meter > span { display: block; height: 100%; background: var(--ok); transition: width .3s, background .3s; }
+  .meter.bad > span { background: var(--bad); }
+  .tl-time { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 6px; margin-top: 10px; }
+  .tl-time div { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: var(--surface); font-size: 13px; }
+  .tl-time div.cur { border-color: var(--accent); background: var(--accent-soft); }
+  .tl-time div.hot { border-color: var(--bad); background: var(--bad-soft); }
+  .verdict { font-weight: 700; padding: 6px 10px; border-radius: 8px; display: inline-block; margin-top: 8px; }
+  .verdict.ok { background: var(--ok-soft); color: var(--ok); }
+  .verdict.bad { background: var(--bad-soft); color: var(--bad); }
+  .timeline.t5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  @media (max-width: 700px) { .timeline.t5 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="16">
+<div class="content">
+  <div class="kicker">Chapter 16</div>
+  <h1>Fire safety systems</h1>
+  <p class="lead">Fire systems are the one part of a building where the BMS is a guest. They are certified,
+    self-contained and legally inspected. This chapter explains how detection loops, control matrices, smoke
+    control and voice evacuation work, and where the line sits between what a BMS may see and what it must
+    never touch.</p>
+
+  <!-- 16.1 -->
+  <section class="lesson" id="s1" data-num="16.1">
+    <h2>16.1 Fire alarm systems (SSP): detectors, loops, panels</h2>
+    <p>A <strong>fire detection and fire alarm system</strong> finds a fire early, tells people and the fire
+      brigade, and triggers fire protection equipment. In Poland it is called <strong>SSP</strong>
+      (<em>system sygnalizacji pożarowej</em>). Elsewhere you will see FDAS, FAS or simply "fire alarm".
+      In Europe the components are covered by the <strong>EN 54</strong> family of standards. Each part
+      covers one device type.</p>
+    <div class="table-wrap"><table>
+      <tr><th>EN 54 part</th><th>Covers</th></tr>
+      <tr><td>EN 54-2</td><td>Control and indicating equipment (the fire panel, CIE)</td></tr>
+      <tr><td>EN 54-4</td><td>Power supply equipment (mains + batteries)</td></tr>
+      <tr><td>EN 54-5 / -7</td><td>Point heat detectors / point smoke detectors</td></tr>
+      <tr><td>EN 54-11</td><td>Manual call points (the "break glass" button)</td></tr>
+      <tr><td>EN 54-17 / -18</td><td>Short-circuit isolators / input-output modules</td></tr>
+      <tr><td>EN 54-20</td><td>Aspirating smoke detectors</td></tr>
+      <tr><td>EN 54-16 / -24</td><td>Voice alarm control equipment / voice alarm loudspeakers (16.4)</td></tr>
+      <tr><td>EN 54-13</td><td>Compatibility assessment of the whole system</td></tr>
+    </table></div>
+    <p>Design and installation rules are national or come from codes of practice: for example BS 5839-1 in the UK,
+      VdS 2095 and DIN VDE 0833-2 in Germany, NFPA 72 in the USA, and CEN/TS 54-14 as a European guide. In Poland
+      products need certification (CNBOP-PIB) and designs follow national guidelines and the fire safety
+      regulation.</p>
+
+    <h3>Detector types</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Detector</th><th>Principle</th><th>Good for</th><th>Weak at</th></tr>
+      <tr><td>Optical smoke</td><td>Light scattered by smoke particles in a dark chamber</td><td>Offices, corridors, smouldering fires</td><td>Steam, dust, kitchens</td></tr>
+      <tr><td>Heat (rate-of-rise / fixed)</td><td>Thermistor; alarm at e.g. 58 °C or a fast rise (class A1R)</td><td>Kitchens, garages, dusty rooms</td><td>Slow, fire must already be large</td></tr>
+      <tr><td>Multi-sensor</td><td>Optical + heat (sometimes CO), combined by an algorithm</td><td>Most rooms; fewer false alarms</td><td>Price</td></tr>
+      <tr><td>Beam</td><td>IR beam across a hall, obscuration measured</td><td>Atria, warehouses, up to ~100 m</td><td>Building movement, alignment</td></tr>
+      <tr><td>Aspirating (ASD)</td><td>Pipe network sucks air to a laser chamber</td><td>Data centres, cold stores, heritage ceilings</td><td>Design and maintenance effort</td></tr>
+      <tr><td>Flame</td><td>UV / IR flicker</td><td>Fuel stores, open hazards</td><td>Line of sight only</td></tr>
+      <tr><td>Manual call point</td><td>A person presses it</td><td>Escape routes, exits</td><td>Needs a human</td></tr>
+    </table></div>
+
+    <h3>Conventional vs addressable</h3>
+    <p>A <strong>conventional</strong> system wires detectors in parallel on a zone circuit. A detector in alarm
+      draws extra current, and the panel only knows "zone 3 is in alarm". An <strong>addressable</strong> system
+      puts every device on a digital <strong>loop</strong>. Each device has an address. The panel polls each one,
+      reads analog values (smoke obscuration, temperature, dirt compensation) and knows exactly which detector
+      fired: "Loop 1, address 047, 2nd floor, room 214".</p>
+    <p>A typical loop carries up to about 125 to 250 devices depending on the vendor protocol, over a 2-wire cable of
+      up to roughly 2 to 3.5 km. The cable leaves the panel and <em>returns</em> to it. That is the trick: the panel
+      can feed the loop from both ends. A single break loses nothing.</p>
+    <p>A short circuit is worse. It collapses the voltage on the whole loop. That is why loops carry
+      <strong>short-circuit isolators</strong> (EN 54-17), either as separate modules or built into detector
+      bases. When a short appears, the two isolators either side of it open. Only the section between them is lost.
+      The rest is fed from both ends. EN 54-2 states that a single fault on a loop must not disable more than 32
+      detectors and/or call points. So designers place an isolator at least every 32 devices, and at every zone or
+      fire compartment boundary.</p>
+
+    <h3>Try it: break the loop</h3>
+    <figure class="viz" id="loop">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Fault type">
+          <button data-f="short" aria-pressed="true">Short circuit</button>
+          <button data-f="open">Open circuit</button>
+        </div>
+        <div class="seg" role="group" aria-label="Isolators">
+          <button data-i="on" aria-pressed="true">Isolators fitted</button>
+          <button data-i="off">No isolators</button>
+        </div>
+        <button class="btn secondary" data-act="reset" aria-label="Clear fault">↺</button>
+      </div>
+      <svg viewBox="0 0 600 300" role="img" aria-label="Addressable loop with devices and isolators. Click a cable segment to inject a fault."></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Click any cable segment to put a fault there. Blue circles are detectors, squares are call points, amber diamonds are isolators. Red devices are lost.</figcaption>
+    </figure>
+
+    <h3>The panel and its power</h3>
+    <p>The fire panel (CIE) has its own certified power supply (EN 54-4). Batteries must keep the system in standby
+      for a specified time and then sound the alarm. Common national rules are 24 h or 72 h standby plus 30 min of
+      alarm. The longer figure applies where no service can reach site quickly.</p>
+    <p>Battery sizing is simple arithmetic. A panel with loops draws 0.45 A in standby and 1.6 A in alarm. For
+      72 h + 0.5 h: 0.45 × 72 + 1.6 × 0.5 = 33.2 Ah. Add an ageing factor of about 1.25 and you need around 42 Ah,
+      so a pair of 12 V 45 Ah batteries.</p>
+    <p>Panels are networked with each other over a vendor ring (often fibre or redundant copper) so a fire anywhere
+      shows on every panel and on the fire brigade panel. Examples: Siemens Cerberus PRO / Sinteso, Honeywell
+      Esser, Bosch AVENAR, Schrack Integral, Polon-Alfa Polon 6000. Their loop protocols are proprietary. You
+      cannot mix detectors across brands on the same loop.</p>
+
+    <div class="callout example">A four-storey office has one panel with four loops. Each loop runs through two
+      floors, about 110 devices on 1.4 km of red fire-resistant cable. An isolator sits at each floor boundary
+      and inside every fifth detector base, so a fault never removes more than about 10 devices. A short caused by
+      a fit-out contractor drilling into the cable on floor 3 took out 6 detectors. The panel showed "Loop 2 short
+      circuit, between addresses 071 and 076" and the rest of the floor stayed protected.</div>
+
+    <div class="callout warn">A conventional zone has no isolators. A short on a conventional zone disables every
+      detector on it. If you inherit conventional zones covering large areas, that is a real weakness, not just an
+      old technology.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A single open circuit appears on a correctly wired addressable loop. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is the effect of a short without isolators.">The whole loop goes dead</button>
+        <button class="opt" data-opt="b" data-why="Isolators react to shorts, not breaks.">The isolators either side open and the section between them is lost</button>
+        <button class="opt" data-opt="c" data-why="The loop is fed from both ends, so every device still has a path. The panel reports a fault.">All devices keep working; the panel shows a fault</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Addressable loops return to the panel and are fed from both ends. One break loses nothing.</li>
+      <li>Short-circuit isolators limit a short to one section, with no more than 32 devices lost (EN 54-2).</li>
+      <li>EN 54 parts certify each component; national codes decide the design.</li>
+      <li>Batteries size from standby current × hours plus alarm current × 30 min, plus an ageing margin.</li>
+    </ul>
+  </section>
+
+  <!-- 16.2 -->
+  <section class="lesson" id="s2" data-num="16.2">
+    <h2>16.2 Control matrix and fire scenarios</h2>
+    <p>Detecting a fire is half the job. The other half is what happens next. That is defined in the
+      <strong>fire scenario</strong> (Polish: <em>scenariusz pożarowy</em>) and implemented as a
+      <strong>cause-and-effect matrix</strong> (<em>matryca sterowań</em>). Rows are causes: detection zones,
+      call points, sprinkler flow switches. Columns are effects: sounders, door releases, dampers, lifts, fans,
+      fire brigade transmission.</p>
+    <p>The scenario is written by the fire safety designer, agreed with the authority and the fire brigade,
+      and then programmed into the panel by the fire system integrator. The BMS integrator reads it. They do not
+      write it.</p>
+
+    <h3>Try it: trigger a cause</h3>
+    <figure class="viz" id="matrix">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Alarm stage">
+          <button data-st="1" aria-pressed="true">Stage I (one detector)</button>
+          <button data-st="2">Stage II (confirmed)</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="matrix"></table></div>
+      <div class="outs"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Click a cause in the left column. Filled cells are the effects. Some effects wait for stage II.</figcaption>
+    </figure>
+
+    <h3>Two-stage alarm and investigation time</h3>
+    <p>Many buildings with staff on site use a <strong>two-stage alarm</strong>. A single automatic detector gives a
+      <strong>stage I alarm</strong>: the panel buzzes at the security desk, nothing in the building sounds yet. Staff
+      have a short time <strong>T1</strong> to acknowledge, then a longer time <strong>T2</strong> to check the
+      room. If they confirm, or the timer runs out, or a second detector or a call point fires, the panel goes to
+      <strong>stage II</strong>: general alarm, fire brigade transmission, all controls. Typical figures are
+      T1 of 30 s to 2 min and T2 of a few minutes. The exact values are set in the scenario. A manual call point
+      usually skips straight to stage II.</p>
+    <figure class="viz" id="stages">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="What staff do">
+          <button data-sc="none" aria-pressed="true">Nobody responds</button>
+          <button data-sc="false">Acknowledge, find steam</button>
+          <button data-sc="fire">Acknowledge, find fire</button>
+        </div>
+      </div>
+      <div class="fs-row"><label>Minutes since detector alarm <output>0.0</output>
+        <input type="range" min="0" max="10" step="0.1" value="0"></label></div>
+      <div class="tl-time"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Example values: T1 = 1 min to acknowledge, T2 = 5 min to investigate.</figcaption>
+    </figure>
+
+    <h3>Coincidence (dependency) detection</h3>
+    <p>For effects that are costly or dangerous when false, such as releasing a gas extinguishing agent, the
+      scenario requires <strong>two independent detectors</strong> in the same area before acting. EN 54-2 calls
+      these dependency types A, B and C. Type B, for example, waits for a second detector before triggering the
+      effect.</p>
+
+    <div class="callout example">A hotel scenario, simplified: a detector in a room gives stage I at reception. If
+      it is confirmed, the floor and the floor above get the evacuation message, the staircase pressurisation fans
+      start, lifts return to the ground floor, holding magnets on corridor doors release, and the AHU for that
+      floor stops. A sprinkler flow switch skips stage I because water flow is already strong evidence.</div>
+
+    <div class="callout warn">The matrix is a legal document. A change to "just one output" requires the scenario
+      author to agree, the panel to be reprogrammed by an authorised integrator, and the change to be tested and
+      recorded. Never re-create fire logic in the BMS "because it is easier to edit there".</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Staff acknowledge a stage I alarm but do nothing more. What happens when T2 runs out?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Acknowledgement only stops the T1 clock. It does not cancel the alarm.">The alarm is cancelled</button>
+        <button class="opt" data-opt="b" data-why="An unresolved investigation escalates to the general alarm.">The panel goes to stage II</button>
+        <button class="opt" data-opt="c" data-why="Only a reset clears the event, and that needs a deliberate action.">The detector resets itself</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The fire scenario is a design document; the cause-and-effect matrix is its implementation in the panel.</li>
+      <li>Two-stage alarms trade a short delay (T1 + T2) for far fewer false evacuations.</li>
+      <li>Call points and sprinkler flow usually go straight to stage II.</li>
+      <li>Coincidence detection protects costly effects like gas release.</li>
+    </ul>
+  </section>
+
+  <!-- 16.3 -->
+  <section class="lesson" id="s3" data-num="16.3">
+    <h2>16.3 Smoke control and HVAC fire mode</h2>
+    <p>Smoke kills more people than flames. Smoke control has two goals: keep escape routes clear and stop smoke
+      spreading between fire compartments. It uses three tools.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Tool</th><th>How</th><th>Standard (EU)</th></tr>
+      <tr><td><strong>Fire dampers</strong></td><td>Close where a duct crosses a fire compartment wall. Thermal fuse (about 72 °C) or a spring-return actuator commanded by the panel.</td><td>EN 15650, classified per EN 13501-3</td></tr>
+      <tr><td><strong>Smoke extraction</strong></td><td>Fans and smoke dampers pull smoke out of the fire zone; natural vents open in the roof. Fans rated e.g. F400/120 (400 °C for 120 min).</td><td>EN 12101-3, -2, -8</td></tr>
+      <tr><td><strong>Pressure differential</strong></td><td>Fans push fresh air into staircases or lobbies so smoke cannot enter when a door opens.</td><td>EN 12101-6 (now EN 12101-13)</td></tr>
+    </table></div>
+    <p>The ordinary HVAC must cooperate. An AHU that keeps recirculating air would spread smoke through the
+      building. So the fire panel sends the AHU a <strong>fire signal</strong>, usually a hard-wired volt-free
+      contact into the AHU safety chain. What the AHU then does is part of the scenario: often stop and close its
+      dampers, sometimes switch to 100 % exhaust in the fire zone.</p>
+
+    <h3>Fire mode sequence</h3>
+    <figure class="viz" id="firemode">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 620 300" role="img" aria-label="Floor with AHU, dampers, smoke exhaust and staircase pressurisation">
+        <defs><marker id="ah16" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="fm-panel" x="10" y="10" width="110" height="50" rx="8"/><text x="65" y="32" text-anchor="middle">Fire panel</text><text class="small" x="65" y="48" text-anchor="middle" id="fm-ptxt">normal</text>
+        <rect class="box" id="fm-ahu" x="10" y="110" width="110" height="60" rx="8"/><text x="65" y="135" text-anchor="middle">AHU</text><text class="small" x="65" y="153" text-anchor="middle" id="fm-atxt">running</text>
+        <path class="arrow" id="fm-duct" d="M120,140 L200,140"/>
+        <rect class="box" id="fm-fd" x="200" y="125" width="26" height="30" rx="3"/><text class="small" x="213" y="175" text-anchor="middle">FD</text>
+        <path class="arrow" id="fm-duct2" d="M226,140 L250,140"/>
+        <rect class="box" x="250" y="90" width="230" height="150" rx="6"/>
+        <text x="365" y="110" text-anchor="middle">Fire compartment (floor 2)</text>
+        <circle id="fm-smoke" cx="365" cy="175" r="0" class="fill-muted" opacity=".35"/>
+        <text class="small" x="365" y="232" text-anchor="middle" id="fm-ztxt">normal occupancy</text>
+        <rect class="box" id="fm-sd" x="330" y="60" width="70" height="26" rx="3"/><text class="small" x="365" y="77" text-anchor="middle">smoke damper</text>
+        <rect class="box" id="fm-ex" x="330" y="10" width="70" height="40" rx="6"/><text class="small" x="365" y="34" text-anchor="middle" id="fm-extxt">exhaust fan</text>
+        <rect class="box" id="fm-stair" x="510" y="90" width="100" height="150" rx="6"/><text x="560" y="110" text-anchor="middle">Staircase</text>
+        <text class="small" x="560" y="170" text-anchor="middle" id="fm-stxt">0 Pa</text>
+        <rect class="box" id="fm-pf" x="510" y="250" width="100" height="40" rx="6"/><text class="small" x="560" y="274" text-anchor="middle">pressurisation fan</text>
+        <rect class="box" id="fm-door" x="480" y="160" width="30" height="40" rx="2"/><text class="small" x="495" y="215" text-anchor="middle">door</text>
+        <rect class="box" id="fm-lift" x="140" y="200" width="90" height="50" rx="6"/><text x="185" y="222" text-anchor="middle">Lift</text><text class="small" x="185" y="240" text-anchor="middle" id="fm-ltxt">in service</text>
+        <rect class="box" id="fm-bms" x="140" y="10" width="110" height="50" rx="8"/><text x="195" y="32" text-anchor="middle">BMS</text><text class="small" x="195" y="48" text-anchor="middle" id="fm-btxt">observing</text>
+        <path class="arrow" d="M120,35 L138,35" marker-end="url(#ah16)"/>
+        <path class="flow hidden" id="fm-exflow" d="M365,86 L365,52"/>
+        <path class="flow hidden" id="fm-pflow" d="M560,250 L560,190"/>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>Try it: staircase door force</h3>
+    <p>Pressurising a staircase has a limit. Too much pressure and a child or an elderly person cannot open the
+      door into the staircase. EN 12101-6 caps the opening force at <strong>100 N</strong>. A common design
+      pressure is around 50 Pa. The force needed at the handle is:</p>
+    <p><code>F = F<sub>closer</sub> + (W · A · ΔP) / (2 · (W − d))</code>, where W is door width, A door area,
+      ΔP the pressure difference and d the distance from the handle to the door edge.</p>
+    <figure class="viz" id="door">
+      <div class="fs-row">
+        <label>Pressure difference ΔP <output data-o="p"></output><input type="range" min="10" max="100" value="50" data-k="p"></label>
+        <label>Door width W <output data-o="w"></output><input type="range" min="0.8" max="1.4" step="0.05" value="0.9" data-k="w"></label>
+        <label>Door closer force <output data-o="c"></output><input type="range" min="10" max="60" value="30" data-k="c"></label>
+      </div>
+      <div class="meter"><span></span></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Door height fixed at 2.1 m, handle 0.06 m from the edge. The limit line is 100 N.</figcaption>
+    </figure>
+    <p>Real pressurisation systems control the pressure. A relief damper or a variable-speed fan holds ΔP near
+      setpoint when doors close, and pushes more air when a door opens, so air flows out of the staircase at, for
+      example, 0.75 to 2 m/s depending on the system class.</p>
+
+    <div class="callout example">An AHU serves three floors. On a confirmed alarm on floor 2, the fire panel opens a
+      volt-free contact in the AHU control panel. The AHU controller stops both fans in its safety chain, closes
+      the outdoor and exhaust air dampers and reports "fire stop" to the BMS. Fire dampers on floor 2 close from
+      their own panel-commanded actuators. Fire dampers on the other floors stay open because their scenario says
+      so. The BMS shows all of this. It commands none of it.</div>
+
+    <div class="callout warn">Fire-mode inputs must be hard-wired and fail safe. If the AHU controller only
+      receives "fire" over BACnet from the BMS, a crashed server or a cut network cable means smoke gets pumped
+      around the building. Hard-wired contact, normally closed, opening on alarm.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Why is the fire signal to an AHU usually a normally closed contact that opens on alarm?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A broken wire then looks like a fire and the AHU stops. It fails to the safe state.">A cut wire then forces the safe state</button>
+        <button class="opt" data-opt="b" data-why="Contact type does not change power consumption meaningfully.">It uses less power</button>
+        <button class="opt" data-opt="c" data-why="BACnet has nothing to do with the contact logic.">BACnet requires it</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Fire dampers block spread across compartments; smoke extraction removes smoke; pressurisation keeps stairs clear.</li>
+      <li>The AHU gets a hard-wired, fail-safe fire signal from the panel.</li>
+      <li>Staircase pressure is a balance: enough to stop smoke, low enough for 100 N door force.</li>
+    </ul>
+  </section>
+
+  <!-- 16.4 -->
+  <section class="lesson" id="s4" data-num="16.4">
+    <h2>16.4 Voice evacuation (DSO)</h2>
+    <p>A sounder says "something is wrong". A spoken message says what to do. Studies of evacuations show people
+      react faster and more correctly to clear speech than to bells. That is why larger public buildings use a
+      <strong>voice alarm system</strong> (VA, or PAVA when it also does public address). In Poland this is
+      <strong>DSO</strong> (<em>dźwiękowy system ostrzegawczy</em>).</p>
+    <div class="table-wrap"><table>
+      <tr><th>Element</th><th>Role</th><th>Standard</th></tr>
+      <tr><td>VA controller</td><td>Stores messages, routes them to zones, monitors lines and amplifiers</td><td>EN 54-16</td></tr>
+      <tr><td>Loudspeakers</td><td>Fire-rated, often with ceramic terminal block and thermal fuse</td><td>EN 54-24</td></tr>
+      <tr><td>Fire microphone</td><td>Live announcements by the fire brigade or staff, highest priority</td><td>EN 54-16</td></tr>
+      <tr><td>Power supply</td><td>Batteries for standby plus alarm time</td><td>EN 54-4</td></tr>
+      <tr><td>System design</td><td>Coverage, intelligibility, zoning</td><td>EN 50849, CEN/TS 54-32, national rules</td></tr>
+    </table></div>
+    <p>The fire panel triggers the VA system over monitored contacts or a certified interface. The VA controller
+      plays pre-recorded messages per zone. It also monitors every loudspeaker line (impedance or end-of-line
+      module), every amplifier and the spare amplifier that takes over if one fails.</p>
+
+    <h3>Intelligibility</h3>
+    <p>Loud is not enough. Speech must be understood. It is measured as <strong>STI</strong> (Speech
+      Transmission Index, 0 to 1). Common targets: average STI of at least 0.50, and no area below 0.45.
+      Hard surfaces and long reverberation (a stone atrium, a parking garage) destroy intelligibility. The fix is
+      more speakers at lower level, closer to listeners, not fewer louder ones. The sound level should also sit
+      about 10 dB or more above the ambient noise, without being painfully loud.</p>
+
+    <h3>Try it: phased evacuation</h3>
+    <p>Tall buildings rarely evacuate everyone at once. Staircases would jam. Instead they use <strong>phased
+      evacuation</strong>: the fire floor and the floor above get the "evacuate" message. Other floors get an
+      "alert" message telling them to wait for instructions. After a set time, or by fire brigade decision, more
+      floors are evacuated.</p>
+    <figure class="viz" id="evac">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Phase">
+          <button data-ph="0" aria-pressed="true">Normal</button>
+          <button data-ph="1">Phase 1</button>
+          <button data-ph="2">Phase 2</button>
+          <button data-ph="3">Full evacuation</button>
+        </div>
+      </div>
+      <div class="floors"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Click a floor to set the fire floor. Phase 2 adds the floor below and one more above.</figcaption>
+    </figure>
+
+    <div class="callout example">A 12-storey office uses a VA system with one zone per floor plus stairs and the
+      lobby. Messages are recorded in two languages. The evacuation message starts with an attention tone, then
+      "Attention please. An emergency has been reported in the building. Please leave by the nearest exit. Do not
+      use the lifts." The alert message tells people to stay where they are and listen. Products used for systems
+      like this include Bosch PRAESENSA, TOA VX-3000, Honeywell VARIODYN and Ambient Systems.</div>
+
+    <div class="callout warn">The VA system is a life-safety system even though it can also play background music.
+      A general audio or AV-over-IP system (Chapter 14) is not a voice alarm unless it is certified as one. Never
+      route evacuation messages through an ordinary DSP and network amplifiers and call it compliant.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">An atrium measures STI 0.38 with the existing speakers. What usually helps most?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="More level mostly excites more reverberation. Intelligibility barely improves.">Turn the speakers up 6 dB</button>
+        <button class="opt" data-opt="b" data-why="More direct sound and less reverberant sound raises STI.">More speakers, closer to listeners, at lower level each</button>
+        <button class="opt" data-opt="c" data-why="Music does not help intelligibility.">Play the message twice</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Spoken messages make people act faster than sounders.</li>
+      <li>VA systems are EN 54-16/-24 certified, with monitored lines and spare amplifiers.</li>
+      <li>Intelligibility (STI ≥ 0.50 typical) matters more than loudness.</li>
+      <li>Phased evacuation: evacuate fire floor and above, alert the rest.</li>
+    </ul>
+  </section>
+
+  <!-- 16.5 -->
+  <section class="lesson" id="s5" data-num="16.5">
+    <h2>16.5 BMS role: monitor, never override</h2>
+    <p>The rule is short. <strong>The BMS may watch the fire system. It must not control it, and it must not be
+      in the path of any fire-safety function.</strong> Fire systems are certified as a whole. Any device that can
+      inhibit, delay or reset them becomes part of that certified system, which a BMS is not.</p>
+
+    <h3>How the BMS sees fire data</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Method</th><th>What the BMS gets</th><th>Notes</th></tr>
+      <tr><td>Volt-free relay outputs</td><td>Fire alarm, fault, disablement (3 to a few contacts)</td><td>Simplest, very robust, no detail</td></tr>
+      <tr><td>Vendor gateway to BACnet / Modbus</td><td>Per-zone and per-device states, faults, analog values</td><td>Configured read-only. Examples: Siemens, Esser and Bosch offer BACnet or OPC gateways.</td></tr>
+      <tr><td>Graphics / management software</td><td>Full event list, floor plans</td><td>Vendor-certified head-end, separate from BMS</td></tr>
+    </table></div>
+
+    <h3>The boundary</h3>
+    <figure class="viz" id="boundary">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Failure">
+          <button data-b="ok" aria-pressed="true">All healthy</button>
+          <button data-b="bms">BMS server down</button>
+          <button data-b="net">Network cut</button>
+        </div>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Fire system with hard-wired outputs and a read-only gateway to the BMS">
+        <defs><marker id="ah16b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect x="6" y="6" width="300" height="248" rx="10" class="fill-example-soft" stroke-dasharray="5 4" style="stroke: var(--example)"/>
+        <text x="20" y="26">Certified fire system</text>
+        <rect class="box" x="20" y="40" width="110" height="50" rx="8"/><text x="75" y="70" text-anchor="middle">Fire panel</text>
+        <rect class="box" x="180" y="40" width="110" height="34" rx="6"/><text class="small" x="235" y="61" text-anchor="middle">AHU stop contact</text>
+        <rect class="box" x="180" y="84" width="110" height="34" rx="6"/><text class="small" x="235" y="105" text-anchor="middle">dampers, doors</text>
+        <rect class="box" x="180" y="128" width="110" height="34" rx="6"/><text class="small" x="235" y="149" text-anchor="middle">lifts, VA, ARC</text>
+        <path class="arrow" d="M130,60 L178,57" marker-end="url(#ah16b)"/>
+        <path class="arrow" d="M130,68 L178,101" marker-end="url(#ah16b)"/>
+        <path class="arrow" d="M130,76 L178,145" marker-end="url(#ah16b)"/>
+        <rect class="box" x="20" y="190" width="110" height="44" rx="8"/><text x="75" y="210" text-anchor="middle">Gateway</text><text class="small" x="75" y="225" text-anchor="middle">read-only</text>
+        <path class="arrow" d="M75,90 L75,188" marker-end="url(#ah16b)"/>
+        <rect class="box" id="bd-net" x="350" y="190" width="100" height="44" rx="8"/><text x="400" y="217" text-anchor="middle">IT/OT network</text>
+        <rect class="box" id="bd-bms" x="480" y="190" width="110" height="44" rx="8"/><text x="535" y="217" text-anchor="middle">BMS</text>
+        <path class="flow" id="bd-l1" d="M130,212 L348,212"/>
+        <path class="flow" id="bd-l2" d="M450,212 L478,212"/>
+        <text class="small" x="240" y="204" text-anchor="middle">state only →</text>
+        <text x="455" y="70" text-anchor="middle" id="bd-t1" class="big">Fire functions: OK</text>
+        <text x="455" y="100" text-anchor="middle" id="bd-t2">BMS view: live</text>
+        <text class="small" x="455" y="130" text-anchor="middle">no write path back into the panel</text>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>Sort it: may the BMS do this?</h3>
+    <div class="classify" data-cats="Allowed,Forbidden">
+      <div class="item" data-cat="Allowed" data-why="Reading states is the whole point of the integration."><span class="label">Show fire alarm and fault states on floor plans</span></div>
+      <div class="item" data-cat="Forbidden" data-why="Resetting or silencing is a fire panel operator function at access level 2, at the panel."><span class="label">Reset the fire panel from the operator UI</span></div>
+      <div class="item" data-cat="Allowed" data-why="Notifying the facility manager adds value and does not replace the certified alarm transmission."><span class="label">Send a message to the facility manager on a fire fault</span></div>
+      <div class="item" data-cat="Forbidden" data-why="Fire mode for the AHU belongs to the fire panel's hard-wired output."><span class="label">Be the only path that stops the AHU in fire</span></div>
+      <div class="item" data-cat="Allowed" data-why="After the fire input releases, the BMS may restart the AHU in its normal sequence."><span class="label">Restart the AHU normally after the fire signal clears</span></div>
+      <div class="item" data-cat="Forbidden" data-why="Disablements must be made at the panel and logged there."><span class="label">Disable a detector zone during cleaning work</span></div>
+      <div class="item" data-cat="Allowed" data-why="Trending and reports on alarms and faults are read-only analysis."><span class="label">Report how many false alarms each zone produced this year</span></div>
+      <div class="item" data-cat="Forbidden" data-why="A BMS rule overriding a released door or damper interferes with a fire function."><span class="label">Close a smoke damper again because the room got cold</span></div>
+    </div>
+
+    <div class="callout example">A BACnet gateway on a networked fire system exposes about 900 objects: one Binary
+      Input per zone for alarm and one for fault, Multi-State Inputs per device, and panel-level points. The
+      gateway is configured read-only, so any write request is refused. The BMS shows a red floor-plan zone, sends
+      a message to the facility manager, and logs the event. The certified transmission to the fire brigade runs
+      over its own monitored path.</div>
+
+    <div class="callout warn">Some gateways can technically accept writes (silence, reset, disable). Turn this off.
+      If the authority finds a BMS screen that can reset the fire panel, the system is no longer as certified, and
+      after an incident the liability question becomes very simple and very unpleasant.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">The BMS server crashes during a fire. What should be affected?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The AHU stop is hard-wired from the panel.">Fire mode for the AHUs</button>
+        <button class="opt" data-opt="b" data-why="The VA system is triggered by the fire panel.">Voice evacuation messages</button>
+        <button class="opt" data-opt="c" data-why="Only what the BMS itself provides is lost: its visualisation and its extra notifications.">Only the BMS screens and its own notifications</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The BMS reads fire states through relay contacts or a read-only gateway.</li>
+      <li>No reset, silence, disable or override from the BMS. Ever.</li>
+      <li>Every fire function must work with the BMS and the network dead.</li>
+    </ul>
+  </section>
+
+  <!-- 16.6 -->
+  <section class="lesson" id="s6" data-num="16.6">
+    <h2>16.6 Regulations and periodic inspections</h2>
+    <p>A fire system is only as good as its last test. Detectors get dirty, batteries age, a fit-out moves a wall
+      and leaves a room without a detector. That is why inspection is a legal duty for the building owner, not a
+      courtesy of the installer.</p>
+    <p>The details differ by country, but the shape is similar. Below is a generic pattern, with typical numbers
+      from European practice. Always check the national regulation and the manufacturer's manual.</p>
+
+    <h3>A typical inspection rhythm</h3>
+    <ul class="timeline t5">
+      <li><b>Daily</b><strong>Panel check</strong><span>Normal state, no faults or disablements. Done by the owner's staff.</span></li>
+      <li><b>Weekly</b><strong>User test</strong><span>One call point per week in rotation, sounders heard. Logged.</span></li>
+      <li><b>Quarterly</b><strong>Service visit</strong><span>A sample of detectors, batteries, transmission to the brigade.</span></li>
+      <li><b>Yearly</b><strong>Full inspection</strong><span>Every device functionally tested by certified staff. Protocol issued.</span></li>
+      <li><b>Every few years</b><strong>System cooperation test</strong><span>Full scenario run with all linked systems. Batteries replaced on age.</span></li>
+    </ul>
+    <p>In Poland the fire protection regulation requires inspection and maintenance of fire protection equipment
+      at least once a year, by the manufacturer's rules. Recent amendments also require periodic
+      <strong>tests of cooperation</strong> (<em>próby współdziałania</em>) between the systems in the scenario.
+      VRLA batteries usually need replacing after about 4 to 5 years. Smoke detectors are typically cleaned or
+      replaced on a cycle the manufacturer sets.</p>
+
+    <h3>Try it: plan the yearly testing</h3>
+    <figure class="viz" id="plan">
+      <div class="fs-row">
+        <label>Automatic detectors <output data-o="n"></output><input type="range" min="50" max="3000" step="50" value="800" data-k="n"></label>
+        <label>Call points <output data-o="m"></output><input type="range" min="5" max="300" step="5" value="60" data-k="m"></label>
+        <label>Service visits per year <output data-o="v"></output><input type="range" min="1" max="4" value="4" data-k="v"></label>
+      </div>
+      <svg viewBox="0 0 600 120" role="img" aria-label="Devices tested per visit"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Assumes every device is tested once a year, spread evenly over the visits, and about 1.5 minutes per detector with a test pole and aerosol.</figcaption>
+    </figure>
+
+    <h3>The cooperation test</h3>
+    <p>Individual device tests do not prove the scenario works. The cooperation test does: trigger real causes and
+      watch every effect in the matrix happen, with timing. Fire dampers close, the AHU stops, lifts go down, doors
+      release, VA plays the right message in the right zones, the alarm reaches the brigade. The BMS integrator is
+      usually present to confirm the BMS shows the right states and does not interfere.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Record</th><th>Why it matters</th></tr>
+      <tr><td>System log book</td><td>Every alarm, fault, disablement, test and repair, with dates and names</td></tr>
+      <tr><td>Inspection protocol</td><td>Proof the yearly duty was met; asked for by inspectors and insurers</td></tr>
+      <tr><td>As-built scenario + matrix</td><td>The reference every test is measured against</td></tr>
+      <tr><td>False alarm statistics</td><td>Trends show bad detector choice or placement</td></tr>
+    </table></div>
+
+    <div class="callout example">A shopping centre with 2400 detectors has quarterly visits. Each visit tests 600
+      detectors with a telescopic pole, smoke aerosol and a heat tool, and a quarter of the call points. The
+      panel's test mode groups results so the engineer gets a list of "devices not yet tested this year". In the
+      fourth visit, the team also runs the cooperation test overnight, with the shops closed.</div>
+
+    <div class="callout warn">Testing puts zones into test or disable mode. Forgotten disablements are a classic
+      cause of a fire going undetected. The daily panel check exists to catch them, and a BMS alarm on "fire system
+      disablement active for more than 8 h" is a valuable, read-only extra.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Which test proves that the cause-and-effect matrix actually works end to end?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Only triggering causes and watching all linked effects proves the scenario.">The cooperation test of all linked systems</button>
+        <button class="opt" data-opt="b" data-why="A call point test proves one input and the sounders, not every effect.">The weekly call point test</button>
+        <button class="opt" data-opt="c" data-why="Battery tests check power only.">The battery capacity test</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Daily checks by staff, periodic visits by certified technicians, a full yearly inspection.</li>
+      <li>Cooperation tests prove the scenario across all linked systems.</li>
+      <li>Keep the log book, protocols and as-built matrix up to date.</li>
+      <li>Watch for forgotten disablements.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. A short circuit appears between two isolators on a loop. What is lost?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That only happens without isolators.">The whole loop</button>
+        <button class="opt" data-opt="b" data-why="The isolators open and only the section between them goes dead.">Only the devices between those two isolators</button>
+        <button class="opt" data-opt="c" data-why="A short does disable the section around it.">Nothing</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. Who defines the cause-and-effect matrix?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The BMS integrator implements read-only visualisation.">The BMS integrator</button>
+        <button class="opt" data-opt="b" data-why="The integrator programs the panel, but the content comes from the design.">The fire panel programmer alone</button>
+        <button class="opt" data-opt="c" data-why="It comes from the fire scenario, agreed with authorities.">The fire safety designer, in the fire scenario</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Why must staircase pressurisation be limited?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="EN 12101-6 caps door opening force at 100 N.">People must still be able to open the doors</button>
+        <button class="opt" data-opt="b" data-why="Fan noise is a minor concern.">Fan noise</button>
+        <button class="opt" data-opt="c" data-why="More pressure would actually keep more smoke out.">More pressure lets in more smoke</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. In phased evacuation, who hears the evacuate message first?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is full evacuation.">Everyone</button>
+        <button class="opt" data-opt="b" data-why="Lower floors are alerted first, not evacuated.">The ground floor</button>
+        <button class="opt" data-opt="c" data-why="Staff are informed, but the public also needs the message.">Only staff</button>
+        <button class="opt" data-opt="d" data-why="The fire floor and the one above are most at risk.">The fire floor and the floor above</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. A BMS gateway to the fire panel allows "reset" commands. What should you do?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Restricting users does not change the certification problem.">Keep it, but only for administrators</button>
+        <button class="opt" data-opt="b" data-why="The BMS must monitor only. Writes must be impossible.">Configure the gateway read-only</button>
+        <button class="opt" data-opt="c" data-why="Logging does not make an unauthorised control path acceptable.">Log every reset</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="15-security.html">← Chapter 15</a>
+    <a class="btn" href="17-power.html">Chapter 17 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 16 visualizations.
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, parent) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+const pressGroup = (group, attr, fn) => {
+  group.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    group.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    fn(b.dataset[attr]);
+  }));
+};
+
+// 16.1 Loop with isolators.
+(() => {
+  const fig = document.getElementById("loop");
+  const svg = fig.querySelector("svg");
+  const out = fig.querySelector(".readout");
+  // d = detector, m = call point, i = isolator.
+  const TYPES = "ddmdidddmidddddimddiddmd".split("");
+  const N = TYPES.length;
+  // Positions on a rounded loop: out along the top, back along the bottom.
+  const pts = [];
+  const top = Math.ceil(N / 2), bot = N - top;
+  for (let k = 0; k < top; k++) pts.push([150 + k * (420 / (top - 1)), 70]);
+  for (let k = 0; k < bot; k++) pts.push([570 - k * (420 / (bot - 1)), 240]);
+  const PIN = [90, 120], POUT = [90, 190];
+  let fault = null, ftype = "short", isoOn = true;
+
+  el("rect", { x: 10, y: 105, width: 80, height: 100, rx: 8, class: "box" }, svg);
+  el("text", { x: 50, y: 150, "text-anchor": "middle" }, svg).textContent = "Panel";
+  el("text", { x: 50, y: 168, "text-anchor": "middle", class: "small" }, svg).textContent = "Loop 1";
+  const nodeAt = (k) => (k < 0 ? PIN : k >= N ? POUT : pts[k]);
+  const segs = [], hits = [];
+  for (let k = 0; k <= N; k++) {
+    const a = nodeAt(k - 1), b = nodeAt(k);
+    let d = `M${a[0]},${a[1]} L${b[0]},${b[1]}`;
+    if (k === 0) d = `M${a[0]},${a[1]} L120,${a[1]} L120,${b[1]} L${b[0]},${b[1]}`;
+    if (k === N) d = `M${a[0]},${a[1]} L120,${a[1]} L120,${b[1]} L${b[0]},${b[1]}`;
+    if (k === top) d = `M${a[0]},${a[1]} L590,${a[1]} L590,${b[1]} L${b[0]},${b[1]}`;
+    segs.push(el("path", { d, class: "cable" }, svg));
+    const h = el("path", { d, class: "seg-hit", tabindex: 0, role: "button", "aria-label": `Cable segment ${k + 1}` }, svg);
+    h.addEventListener("click", () => { fault = k; render(); });
+    h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fault = k; render(); } });
+    hits.push(h);
+  }
+  const nodes = TYPES.map((t, k) => {
+    const [x, y] = pts[k];
+    if (t === "i") return el("polygon", { points: `${x},${y - 11} ${x + 11},${y} ${x},${y + 11} ${x - 11},${y}`, class: "iso" }, svg);
+    if (t === "m") return el("rect", { x: x - 9, y: y - 9, width: 18, height: 18, rx: 2, class: "dev" }, svg);
+    return el("circle", { cx: x, cy: y, r: 9, class: "dev" }, svg);
+  });
+  let addr = 0;
+  TYPES.forEach((t, k) => {
+    if (t === "i") return;
+    addr++;
+    const [x, y] = pts[k];
+    el("text", { x, y: y < 150 ? y - 16 : y + 26, "text-anchor": "middle", class: "small" }, svg).textContent = String(addr).padStart(3, "0");
+  });
+
+  const render = () => {
+    segs.forEach((s) => s.setAttribute("class", "cable"));
+    nodes.forEach((n, k) => n.setAttribute("class", TYPES[k] === "i" ? "iso" : "dev"));
+    nodes.forEach((n, k) => { if (TYPES[k] === "i") n.style.opacity = isoOn ? 1 : 0.15; });
+    const total = TYPES.filter((t) => t !== "i").length;
+    if (fault === null) { out.textContent = `Normal. ${total} devices polled from both ends.`; return; }
+    if (ftype === "open") {
+      segs[fault].setAttribute("class", "cable open");
+      out.textContent = `Open circuit on segment ${fault + 1}. Panel feeds from both ends: 0 of ${total} devices lost. Fault reported.`;
+      return;
+    }
+    // Short: find bounding isolators. The panel's loop terminals act as isolators too.
+    let lo = -1, hi = N;
+    if (isoOn) {
+      for (let k = fault - 1; k >= 0; k--) if (TYPES[k] === "i") { lo = k; break; }
+      for (let k = fault; k < N; k++) if (TYPES[k] === "i") { hi = k; break; }
+    }
+    let lost = 0;
+    for (let k = lo + 1; k < hi; k++) { if (TYPES[k] !== "i") { nodes[k].setAttribute("class", "dev dead"); lost++; } }
+    for (let k = lo + 1; k <= hi; k++) segs[k].setAttribute("class", "cable dead");
+    segs[fault].setAttribute("class", "cable short");
+    if (lo >= 0) nodes[lo].setAttribute("class", "iso tripped");
+    if (hi < N) nodes[hi].setAttribute("class", "iso tripped");
+    out.textContent = isoOn
+      ? `Short on segment ${fault + 1}. Two isolators open. ${lost} of ${total} devices lost.`
+      : `Short on segment ${fault + 1}. No isolators: loop voltage collapses. ${lost} of ${total} devices lost.`;
+  };
+  pressGroup(fig.querySelectorAll(".seg")[0], "f", (v) => { ftype = v; render(); });
+  pressGroup(fig.querySelectorAll(".seg")[1], "i", (v) => { isoOn = v === "on"; render(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { fault = null; render(); });
+  render();
+})();
+
+// 16.2 Cause-and-effect matrix.
+(() => {
+  const fig = document.getElementById("matrix");
+  const table = fig.querySelector("table");
+  const outs = fig.querySelector(".outs");
+  const out = fig.querySelector(".readout");
+  const EFFECTS = ["Sounders / VA", "Fire brigade", "AHU-1 stop", "AHU-2 stop", "Fire dampers F1", "Fire dampers F2", "Stair pressurisation", "Lifts to ground", "Door magnets release", "Smoke exhaust F2"];
+  // Effect sets per cause. Effects in s2 wait for stage II when the cause is a single detector.
+  const CAUSES = [
+    { n: "Detector, floor 1", direct: false, fx: [0, 1, 2, 4, 6, 7, 8] },
+    { n: "Detector, floor 2", direct: false, fx: [0, 1, 3, 5, 6, 7, 8, 9] },
+    { n: "Call point, any", direct: true, fx: [0, 1, 2, 3, 4, 5, 6, 7, 8] },
+    { n: "Sprinkler flow, floor 2", direct: true, fx: [0, 1, 3, 5, 6, 7, 8, 9] },
+    { n: "Duct detector, AHU-1", direct: false, fx: [2, 4] },
+  ];
+  let cur = null, stage = 1;
+  table.innerHTML = `<tr><th>Cause ↓ / Effect →</th>${EFFECTS.map((e, j) => `<th class="rot" data-j="${j}">${j + 1}</th>`).join("")}</tr>` +
+    CAUSES.map((c, i) => `<tr class="in-row"><td class="lbl"><button data-i="${i}" aria-pressed="false">${c.n}</button></td>${EFFECTS.map((_, j) => `<td class="x" data-i="${i}" data-j="${j}">${c.fx.includes(j) ? "●" : ""}</td>`).join("")}</tr>`).join("");
+  outs.innerHTML = EFFECTS.map((e, j) => `<div data-j="${j}">${j + 1}. ${e}</div>`).join("");
+  const render = () => {
+    table.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.i === cur)));
+    table.querySelectorAll("td.x, th.rot").forEach((c) => c.classList.remove("on"));
+    outs.querySelectorAll("div").forEach((d) => d.className = "");
+    if (cur === null) { out.textContent = "No alarm. Pick a cause."; return; }
+    const c = CAUSES[cur];
+    const live = c.direct || stage === 2;
+    c.fx.forEach((j) => {
+      table.querySelector(`td[data-i="${cur}"][data-j="${j}"]`).classList.add("on");
+      if (live) table.querySelector(`th[data-j="${j}"]`).classList.add("on");
+      // Duct detector acts on its own AHU at once: local action, not a building alarm.
+      const now = live || cur === 4;
+      outs.querySelector(`div[data-j="${j}"]`).className = now ? "on" : "wait";
+    });
+    out.textContent = c.direct
+      ? `${c.n}: goes straight to stage II. ${c.fx.length} effects active.`
+      : cur === 4 ? "Duct detector: stops AHU-1 and closes its dampers locally. No general alarm in this example."
+      : live ? `${c.n}, confirmed: ${c.fx.length} effects active.` : `${c.n}, stage I: only the desk is alerted. ${c.fx.length} effects wait for confirmation.`;
+  };
+  table.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { cur = +b.dataset.i; render(); } });
+  pressGroup(fig.querySelector(".seg"), "st", (v) => { stage = +v; render(); });
+  render();
+})();
+
+// 16.2 Two-stage alarm timer.
+(() => {
+  const fig = document.getElementById("stages");
+  const range = fig.querySelector("input");
+  const o = fig.querySelector("output");
+  const tl = fig.querySelector(".tl-time");
+  const out = fig.querySelector(".readout");
+  const T1 = 1, T2 = 5, ACK = 0.6, FIND = 2.5;
+  let sc = "none";
+  const PH = ["Stage I: desk alerted", "Investigating (T2)", "Stage II: general alarm", "Reset by staff"];
+  tl.innerHTML = PH.map((p) => `<div>${p}</div>`).join("");
+  const render = () => {
+    const t = +range.value;
+    o.textContent = t.toFixed(1) + " min";
+    let ph, txt;
+    if (sc === "none") {
+      if (t < T1) { ph = 0; txt = `Buzzer at the desk. ${(T1 - t).toFixed(1)} min left to acknowledge.`; }
+      else { ph = 2; txt = "Nobody acknowledged within T1. General alarm, brigade called."; }
+    } else {
+      if (t < ACK) { ph = 0; txt = "Buzzer at the desk."; }
+      else if (t < Math.min(FIND, ACK + T2)) { ph = 1; txt = `Acknowledged. Staff walking to the room. ${(ACK + T2 - t).toFixed(1)} min of T2 left.`; }
+      else if (sc === "false") { ph = 3; txt = "Steam from a shower. Staff reset the panel. No evacuation, but the event is logged."; }
+      else { ph = 2; txt = "Fire confirmed with the nearest call point. General alarm at once."; }
+    }
+    [...tl.children].forEach((d, i) => d.className = i === ph ? (ph === 2 ? "hot" : "cur") : "");
+    out.textContent = txt;
+  };
+  range.addEventListener("input", render);
+  pressGroup(fig.querySelector(".seg"), "sc", (v) => { sc = v; render(); });
+  render();
+})();
+
+// 16.3 Fire mode stepper.
+(() => {
+  const fig = document.getElementById("firemode");
+  const $ = (id) => fig.querySelector("#" + id);
+  const txt = (id, s) => ($(id).textContent = s);
+  const STEPS = [
+    { t: "1 · A multi-sensor on floor 2 reaches alarm threshold. Stage I at the desk.", f(s) { s.smoke = 18; s.p = "stage I"; s.zone = "smoke detected"; } },
+    { t: "2 · Confirmed: stage II. The panel opens the AHU fire contact and commands floor 2 outputs.", f(s) { s.p = "stage II"; s.lit.push("fm-panel"); } },
+    { t: "3 · The AHU safety chain stops both fans and closes outdoor/exhaust dampers. The fire damper on floor 2 closes.", f(s) { s.ahu = "fire stop"; s.alarm.push("fm-ahu", "fm-fd"); s.duct = true; } },
+    { t: "4 · The smoke damper opens and the smoke exhaust fan starts. Smoke is drawn out of floor 2.", f(s) { s.ex = "running"; s.lit.push("fm-sd", "fm-ex"); s.exf = true; s.smoke = 12; } },
+    { t: "5 · Staircase pressurisation starts. About 50 Pa keeps smoke out when the door opens.", f(s) { s.st = "≈ 50 Pa"; s.lit.push("fm-pf", "fm-stair"); s.pf = true; } },
+    { t: "6 · Lifts return to the exit floor and park with doors open. Corridor door magnets release.", f(s) { s.lift = "parked, exit floor"; s.alert.push("fm-lift", "fm-door"); } },
+    { t: "7 · The BMS shows every state change. It sends no commands. Fire mode works the same with the BMS offline.", f(s) { s.bms = "showing fire mode"; s.lit.push("fm-bms"); } },
+  ];
+  let i = -1;
+  const render = () => {
+    fig.querySelectorAll(".lit, .alarm, .alert").forEach((e) => e.classList.remove("lit", "alarm", "alert"));
+    const s = { smoke: 0, p: "normal", zone: "normal occupancy", ahu: "running", ex: "exhaust fan", st: "0 Pa", lift: "in service", bms: "observing", lit: [], alarm: [], alert: [], duct: false, exf: false, pf: false };
+    for (let k = 0; k <= i; k++) STEPS[k].f(s);
+    $("fm-smoke").setAttribute("r", s.smoke * 2.5);
+    txt("fm-ptxt", s.p); txt("fm-ztxt", s.zone); txt("fm-atxt", s.ahu); txt("fm-extxt", s.ex);
+    txt("fm-stxt", s.st); txt("fm-ltxt", s.lift); txt("fm-btxt", s.bms);
+    if (i >= 0) $("fm-panel").classList.add("alarm");
+    s.lit.forEach((id) => $(id).classList.add("lit"));
+    s.alarm.forEach((id) => $(id).classList.add("alarm"));
+    s.alert.forEach((id) => $(id).classList.add("alert"));
+    ["fm-duct", "fm-duct2"].forEach((id) => $(id).style.strokeDasharray = s.duct ? "3 5" : "");
+    $("fm-exflow").classList.toggle("hidden", !s.exf);
+    $("fm-pflow").classList.toggle("hidden", !s.pf);
+    fig.querySelector(".readout").textContent = i < 0 ? "Press “Next step” to start a fire on floor 2." : STEPS[i].t;
+  };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(STEPS.length - 1, i + 1); render(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(-1, i - 1); render(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { i = -1; render(); });
+  render();
+})();
+
+// 16.3 Door opening force.
+(() => {
+  const fig = document.getElementById("door");
+  const get = (k) => +fig.querySelector(`[data-k=${k}]`).value;
+  const meter = fig.querySelector(".meter");
+  const render = () => {
+    const p = get("p"), w = get("w"), c = get("c");
+    const H = 2.1, d = 0.06, A = w * H;
+    const F = c + (w * A * p) / (2 * (w - d));
+    fig.querySelector("[data-o=p]").textContent = p + " Pa";
+    fig.querySelector("[data-o=w]").textContent = w.toFixed(2) + " m";
+    fig.querySelector("[data-o=c]").textContent = c + " N";
+    meter.querySelector("span").style.width = Math.min(100, F / 1.5) + "%";
+    meter.classList.toggle("bad", F > 100);
+    // Highest ΔP that stays within 100 N for this door.
+    const pmax = Math.max(0, ((100 - c) * 2 * (w - d)) / (w * A));
+    fig.querySelector(".readout").innerHTML = `F ≈ ${F.toFixed(0)} N ` +
+      `<span class="verdict ${F > 100 ? "bad" : "ok"}">${F > 100 ? "over 100 N" : "within 100 N"}</span><br>Max ΔP for this door: ${pmax.toFixed(0)} Pa`;
+  };
+  fig.querySelectorAll("input").forEach((r) => r.addEventListener("input", render));
+  render();
+})();
+
+// 16.4 Phased evacuation.
+(() => {
+  const fig = document.getElementById("evac");
+  const box = fig.querySelector(".floors");
+  const out = fig.querySelector(".readout");
+  const FLOORS = [7, 6, 5, 4, 3, 2, 1, 0];
+  let fire = 3, phase = 0;
+  const render = () => {
+    let evac = new Set();
+    if (phase === 1) evac = new Set([fire, fire + 1]);
+    if (phase === 2) evac = new Set([fire - 1, fire, fire + 1, fire + 2]);
+    if (phase === 3) evac = new Set(FLOORS);
+    box.innerHTML = FLOORS.map((f) => {
+      const ev = evac.has(f), al = phase > 0 && !ev;
+      const msg = phase === 0 ? "Background music / paging" : ev ? "EVACUATE: leave by the nearest exit" : "ALERT: stay and listen";
+      return `<button class="floor ${ev ? "evac" : al ? "alrt" : ""} ${f === fire ? "fire" : ""}" data-f="${f}" aria-label="Set fire on floor ${f}">` +
+        `<b>${f === 0 ? "GF" : "F" + f}</b><span class="msg">${msg}${f === fire ? " · fire floor" : ""}</span><span class="spk" aria-hidden="true">${phase === 0 ? "♪" : ev ? "🔊" : al ? "🔉" : ""}</span></button>`;
+    }).join("");
+    const n = phase === 0 ? 0 : [...evac].filter((f) => FLOORS.includes(f)).length;
+    out.textContent = phase === 0 ? "Normal: the PA plays background music. Click a floor to set the fire floor."
+      : `${n} of ${FLOORS.length} floors evacuating; the rest on alert. Stairs carry only the floors that need to move.`;
+  };
+  box.addEventListener("click", (e) => { const b = e.target.closest(".floor"); if (b) { fire = +b.dataset.f; render(); } });
+  pressGroup(fig.querySelector(".seg"), "ph", (v) => { phase = +v; render(); });
+  render();
+})();
+
+// 16.5 BMS boundary.
+(() => {
+  const fig = document.getElementById("boundary");
+  const $ = (id) => fig.querySelector("#" + id);
+  const TXT = {
+    ok: ["BMS view: live", "The BMS receives states. Fire functions run in the panel and its hard-wired outputs."],
+    bms: ["BMS view: none", "The BMS server is down. The fire system is not affected at all."],
+    net: ["BMS view: stale", "The network is cut. The BMS shows communication loss. Fire functions still run."],
+  };
+  const render = (m) => {
+    $("bd-t2").textContent = TXT[m][0];
+    $("bd-l1").setAttribute("class", m === "net" ? "flow-bad" : "flow");
+    $("bd-l2").setAttribute("class", m === "ok" ? "flow" : "flow-bad");
+    $("bd-net").classList.toggle("alarm", m === "net");
+    $("bd-bms").classList.toggle("alarm", m === "bms");
+    fig.querySelector(".readout").textContent = TXT[m][1];
+  };
+  pressGroup(fig.querySelector(".seg"), "b", render);
+  render("ok");
+})();
+
+// 16.6 Testing planner.
+(() => {
+  const fig = document.getElementById("plan");
+  const svg = fig.querySelector("svg");
+  const get = (k) => +fig.querySelector(`[data-k=${k}]`).value;
+  const render = () => {
+    const n = get("n"), m = get("m"), v = get("v");
+    fig.querySelector("[data-o=n]").textContent = n;
+    fig.querySelector("[data-o=m]").textContent = m;
+    fig.querySelector("[data-o=v]").textContent = v;
+    svg.innerHTML = "";
+    const per = Math.ceil(n / v), cp = Math.ceil(m / v);
+    const hours = (per * 1.5 + cp * 2) / 60;
+    const w = 560 / 4;
+    for (let k = 0; k < 4; k++) {
+      const on = k < v;
+      const x = 20 + k * w, h = on ? Math.max(6, (per / 3000) * 80) : 0;
+      el("rect", { x: x + 10, y: 95 - h, width: w - 20, height: h, rx: 4, class: on ? "fill-accent" : "fill-muted" }, svg);
+      const t = el("text", { x: x + w / 2, y: 112, "text-anchor": "middle", class: "small" }, svg);
+      t.textContent = on ? `visit ${k + 1}: ${per}` : "—";
+    }
+    fig.querySelector(".readout").textContent = `Per visit: ${per} detectors + ${cp} call points ≈ ${hours.toFixed(1)} technician-hours.`;
+  };
+  fig.querySelectorAll("input").forEach((r) => r.addEventListener("input", render));
+  render();
+})();
+</script>
+</body>
+</html>

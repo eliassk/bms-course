@@ -1,0 +1,1567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serial and Fieldbus Protocols</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .bytes { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .byte { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 4px 8px; text-align: center; min-width: 52px; }
+  .byte b { display: block; font: 600 15px var(--mono); }
+  .byte span { display: block; font-size: 11px; color: var(--muted); }
+  .byte.k-addr { border-color: var(--accent); }
+  .byte.k-fc { border-color: var(--example); }
+  .byte.k-crc { border-color: var(--ok); }
+  .byte.k-bad { border-color: var(--bad); background: var(--bad-soft); }
+  .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 10px; }
+  .form-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+  .form-row input, .form-row select, .hexin {
+    font: 14px var(--mono); padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text); min-width: 0; width: 100%;
+  }
+  .toggles { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; align-items: center; }
+  .toggles .grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+  .toggles .grp > span { font-weight: 600; color: var(--muted); }
+  .lum-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+  .lum { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--surface); font-size: 13px; }
+  .lum .bulb { height: 26px; border-radius: 6px; margin-bottom: 6px; border: 1px solid var(--border); background: var(--surface-2); position: relative; overflow: hidden; }
+  .lum .bulb i { position: absolute; inset: 0; background: var(--example); transition: opacity .4s; }
+  .lum .bulb em { position: relative; font: 600 12px var(--mono); padding-left: 6px; line-height: 26px; font-style: normal; }
+  .lum .gs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .lum .gs button { font: 600 11px var(--mono); padding: 2px 6px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; }
+  .lum .gs button[aria-pressed=true] { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .cmds { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .cmds button { font: 600 13px var(--font); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  .cmds button:hover { border-color: var(--accent); }
+  .bitrow { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 1px; margin: 6px 0; }
+  .bitrow div { font: 600 11px var(--mono); text-align: center; padding: 3px 0; background: var(--surface); border-radius: 2px; }
+  .bitrow .f-p { background: var(--bad-soft); }
+  .bitrow .f-t { background: var(--example-soft); }
+  .bitrow .f-s { background: var(--surface-2); color: var(--muted); }
+  .bitrow .f-id { background: var(--accent-soft); }
+  .bitrow .f-v { background: var(--ok-soft); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; border: 1px solid var(--border); }
+  .ga-bits { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 1px; margin: 6px 0; }
+  .ga-bits div { font: 600 12px var(--mono); text-align: center; padding: 4px 0; border-radius: 2px; }
+  .meter { display: grid; grid-template-columns: 120px minmax(0, 1fr) 90px; gap: 8px; align-items: center; font-size: 14px; margin: 6px 0; }
+  .meter .track { height: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .meter .fill { height: 100%; background: var(--accent); transition: width .2s; }
+  .meter .fill.bad { background: var(--bad); }
+  .meter .v { font-family: var(--mono); text-align: right; }
+  @media (max-width: 520px) { .meter { grid-template-columns: 90px minmax(0, 1fr) 70px; font-size: 12px; } }
+  .ok-t { color: var(--ok); font-weight: 600; }
+  .bad-t { color: var(--bad); font-weight: 600; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="4">
+<div class="content">
+  <div class="kicker">Chapter 04</div>
+  <h1>Serial and fieldbus protocols</h1>
+  <p class="lead">The wires below the IP network. RS-485 and the protocols that ride on it, the dedicated building
+    buses (M-Bus, KNX, DALI, LON), boiler buses, and the humble analog signal. Most building faults that "look like
+    software" are found here.</p>
+
+  <!-- 4.1 -->
+  <section class="lesson" id="s1" data-num="4.1">
+    <h2>4.1 RS-485 physical layer: wiring, termination, bias</h2>
+    <p><strong>RS-485</strong> (TIA/EIA-485-A) is not a protocol. It only defines the electrical layer: how a
+      0 and a 1 look on a pair of wires. Modbus RTU, BACnet MS/TP, many vendor buses and most heat pump and inverter
+      ports run on top of it. Get the physical layer wrong and no amount of protocol knowledge will help.</p>
+
+    <h3>Differential signalling</h3>
+    <p>RS-485 uses two wires, usually called <code>A</code> and <code>B</code>. The driver pushes them in opposite
+      directions and the receiver looks only at the <em>difference</em>. Noise picked up along the cable hits both
+      wires almost equally (common-mode noise) and cancels out in the subtraction. That is why a twisted pair can carry
+      data for 1200 m through a plant room full of drives and contactors.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Parameter</th><th>Value</th><th>What it means in practice</th></tr>
+      <tr><td>Driver output</td><td>≥ 1.5 V differential into 54 Ω</td><td>Typically 2–3 V on a terminated bus</td></tr>
+      <tr><td>Receiver threshold</td><td>±200 mV</td><td>Between −200 and +200 mV the state is undefined</td></tr>
+      <tr><td>Common-mode range</td><td>−7 V to +12 V</td><td>Ground difference between devices must stay inside this</td></tr>
+      <tr><td>Load</td><td>32 unit loads</td><td>1/4 and 1/8 unit-load transceivers allow 128 or 256 devices</td></tr>
+      <tr><td>Length vs speed</td><td>~1200 m at ≤ 100 kbit/s</td><td>Building buses run at 9600–115200 bit/s, so length is rarely the limit</td></tr>
+      <tr><td>Cable</td><td>Twisted pair, ~120 Ω impedance</td><td>Plus a third conductor for signal common</td></tr>
+    </table></div>
+
+    <figure class="viz" id="diff">
+      <label for="noise"><strong>Common-mode noise: <output id="noiseOut">2.0</output> V</strong></label>
+      <input type="range" id="noise" min="0" max="5" step="0.1" value="2" style="width:100%">
+      <svg viewBox="0 0 600 260" role="img" aria-label="Wire A and wire B both carry the same noise; the difference B minus A stays clean">
+        <text x="8" y="40">A</text><text x="8" y="110">B</text><text x="8" y="200">B − A</text>
+        <line x1="70" y1="150" x2="590" y2="150" class="muted-s" stroke-dasharray="3 4"/>
+        <line x1="70" y1="190" x2="590" y2="190" class="muted-s" stroke-dasharray="2 3"/>
+        <path id="dA" class="wire" stroke="var(--bad)"/>
+        <path id="dB" class="wire" stroke="var(--accent)"/>
+        <path id="dD" class="wire" stroke="var(--ok)" stroke-width="3"/>
+        <text class="small" x="70" y="250">bits: 1 0 1 1 0 0 1 0 — the receiver decides on the sign of B − A</text>
+      </svg>
+      <div class="readout" id="diffText" aria-live="polite"></div>
+      <figcaption>Both wires move with the noise. The difference does not. A single-ended signal (one wire against ground) would see all of it.</figcaption>
+    </figure>
+
+    <div class="callout warn"><strong>A and B are not standardised in practice.</strong> In the standard, A is the
+      inverting line and B the non-inverting one, so in the idle (mark, logic 1) state B is more positive than A.
+      Many manufacturers label them the other way, or use <code>D+</code>/<code>D−</code>, <code>TX+</code>/<code>TX−</code>.
+      If a device does not answer at all, swapping the pair is a legitimate first test.</div>
+
+    <h3>Topology: a line, not a star</h3>
+    <p>At these speeds the cable behaves as a <strong>transmission line</strong>. A signal edge travels down the cable
+      and, at any point where the impedance changes (an open end, a branch), part of it reflects back. Reflections
+      add to later edges and cause ringing. The cure has two parts:</p>
+    <ol>
+      <li><strong>Daisy chain.</strong> Run the cable in to each device and out to the next. Stubs (short branches)
+        should be as short as possible, ideally a few tens of centimetres. Stars and long branches create reflections
+        that no termination can fully remove.</li>
+      <li><strong>Terminate both ends</strong> with 120 Ω across A–B, matching the cable impedance, so the edge is
+        absorbed instead of reflected. Only the two physical ends, never the middle devices.</li>
+    </ol>
+
+    <h3>Biasing (fail-safe)</h3>
+    <p>When no device is transmitting, every driver is off and the bus floats. Two 120 Ω resistors pull A and B
+      together, so the differential voltage sits near 0 V, inside the undefined ±200 mV band. Receivers then read
+      random bits and UARTs see false start bits. <strong>Bias resistors</strong> fix this: a pull-up on B and a
+      pull-down on A (typically 390–680 Ω, at <em>one</em> point on the bus, often the master) hold the idle bus at a
+      clear logic 1. Many modern transceivers have built-in "true fail-safe" receivers that treat 0 V as a 1.</p>
+
+    <h3>Try it: build the bus</h3>
+    <figure class="viz" id="bus">
+      <div class="toggles">
+        <div class="grp"><span>Topology</span><div class="seg" role="group" aria-label="Topology">
+          <button data-k="topo" data-v="chain" aria-pressed="true">Daisy chain</button><button data-k="topo" data-v="star">Star</button></div></div>
+        <div class="grp"><span>Termination</span><div class="seg" role="group" aria-label="Termination">
+          <button data-k="term" data-v="0" aria-pressed="true">None</button><button data-k="term" data-v="1">One end</button><button data-k="term" data-v="2">Both ends</button></div></div>
+        <div class="grp"><span>Bias</span><div class="seg" role="group" aria-label="Bias">
+          <button data-k="bias" data-v="0" aria-pressed="true">Off</button><button data-k="bias" data-v="1">On</button></div></div>
+      </div>
+      <svg viewBox="0 0 600 130" role="img" aria-label="Bus wiring diagram" id="busTopo"></svg>
+      <svg viewBox="0 0 600 190" role="img" aria-label="Differential voltage seen at the far receiver">
+        <rect x="60" y="79" width="530" height="22" class="fill-bad" opacity=".12"/>
+        <text class="small" x="56" y="94" text-anchor="end">±0.2 V</text>
+        <line x1="60" y1="90" x2="590" y2="90" class="muted-s" stroke-dasharray="3 4"/>
+        <text class="small" x="56" y="34" text-anchor="end">+V</text><text class="small" x="56" y="152" text-anchor="end">−V</text>
+        <path id="busWave" class="wire" stroke="var(--accent)"/>
+        <g id="busSamples"></g>
+        <text class="small" x="60" y="182">idle · start · 8 data bits · stop · idle (circles = receiver sample points)</text>
+      </svg>
+      <div class="readout" id="busText" aria-live="polite"></div>
+      <figcaption>A simplified model of the voltage at the far end. Real waveforms depend on cable, speed and stub lengths, but the patterns are the ones you see on a scope.</figcaption>
+    </figure>
+
+    <h3>The third wire and shielding</h3>
+    <p>"Two-wire RS-485" is a myth that causes many site faults. Receivers need the common-mode voltage within
+      −7…+12 V of their own ground. If devices are powered from different supplies or distribution boards, their
+      grounds can differ by several volts. Run a <strong>signal common</strong> (the third conductor, often labelled
+      <code>GND</code>, <code>COM</code> or <code>0V</code>) between all devices. Connect the cable shield to protective
+      earth at one point only, so it does not carry earth loop currents.</p>
+
+    <div class="callout example">A typical Modbus trunk in a plant room: 8 devices (heat pump, two inverters, energy
+      meters, a VAV controller) over 150 m of shielded twisted pair, e.g. a Belden 3105A type cable or a LiYCY 2×2×0.5.
+      One pair for A/B, one conductor of the second pair as common. 120 Ω at the gateway and at the last meter. Bias
+      enabled only on the gateway. Stubs into each device under 30 cm.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A Modbus bus works until the master stops polling, then every device logs framing errors. Most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Wrong termination causes errors during transmission, not specifically in idle.">Missing termination at one end</button>
+        <button class="opt" data-opt="b" data-why="A wrong baud rate fails all the time, not only in idle.">Wrong baud rate on one slave</button>
+        <button class="opt" data-opt="c" data-why="With no driver active, the unbiased bus floats in the undefined band and noise looks like start bits.">No fail-safe bias, so the idle bus floats</button>
+        <button class="opt" data-opt="d" data-why="Swapped A/B gives no communication with that device at all.">A and B swapped on one device</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>RS-485 is only the electrical layer: differential, multi-drop, half-duplex.</li>
+      <li>Daisy chain, short stubs, 120 Ω at both physical ends, bias at one point.</li>
+      <li>Always run a signal common. Earth the shield at one end.</li>
+    </ul>
+  </section>
+
+  <!-- 4.2 -->
+  <section class="lesson" id="s2" data-num="4.2">
+    <h2>4.2 Modbus RTU</h2>
+    <p><strong>Modbus</strong> was published by Modicon in 1979 and is now maintained by the Modbus Organization. It
+      is the lowest common denominator of building automation: almost every heat pump, inverter, meter and chiller
+      speaks it. Its strength is simplicity. Its weakness is the same: Modbus moves numbers, and says nothing about
+      what they mean.</p>
+
+    <h3>Master and slaves</h3>
+    <p>One <strong>master</strong> (the specification now says <em>client</em>) sends a request. One
+      <strong>slave</strong> (<em>server</em>) answers. Slaves never speak unprompted. Addresses run 1–247. Address 0 is
+      broadcast: every slave executes a write, nobody answers. There is exactly one master per RS-485 segment.</p>
+
+    <h3>The data model</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Table</th><th>Size</th><th>Access</th><th>Read FC</th><th>Write FC</th><th>"Classic" numbering</th></tr>
+      <tr><td>Coils</td><td>1 bit</td><td>read/write</td><td>01</td><td>05 (single), 15 (multiple)</td><td>00001–09999</td></tr>
+      <tr><td>Discrete inputs</td><td>1 bit</td><td>read only</td><td>02</td><td>—</td><td>10001–19999</td></tr>
+      <tr><td>Input registers</td><td>16 bit</td><td>read only</td><td>04</td><td>—</td><td>30001–39999</td></tr>
+      <tr><td>Holding registers</td><td>16 bit</td><td>read/write</td><td>03</td><td>06 (single), 16 (multiple)</td><td>40001–49999</td></tr>
+    </table></div>
+    <p>The "40001" style is a documentation convention, not what is on the wire. On the wire, register 40001 is
+      <strong>offset 0</strong> in the holding register table. Some manuals list offsets, some list 1-based numbers,
+      some mix both. The infamous "off by one" error, reading the register next to the one you wanted, comes from
+      this.</p>
+
+    <h3>The RTU frame</h3>
+    <p>In RTU mode the bytes are sent as binary, usually at 9600 or 19200 bit/s. The specification's default is
+      8 data bits, even parity, 1 stop bit (8E1); many devices ship with 8N1. Frames are separated by silence: at least
+      <strong>3.5 character times</strong> (about 4 ms at 9600 bit/s) between frames, and no gap longer than
+      1.5 characters inside a frame. A request has four parts:</p>
+    <ol>
+      <li><strong>Slave address</strong>, 1 byte.</li>
+      <li><strong>Function code</strong>, 1 byte.</li>
+      <li><strong>Data</strong>, 0–252 bytes. For a read: start address (2 bytes) and quantity (2 bytes), big-endian.</li>
+      <li><strong>CRC-16</strong>, 2 bytes, polynomial 0xA001 (reflected 0x8005), initial value 0xFFFF, sent
+        <em>low byte first</em>. This is the one little-endian field in Modbus.</li>
+    </ol>
+
+    <h3>Try it: frame builder</h3>
+    <figure class="viz" id="mbBuild">
+      <div class="form-row">
+        <label>Slave address<input type="number" id="mbAddr" min="0" max="247" value="1"></label>
+        <label>Function<select id="mbFc">
+          <option value="3">03 Read holding registers</option>
+          <option value="4">04 Read input registers</option>
+          <option value="1">01 Read coils</option>
+          <option value="2">02 Read discrete inputs</option>
+          <option value="6">06 Write single register</option>
+          <option value="5">05 Write single coil</option>
+          <option value="16">16 Write multiple registers</option>
+        </select></label>
+        <label>Start offset<input type="number" id="mbReg" min="0" max="65535" value="0"></label>
+        <label id="mbQtyL">Quantity<input type="number" id="mbQty" min="0" max="65535" value="10"></label>
+      </div>
+      <div class="bytes" id="mbBytes"></div>
+      <div class="readout" id="mbHex"></div>
+      <div class="readout" id="mbNote" style="font-family:var(--font)"></div>
+      <figcaption>Default: slave 1 reads 10 holding registers from offset 0. The result, <code>01 03 00 00 00 0A C5 CD</code>, is the most-quoted Modbus frame in existence.</figcaption>
+    </figure>
+
+    <h3>Try it: decode a frame</h3>
+    <figure class="viz" id="mbDec">
+      <div class="controls seg" role="group" aria-label="Direction">
+        <button data-dir="req">Request</button><button data-dir="res" aria-pressed="true">Response</button>
+      </div>
+      <input class="hexin" id="mbHexIn" value="01 03 04 00 E1 01 F4 AA 12" aria-label="Hex frame">
+      <div class="cmds">
+        <button data-ex="01 03 04 00 E1 01 F4 AA 12" data-d="res">Temperature response</button>
+        <button data-ex="11 06 00 01 00 03 9A 9B" data-d="req">Write register</button>
+        <button data-ex="0A 83 02 B1 33" data-d="res">Exception</button>
+        <button data-ex="01 03 04 00 E1 01 F4 AA 13" data-d="res">Corrupted</button>
+      </div>
+      <div class="bytes" id="mbDecBytes"></div>
+      <div class="readout" id="mbDecText" style="font-family:var(--font)"></div>
+    </figure>
+
+    <h3>Exceptions</h3>
+    <p>If a slave understands the request but cannot serve it, it answers with the function code plus 0x80 and one
+      exception code. No answer at all means something else: wrong address, wrong baud rate or parity, wiring, or a
+      CRC error the slave silently discarded.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Code</th><th>Name</th><th>Typical cause</th></tr>
+      <tr><td>01</td><td>Illegal function</td><td>Device does not support e.g. FC 16, only FC 06</td></tr>
+      <tr><td>02</td><td>Illegal data address</td><td>Register does not exist (often the off-by-one error)</td></tr>
+      <tr><td>03</td><td>Illegal data value</td><td>Quantity too large (FC 03 allows at most 125 registers) or value out of range</td></tr>
+      <tr><td>04</td><td>Server device failure</td><td>Internal error in the slave</td></tr>
+      <tr><td>06</td><td>Server device busy</td><td>Try again later</td></tr>
+    </table></div>
+
+    <h3>Data types: everything is a 16-bit register</h3>
+    <p>Modbus only knows 16-bit words. Everything else is convention, documented (hopefully) in the vendor's register map:</p>
+    <ul>
+      <li><strong>Scaled integers</strong>: 225 with a factor of 0.1 means 22.5 °C. Signed values use two's complement:
+        0xFFF6 is −10, i.e. −1.0 °C.</li>
+      <li><strong>32-bit values</strong> (energy counters, IEEE 754 floats) span two registers. The word order is not
+        defined: some devices send the high word first, others the low word ("word swap"). Read a known value and
+        check.</li>
+      <li><strong>Bit fields</strong>: one register holds 16 status flags.</li>
+    </ul>
+
+    <h3>Polling and timing</h3>
+    <p>Each request-response takes time on the wire. At 9600 8E1, one character is 11 bits, about 1.15 ms. Reading
+      10 registers needs 8 bytes out and 25 bytes back, roughly 38 ms plus turnaround and the 3.5-character gaps.
+      Add the slave's response delay (often 20–100 ms) and a single poll costs around 100 ms. A bus with 20 devices and
+      5 requests each takes about 10 s per cycle. Group adjacent registers into one request and poll slow values
+      slowly.</p>
+
+    <h3>Exercise: which function code?</h3>
+    <div class="classify" data-cats="01,02,03,04,05,06">
+      <div class="item" data-cat="04" data-why="A measured value the master cannot change sits in the input register table."><span class="label">Read the outdoor temperature measured by a heat pump (read-only register)</span></div>
+      <div class="item" data-cat="06" data-why="One 16-bit value written to one holding register."><span class="label">Write a new flow temperature setpoint of 45.0 °C</span></div>
+      <div class="item" data-cat="05" data-why="A single read/write bit is a coil."><span class="label">Switch a relay output on (single coil)</span></div>
+      <div class="item" data-cat="02" data-why="A read-only bit, e.g. a digital input on an I/O module."><span class="label">Read a filter alarm contact wired to an I/O module</span></div>
+      <div class="item" data-cat="03" data-why="Configured setpoints live in holding registers, read with FC 03."><span class="label">Read back the setpoint you wrote earlier</span></div>
+      <div class="item" data-cat="01" data-why="Reading the state of read/write bits uses FC 01."><span class="label">Read the current state of eight relay outputs</span></div>
+    </div>
+
+    <div class="callout example">A typical air-to-water heat pump register map might list "40101 Flow setpoint,
+      INT16, ×0.1 °C, R/W" and "30005 Outdoor temperature, INT16, ×0.1 °C, R". The integrator reads offset 4 with FC 04
+      and gets 0xFFE7 = −25, i.e. −2.5 °C, and writes 450 to offset 100 with FC 06 for a 45.0 °C setpoint.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A manual says "holding register 40201". Your client library asks for a zero-based address. What do you enter?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is the documentation number, not the protocol offset.">40201</button>
+        <button class="opt" data-opt="b" data-why="40001 is offset 0, so 40201 is offset 200. Confirm by reading a known value.">200</button>
+        <button class="opt" data-opt="c" data-why="That would be the 1-based number without the table prefix; on the wire it is 200.">201</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>One master, up to 247 slaves, request-response only.</li>
+      <li>Four tables: coils, discrete inputs, input registers, holding registers.</li>
+      <li>Frame = address, function, data, CRC (low byte first). Silence separates frames.</li>
+      <li>Meaning, scaling and word order come only from the vendor's register map.</li>
+    </ul>
+  </section>
+
+  <!-- 4.3 -->
+  <section class="lesson" id="s3" data-num="4.3">
+    <h2>4.3 M-Bus and wireless M-Bus</h2>
+    <p><strong>M-Bus</strong> (Meter-Bus, EN 13757-2 and -3) was designed for one job: reading utility meters (heat,
+      water, gas, electricity) cheaply over long distances. It is common in district heating, apartment blocks and
+      sub-metering in commercial buildings.</p>
+
+    <h3>A bus that powers the meters</h3>
+    <p>M-Bus is two wires, <strong>polarity-free</strong>, in any topology except a ring. The master (a "level
+      converter" or M-Bus gateway) supplies the bus with power and talks to the meters in two different ways:</p>
+    <ul>
+      <li><strong>Master → meter: voltage modulation.</strong> A logic 1 (mark) is the full bus voltage, typically
+        around 36 V. A logic 0 (space) drops it by about 12 V.</li>
+      <li><strong>Meter → master: current modulation.</strong> Each meter draws a constant quiescent current (one unit
+        load, ≤ 1.5 mA) for a 1. For a 0 it adds 11–20 mA. The master detects the extra current.</li>
+    </ul>
+    <p>Because the meter never has to drive voltage, its interface is cheap and can even be bus-powered, so
+      battery meters last 10 years or more. Speeds are low, usually 2400 bit/s (300–9600 allowed).</p>
+
+    <figure class="viz">
+      <svg viewBox="0 0 620 220" role="img" aria-label="M-Bus master with voltage signal to meters and current signal back">
+        <rect class="box" x="20" y="70" width="130" height="80" rx="8"/>
+        <text class="big" x="85" y="102" text-anchor="middle">Master</text>
+        <text class="small" x="85" y="122" text-anchor="middle">level converter</text>
+        <text class="small" x="85" y="138" text-anchor="middle">supplies the bus</text>
+        <line x1="150" y1="90" x2="600" y2="90" class="stroke wire"/>
+        <line x1="150" y1="130" x2="600" y2="130" class="stroke wire"/>
+        <g>
+          <rect class="box" x="220" y="160" width="80" height="44" rx="6"/><text x="260" y="186" text-anchor="middle">Heat</text>
+          <rect class="box" x="340" y="160" width="80" height="44" rx="6"/><text x="380" y="186" text-anchor="middle">Water</text>
+          <rect class="box" x="460" y="160" width="80" height="44" rx="6"/><text x="500" y="186" text-anchor="middle">Electric</text>
+          <path class="muted-s wire" d="M250,90 V160 M270,130 V160 M370,90 V160 M390,130 V160 M490,90 V160 M510,130 V160"/>
+        </g>
+        <path class="wire" stroke="var(--accent)" d="M180,30 h30 v0 h30 v14 h30 v-14 h30 v14 h30 v-14 h30"/>
+        <text class="small" x="180" y="62">master → meters: 36 V / 24 V</text>
+        <path class="wire" stroke="var(--ok)" d="M420,44 h30 v-14 h30 v14 h30 v-14 h30 v14 h30"/>
+        <text class="small" x="420" y="62">meters → master: +11…20 mA</text>
+      </svg>
+      <figcaption>Two signalling directions on the same two wires: voltage down, current up.</figcaption>
+    </figure>
+
+    <h3>Addressing</h3>
+    <ul>
+      <li><strong>Primary address</strong>: 1 byte. 1–250 for meters, 0 for unconfigured devices, 253 for secondary
+        addressing, 254 and 255 broadcast. Primary addresses must be set by hand and collide easily.</li>
+      <li><strong>Secondary address</strong>: 8 bytes, built from the meter's serial number, manufacturer code, version
+        and medium. Unique from the factory. A master can find all meters with a <em>wildcard search</em>, which takes
+        minutes on a large bus.</li>
+    </ul>
+    <p>Meters answer a <code>REQ_UD2</code> request with a <code>RSP_UD</code> telegram containing data records. Each
+      record carries a DIF/VIF header that encodes the data type, unit and scale (kWh, m³, °C), so unlike Modbus the
+      meaning travels with the value.</p>
+
+    <h3>Try it: size the bus</h3>
+    <figure class="viz" id="mbus">
+      <label for="mbN"><strong>Meters: <output id="mbNOut">60</output></strong></label>
+      <input type="range" id="mbN" min="1" max="250" value="60" style="width:100%">
+      <label for="mbL"><strong>Cable length to the farthest meter: <output id="mbLOut">500</output> m</strong></label>
+      <input type="range" id="mbL" min="50" max="3000" step="50" value="500" style="width:100%">
+      <div id="mbBars"></div>
+      <div class="readout" id="mbText" style="font-family:var(--font)"></div>
+      <figcaption>Simplified: 0.8 mm (0.5 mm²) telephone-type cable, about 36 Ω per km per wire, all meters lumped at the far end. Real master datasheets give the exact limits.</figcaption>
+    </figure>
+
+    <h3>Wireless M-Bus</h3>
+    <p><strong>wM-Bus</strong> (EN 13757-4) moves the same application layer onto radio. Battery meters wake up,
+      transmit a short telegram every few seconds or minutes, and sleep. A receiver (gateway, drive-by reader or data
+      collector) only listens. Telegrams are usually AES-128 encrypted with a per-meter key supplied by the meter
+      vendor. The Open Metering System (OMS) specification pins down the options so meters from different vendors
+      interoperate.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Mode</th><th>Band</th><th>Use</th></tr>
+      <tr><td>S (stationary)</td><td>868 MHz</td><td>Low duty cycle, fixed installations</td></tr>
+      <tr><td>T (frequent transmit)</td><td>868 MHz</td><td>Frequent one-way telegrams, walk-by and drive-by reading</td></tr>
+      <tr><td>C (compact)</td><td>868 MHz</td><td>More efficient coding than T; common in modern OMS meters</td></tr>
+      <tr><td>N (narrowband)</td><td>169 MHz</td><td>Longer range through buildings, lower data rate</td></tr>
+    </table></div>
+
+    <div class="callout example">A 40-apartment block: one heat meter and two water meters per flat, 120 meters on one
+      wired M-Bus master in the basement, read every 15 minutes and forwarded to the BMS over Modbus TCP. In a retrofit of
+      a similar block, wM-Bus meters (mode C1) are read by two receivers in the stairwells instead, saving the cabling
+      but adding a key-management task: every meter's AES key must be loaded into the gateway.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Why can M-Bus meters run for years on a battery, or entirely from the bus?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The master supplies the voltage; the meter only switches a small extra current to answer.">Meters answer by modulating current, so they never drive the bus voltage</button>
+        <button class="opt" data-opt="b" data-why="M-Bus is request-response; meters do not stay silent by protocol choice alone.">Meters only talk once a day by protocol rule</button>
+        <button class="opt" data-opt="c" data-why="Speed affects energy, but the key is the signalling method.">M-Bus uses 115200 bit/s for short bursts</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>M-Bus: polarity-free, bus-powered, voltage down, current up.</li>
+      <li>Primary addresses 1–250, unique 8-byte secondary addresses.</li>
+      <li>Telegrams are self-describing (DIF/VIF), unlike Modbus.</li>
+      <li>wM-Bus: one-way radio, AES keys per meter, OMS for interoperability.</li>
+    </ul>
+  </section>
+
+  <!-- 4.4 -->
+  <section class="lesson" id="s4" data-num="4.4">
+    <h2>4.4 BACnet MS/TP</h2>
+    <p><strong>BACnet</strong> (ISO 16484-5, ASHRAE 135) is covered in depth in Chapter 05. Its serial variant,
+      <strong>MS/TP</strong> (Master-Slave/Token-Passing), runs BACnet over RS-485. It is widely used to connect room
+      controllers, VAV boxes and fan coil controllers to a router that leads to BACnet/IP.</p>
+
+    <h3>Why token passing?</h3>
+    <p>Modbus has one master that asks everybody. BACnet devices are peers: a room controller may need to send a
+      change-of-value notification or read a value from another controller on its own initiative. On a shared
+      half-duplex wire only one device may talk at a time. MS/TP solves it with a <strong>token</strong>: only the
+      master holding the token may start a conversation. When it is done, or has sent its allowance of frames
+      (<code>Max_Info_Frames</code>), it passes the token to the next master.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Item</th><th>Value</th></tr>
+      <tr><td>Speeds</td><td>9600, 19200, 38400, 76800 bit/s (later addenda add 57600 and 115200). 38400 and 76800 are common.</td></tr>
+      <tr><td>Character format</td><td>8N1</td></tr>
+      <tr><td>MAC addresses</td><td>0–127 masters, 128–254 slaves (rare), 255 broadcast</td></tr>
+      <tr><td><code>Max_Master</code></td><td>Highest master address to look for, default 127</td></tr>
+      <tr><td>Frame</td><td>Preamble 0x55 0xFF, frame type, destination, source, length (2), header CRC (8 bit), data, data CRC (16 bit)</td></tr>
+    </table></div>
+
+    <h3>Poll For Master</h3>
+    <p>How does a master know who comes next? Each master remembers its "next station". Every so often (every
+      50 token passes, <code>N<sub>poll</sub></code>) it sends a <strong>Poll For Master</strong> frame to each address
+      between itself and its next station. A device that has just been connected answers "Reply To Poll For Master" and
+      is inserted into the ring. Addresses above the highest real master are polled up to <code>Max_Master</code>,
+      which is why leaving it at 127 on a bus with masters 1–10 wastes time on every poll cycle.</p>
+
+    <figure class="viz" id="mstp">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="play" aria-label="Play">▶</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+        <label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="checkbox" id="mstpJoin"> Connect a new controller at MAC 2</label>
+      </div>
+      <svg viewBox="0 0 600 230" role="img" aria-label="MS/TP masters on a bus passing a token">
+        <line x1="30" y1="150" x2="570" y2="150" class="stroke wire"/>
+        <text class="small" x="30" y="170">RS-485 trunk, Max_Master = 7</text>
+        <g id="mstpNodes"></g>
+        <circle id="mstpTok" r="10" class="fill-accent" style="transition: cx .5s, cy .5s"/>
+        <text id="mstpTokT" x="0" y="0" text-anchor="middle" style="fill:#fff;font-size:10px;font-weight:700;transition:x .5s,y .5s">T</text>
+        <path id="mstpArc" class="wire" stroke="var(--accent)" stroke-dasharray="5 4"/>
+      </svg>
+      <div class="readout" id="mstpText" style="font-family:var(--font)" aria-live="polite"></div>
+      <figcaption>Masters at MAC 0, 1, 3, 4 and 6. The token travels in address order and wraps from the highest back to the lowest.</figcaption>
+    </figure>
+
+    <h3>Common problems</h3>
+    <ul>
+      <li><strong>Duplicate MAC addresses.</strong> Two devices answer the same token; the ring breaks. Symptoms are
+        intermittent, which makes it hard to find.</li>
+      <li><strong>Mixed baud rates.</strong> Some devices auto-baud, some do not. One wrong device disturbs everyone.</li>
+      <li><strong>Too many devices.</strong> Each master adds token time. 30–60 devices per trunk at 38400 or 76800 is a
+        common design limit, well below the RS-485 maximum, to keep response times usable.</li>
+      <li><strong>Physical layer.</strong> Everything in 4.1 applies. MS/TP is more sensitive than Modbus because every
+        device transmits, not only the master.</li>
+    </ul>
+
+    <div class="callout example">A typical office floor: 40 fan coil controllers on two MS/TP trunks at 76800 bit/s,
+      MAC 1–20 on each, <code>Max_Master</code> set to 25. Each trunk ends at a BACnet router (MS/TP to BACnet/IP) in
+      the floor's riser cupboard. The supervisor reads all fan coils through the router as if they were IP devices.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A trunk has masters at MAC 1–12 and <code>Max_Master</code> = 127. What is the effect?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The devices still communicate; it is a performance issue, not a failure.">Devices above 12 cannot join</button>
+        <button class="opt" data-opt="b" data-why="Max_Master does not change the baud rate.">The bus falls back to 9600 bit/s</button>
+        <button class="opt" data-opt="c" data-why="The highest master polls addresses 13–127 for new masters, each waiting for a timeout.">Wasted time polling 115 empty addresses</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>MS/TP = BACnet over RS-485 with a token so that peers can share the wire.</li>
+      <li>Masters 0–127. Poll For Master lets new devices join.</li>
+      <li>Set <code>Max_Master</code> close to the highest real address. Unique MACs, one baud rate.</li>
+    </ul>
+  </section>
+
+  <!-- 4.5 -->
+  <section class="lesson" id="s5" data-num="4.5">
+    <h2>4.5 KNX</h2>
+    <p><strong>KNX</strong> (ISO/IEC 14543-3, EN 50090) grew out of EIB, launched in 1990. It is the dominant
+      room-automation bus in Europe for lighting, blinds, heating valves, presence detectors and push buttons. Hundreds
+      of manufacturers make certified devices, and all are configured with one tool, <strong>ETS</strong>.</p>
+
+    <h3>Decentralised by design</h3>
+    <p>There is no central controller. A push button sends a telegram "group 1/0/1 = ON". Every actuator that has been
+      programmed to listen to group 1/0/1 switches. If any single device fails, the rest keep working. Logic can live in
+      the devices themselves (a presence detector switching a light, a thermostat driving a valve).</p>
+
+    <h3>Media</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Medium</th><th>Details</th></tr>
+      <tr><td><strong>TP</strong> (twisted pair)</td><td>9600 bit/s, ~30 V DC bus voltage from a KNX power supply with choke, power and data on the same green cable. By far the most common.</td></tr>
+      <tr><td><strong>IP</strong></td><td>KNXnet/IP: tunnelling (one client to the bus) and routing (multicast 224.0.23.12, port 3671) between lines. KNX IP Secure adds encryption.</td></tr>
+      <tr><td><strong>RF</strong></td><td>868 MHz radio for retrofit.</td></tr>
+      <tr><td><strong>PL</strong></td><td>Powerline, rare today.</td></tr>
+    </table></div>
+
+    <h3>Topology and individual addresses</h3>
+    <p>A TP <strong>line</strong> holds up to 64 devices per segment (up to 256 with line repeaters), max 1000 m of
+      cable, with distance limits between devices and to the power supply (700 m and 350 m). Up to 15 lines join a
+      <strong>main line</strong> through line couplers to form an <strong>area</strong>; up to 15 areas join the
+      backbone. Today the backbone and often the main lines are IP. Each device has an <strong>individual
+      address</strong> <code>area.line.device</code>, e.g. <code>1.2.15</code>, used for programming and diagnostics,
+      not for normal operation.</p>
+
+    <figure class="viz" id="knxTopo">
+      <svg viewBox="0 0 620 250" role="img" aria-label="KNX backbone with area couplers, main lines with line couplers and lines with devices">
+        <line x1="40" y1="30" x2="580" y2="30" stroke="var(--accent)" stroke-width="4"/>
+        <text class="small" x="40" y="20">Backbone (often KNX IP) — area 0 line 0</text>
+        <g id="knxAreas"></g>
+      </svg>
+      <figcaption>Two of up to 15 areas, each with three of up to 15 lines. Couplers filter telegrams so that local traffic stays local.</figcaption>
+    </figure>
+
+    <h3>Group addresses: the heart of KNX</h3>
+    <p>Normal operation uses <strong>group addresses</strong>, 16-bit numbers that stand for a function, not a device.
+      In the common three-level style they are written <code>main/middle/sub</code> (5 + 3 + 8 bits: 0–31 / 0–7 /
+      0–255). A typical scheme: main = floor or trade, middle = function, sub = room. Each value has a
+      <strong>datapoint type</strong> (DPT): DPT 1.001 on/off (1 bit), DPT 5.001 percentage (1 byte),
+      DPT 9.001 temperature (2-byte float).</p>
+
+    <figure class="viz" id="knxGa">
+      <div class="form-row">
+        <label>Group address<input id="gaIn" value="3/1/20"></label>
+      </div>
+      <div class="ga-bits" id="gaBits"></div>
+      <div class="readout" id="gaText"></div>
+      <div class="legend"><span><i style="background:var(--accent-soft)"></i>main (5 bits)</span><span><i style="background:var(--example-soft)"></i>middle (3 bits)</span><span><i style="background:var(--ok-soft)"></i>sub (8 bits)</span></div>
+    </figure>
+
+    <h3>Try it: who listens to which group?</h3>
+    <figure class="viz" id="knxDemo">
+      <div class="cmds" id="knxBtns"></div>
+      <svg viewBox="0 0 600 200" role="img" aria-label="Push buttons send group telegrams to actuator channels">
+        <line x1="20" y1="100" x2="580" y2="100" stroke="var(--ok)" stroke-width="4"/>
+        <text class="small" x="20" y="92">KNX TP line</text>
+        <g id="knxAct"></g>
+        <rect id="knxTg" x="20" y="88" width="70" height="24" rx="5" class="fill-accent" opacity="0"/>
+        <text id="knxTgT" x="55" y="105" text-anchor="middle" style="fill:#fff;font-size:11px;font-weight:700" opacity="0"></text>
+      </svg>
+      <div class="readout" id="knxText" style="font-family:var(--font)" aria-live="polite"></div>
+      <figcaption>One telegram, many listeners. A channel can listen to several groups ("all off" plus its own switch), but it sends status on exactly one.</figcaption>
+    </figure>
+
+    <h3>Bus access</h3>
+    <p>KNX TP uses CSMA/CA with bitwise arbitration. A logical 0 is dominant (the transmitter pulls the bus), a 1 is
+      recessive. If two devices start together, the one that sends a 1 while the bus shows 0 notices and backs off; the
+      winning telegram is not damaged. Telegram priority bits in the header make system and alarm telegrams win.</p>
+
+    <div class="callout example">A 40-room hotel: each room has a KNX room controller, a 4-channel switch actuator, a
+      blind actuator and a key-card switch. Group addresses follow <code>floor/function/room</code>: <code>2/0/14</code>
+      is "room 214 main light", <code>2/4/14</code> "room 214 occupancy". A KNX IP router per floor joins the lines over
+      the building network, and the BMS reads occupancy and temperatures through a KNXnet/IP interface.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">You replace a broken switch actuator with a new one of the same model. What must ETS download to it?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Push buttons are unchanged; they still send the same groups.">Nothing, push buttons will find it</button>
+        <button class="opt" data-opt="b" data-why="The new device needs the old individual address, parameters and group address associations.">The individual address, parameters and group associations of the old device</button>
+        <button class="opt" data-opt="c" data-why="Group addresses are project-wide; there is no per-device group table to rebuild for every other device.">A new group address for every function</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>KNX is decentralised: devices talk to group addresses, not to each other.</li>
+      <li>Individual address <code>area.line.device</code>; group address <code>main/middle/sub</code>.</li>
+      <li>TP: 9600 bit/s, bus-powered, 64 devices per segment. IP for backbones.</li>
+      <li>Every project lives in the ETS file. Keep it safe; without it, changes are painful.</li>
+    </ul>
+  </section>
+
+  <!-- 4.6 -->
+  <section class="lesson" id="s6" data-num="4.6">
+    <h2>4.6 DALI and DALI-2</h2>
+    <p><strong>DALI</strong> (Digital Addressable Lighting Interface, IEC 62386) is the standard digital interface for
+      LED drivers and ballasts. Instead of a 1–10 V wire per channel, every luminaire sits on a two-wire bus and is
+      addressed individually.</p>
+
+    <h3>The bus</h3>
+    <ul>
+      <li>Two wires, polarity-free, can run in the same cable as mains (it is not SELV-rated, so treat it as mains).</li>
+      <li>A bus power supply provides about 16 V (9.5–22.5 V allowed) and at most 250 mA.</li>
+      <li>1200 bit/s, Manchester (bi-phase) coded. Max 300 m and 2 V drop; 1.5 mm² cable is the usual choice.</li>
+      <li>Free topology: line, star, tree. No termination.</li>
+    </ul>
+
+    <h3>Addressing: 64, 16, 16</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Concept</th><th>Count</th><th>Stored in</th><th>Meaning</th></tr>
+      <tr><td>Short address</td><td>64 (0–63)</td><td>each driver</td><td>One driver, set during commissioning by random-address search</td></tr>
+      <tr><td>Group</td><td>16 (0–15)</td><td>each driver</td><td>A driver can be in any number of groups</td></tr>
+      <tr><td>Scene</td><td>16 (0–15)</td><td>each driver</td><td>A stored level per scene; "MASK" (255) means not part of it</td></tr>
+      <tr><td>Broadcast</td><td>1</td><td>—</td><td>All drivers on the line</td></tr>
+    </table></div>
+    <p>The key point: groups and scenes live <em>in the drivers</em>. "Recall scene 2" is one telegram; every driver
+      looks up its own stored level for scene 2 and fades to it at the same time. Scenes are therefore perfectly
+      synchronised, whatever the number of luminaires.</p>
+
+    <h3>The forward frame</h3>
+    <p>A command from the controller is a 16-bit forward frame: an address byte and a data byte. The address byte
+      encodes who is addressed:</p>
+    <ul>
+      <li><code>0AAAAAAS</code>: short address A (0–63)</li>
+      <li><code>100GGGGS</code>: group G (0–15)</li>
+      <li><code>1111111S</code>: broadcast</li>
+    </ul>
+    <p>The last bit S selects the meaning of the data byte. S = 0: direct arc power level (0–254). S = 1: a command,
+      e.g. 0x00 OFF, 0x05 RECALL MAX LEVEL, 0x10–0x1F GO TO SCENE 0–15. A driver can answer queries with an 8-bit
+      backward frame.</p>
+
+    <h3>Try it: groups and scenes</h3>
+    <figure class="viz" id="dali">
+      <p style="margin-top:0;font-size:14px">A meeting room with 8 luminaires. Click the G-chips to put a luminaire into
+        groups (window row = G0, wall row = G1, whiteboard = G2). Then send commands.</p>
+      <div class="lum-grid" id="daliLums"></div>
+      <div class="cmds" id="daliCmds"></div>
+      <div class="bytes" id="daliFrame"></div>
+      <div class="readout" id="daliText" style="font-family:var(--font)" aria-live="polite"></div>
+      <figcaption>Scenes are stored in each driver. "Presentation" leaves the whiteboard luminaires at full and dims the rest.</figcaption>
+    </figure>
+
+    <h3>Logarithmic dimming</h3>
+    <p>Arc power levels 1–254 map logarithmically to 0.1–100 % light output. The eye perceives brightness roughly
+      logarithmically, so equal steps in level look like equal steps in brightness. Level 0 is off.</p>
+    <figure class="viz" id="arc">
+      <label for="arcL"><strong>Arc power level: <output id="arcOut">200</output></strong></label>
+      <input type="range" id="arcL" min="0" max="254" value="200" style="width:100%">
+      <svg viewBox="0 0 600 180" role="img" aria-label="Logarithmic DALI dimming curve">
+        <line x1="50" y1="150" x2="580" y2="150" class="arrow"/><line x1="50" y1="10" x2="50" y2="150" class="arrow"/>
+        <path id="arcCurve" class="wire" stroke="var(--accent)" stroke-width="3"/>
+        <circle id="arcDot" r="6" class="fill-accent"/>
+        <text class="small" x="44" y="16" text-anchor="end">100%</text><text class="small" x="44" y="152" text-anchor="end">0</text>
+        <text class="small" x="50" y="170">0</text><text class="small" x="572" y="170">254</text>
+      </svg>
+      <div class="readout" id="arcText"></div>
+      <figcaption>Light output = 10<sup>(level − 1) / (253/3) − 1</sup> %. Level 127 is only about 3 %.</figcaption>
+    </figure>
+
+    <h3>DALI-2 and D4i</h3>
+    <p>The original DALI only standardised control gear (drivers). Sensors and buttons were proprietary.
+      <strong>DALI-2</strong> adds certified <em>control devices</em> (IEC 62386-103) and input devices: push buttons
+      (part 301), occupancy sensors (303), light sensors (304). They use 24-bit forward frames so they do not collide
+      with driver commands. Device types extend the gear: DT6 for LED, DT8 for colour (tunable white, RGBW).
+      <strong>D4i</strong> adds energy and diagnostic data inside the luminaire (power, operating hours, failures).</p>
+
+    <div class="callout example">An open-plan office floor: four DALI lines of 50 drivers each, a DALI-2 multi-master
+      application controller per line, DALI-2 presence and daylight sensors in the ceiling. Desks near the windows dim
+      automatically. A DALI-to-BACnet or DALI-to-MQTT gateway exposes groups and failure status to the BMS, which
+      only sends scenes and reads lamp failures, never individual levels.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A DALI line has 70 drivers. What is the problem?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="16 is the group count; drivers can share groups freely.">There are only 16 groups</button>
+        <button class="opt" data-opt="b" data-why="Bus power may also be tight, but the hard protocol limit is first.">The cable will be too long</button>
+        <button class="opt" data-opt="c" data-why="Only 64 short addresses exist per line. Split into two lines.">Only 64 short addresses exist per line</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>DALI: two wires, 1200 bit/s, bus-powered, free topology.</li>
+      <li>64 short addresses, 16 groups, 16 scenes per line; groups and scenes live in the drivers.</li>
+      <li>DALI-2 standardises sensors and buttons; DT8 adds colour, D4i adds diagnostics.</li>
+    </ul>
+  </section>
+
+  <!-- 4.7 -->
+  <section class="lesson" id="s7" data-num="4.7">
+    <h2>4.7 LON (legacy)</h2>
+    <p><strong>LonWorks</strong> (LON, Local Operating Network) was developed by Echelon in the late 1980s and
+      standardised as ISO/IEC 14908 (also EN 14908). Through the 1990s and 2000s it competed with BACnet for HVAC and
+      was popular in Europe for room automation, lighting and building services. New projects rarely choose it, but many
+      buildings still run on it, and you need to know enough to keep it alive or migrate it.</p>
+
+    <h3>How it works</h3>
+    <ul>
+      <li><strong>Neuron chip</strong>: devices historically used a dedicated processor running the LonTalk protocol
+        stack (later also other chips with the stack in software).</li>
+      <li><strong>FT-10 free topology</strong>: 78 kbit/s twisted pair, polarity-free, any topology (line, star, ring,
+        tree), with one terminator for free topology or two for bus topology. Up to about 500 m in free topology,
+        2700 m as a bus.</li>
+      <li><strong>Peer to peer</strong>: devices exchange <em>network variables</em> directly once they are
+        "bound" together, similar in spirit to KNX group addresses.</li>
+      <li><strong>SNVTs</strong> (Standard Network Variable Types): standardised types such as
+        <code>SNVT_temp_p</code> (temperature) or <code>SNVT_switch</code>, which made multi-vendor work possible.</li>
+      <li><strong>Engineering</strong>: a network database (LNS-based tools) holds every binding and address. Lose the
+        database, and changing the network becomes very hard.</li>
+    </ul>
+
+    <figure class="viz">
+      <svg viewBox="0 0 620 200" role="img" aria-label="LON free topology channel with router to an IP channel">
+        <rect class="box" x="20" y="20" width="120" height="50" rx="8"/><text x="80" y="42" text-anchor="middle">Supervisor</text><text class="small" x="80" y="60" text-anchor="middle">LON/IP</text>
+        <line x1="140" y1="45" x2="260" y2="45" class="arrow"/>
+        <rect class="box" x="260" y="20" width="110" height="50" rx="8"/><text x="315" y="42" text-anchor="middle">Router</text><text class="small" x="315" y="60" text-anchor="middle">IP-852 ↔ FT-10</text>
+        <path class="wire" stroke="var(--accent)" d="M315,70 V110 H120 V150 M315,110 H520 V150 M315,110 V150 M220,110 V150 M420,110 V170 H470"/>
+        <g>
+          <rect class="box" x="80" y="150" width="80" height="36" rx="6"/><text class="small" x="120" y="172" text-anchor="middle">VAV</text>
+          <rect class="box" x="180" y="150" width="80" height="36" rx="6"/><text class="small" x="220" y="172" text-anchor="middle">Fan coil</text>
+          <rect class="box" x="275" y="150" width="80" height="36" rx="6"/><text class="small" x="315" y="172" text-anchor="middle">Room unit</text>
+          <rect class="box" x="470" y="150" width="100" height="36" rx="6"/><text class="small" x="520" y="172" text-anchor="middle">I/O module</text>
+          <rect x="400" y="160" width="24" height="18" rx="3" class="fill-example-soft" stroke="var(--example)"/><text class="small" x="412" y="196" text-anchor="middle">term.</text>
+        </g>
+        <text class="small" x="420" y="100">FT-10 free topology, 78 kbit/s</text>
+      </svg>
+      <figcaption>Free topology: branches are allowed, with one terminator per channel.</figcaption>
+    </figure>
+
+    <h3>Living with LON</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Option</th><th>When it fits</th><th>Watch out for</th></tr>
+      <tr><td>Keep and maintain</td><td>System works, spares available</td><td>Tool licences, the network database, staff who know it</td></tr>
+      <tr><td>Gateway to BACnet/IP or MQTT</td><td>Field devices fine, supervisor must change</td><td>Mapping hundreds of network variables; gateway becomes a single point of failure</td></tr>
+      <tr><td>Staged replacement</td><td>Devices failing, no spares</td><td>Running two systems during migration; replace one channel at a time</td></tr>
+    </table></div>
+
+    <div class="callout example">A 1990s office tower with 800 LON fan coil controllers and a supervisor that no longer
+      receives updates. The owner keeps the field devices, installs LON/IP routers per riser and a gateway that exposes
+      setpoints and temperatures as BACnet/IP objects, and replaces controllers floor by floor during tenant fit-outs.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Taking over a LON site, what is the single most valuable thing to obtain from the previous integrator?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Bindings, addresses and configuration live in the database. Without it you must reverse-engineer the network.">The LNS network database</button>
+        <button class="opt" data-opt="b" data-why="Useful, but the logical configuration matters more.">A spare Neuron chip</button>
+        <button class="opt" data-opt="c" data-why="The bus wiring is visible on site; the logical bindings are not.">Cable routing drawings only</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>LON: ISO/IEC 14908, peer-to-peer network variables, SNVTs, FT-10 free topology at 78 kbit/s.</li>
+      <li>Legacy today: keep, gateway or migrate in stages.</li>
+      <li>The network database is the system. Secure it first.</li>
+    </ul>
+  </section>
+
+  <!-- 4.8 -->
+  <section class="lesson" id="s8" data-num="4.8">
+    <h2>4.8 OpenTherm and boiler buses (eBUS, OT)</h2>
+    <p>A room thermostat can switch a boiler on and off with a relay. That throws away most of a modern condensing
+      boiler's efficiency, because it then always fires at a fixed flow temperature. Boiler buses let the controller ask
+      for <em>how much</em> heat, and read back what the boiler is doing.</p>
+
+    <h3>OpenTherm</h3>
+    <p><strong>OpenTherm</strong> (OT), maintained by the OpenTherm Association, is a point-to-point protocol between
+      one <strong>master</strong> (room controller, BMS interface) and one <strong>slave</strong> (boiler, heat
+      pump). It uses the existing two thermostat wires, polarity-free, and powers the thermostat from the boiler.</p>
+    <ul>
+      <li><strong>Master → slave</strong>: voltage levels (low &lt; 7 V, high 15–18 V).</li>
+      <li><strong>Slave → master</strong>: current levels (low 5–9 mA, high 17–23 mA).</li>
+      <li>Manchester coding, 1000 bit/s. The master must send a frame at least once a second; the slave answers within
+        20–800 ms.</li>
+      <li>If communication stops, the boiler falls back after a timeout, and many boilers then accept the same two wires as a
+        simple on/off contact.</li>
+    </ul>
+
+    <h3>The 32-bit frame</h3>
+    <p>Every message is one 32-bit frame: parity (1 bit, even parity over the whole frame), message type (3), spare
+      (4), <strong>Data-ID</strong> (8) and <strong>data value</strong> (16). Data-IDs are standardised: ID 0 is the
+      status exchange, ID 1 is the control setpoint (the flow temperature the master wants), ID 17 is relative
+      modulation level, ID 25 boiler flow temperature. Temperatures use the <code>f8.8</code> format: a signed 16-bit
+      number divided by 256.</p>
+
+    <figure class="viz" id="ot">
+      <div class="form-row">
+        <label>Message<select id="otId">
+          <option value="1">Write ID 1 · control setpoint</option>
+          <option value="25">Read ID 25 · boiler flow temperature</option>
+          <option value="17">Read ID 17 · relative modulation</option>
+          <option value="28">Read ID 28 · return water temperature</option>
+        </select></label>
+        <label>Value (°C or %)<input type="number" id="otVal" step="0.5" value="55"></label>
+      </div>
+      <div><strong style="font-size:13px">Master request</strong></div>
+      <div class="bitrow" id="otReq"></div>
+      <div><strong style="font-size:13px">Slave response</strong></div>
+      <div class="bitrow" id="otRes"></div>
+      <div class="legend"><span><i style="background:var(--bad-soft)"></i>parity</span><span><i style="background:var(--example-soft)"></i>msg type</span><span><i style="background:var(--surface-2)"></i>spare</span><span><i style="background:var(--accent-soft)"></i>Data-ID</span><span><i style="background:var(--ok-soft)"></i>value (f8.8)</span></div>
+      <div class="readout" id="otText" style="font-family:var(--font)"></div>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Msg type</th><th>Bits</th><th>Sent by</th></tr>
+      <tr><td>READ-DATA</td><td>000</td><td>master</td></tr>
+      <tr><td>WRITE-DATA</td><td>001</td><td>master</td></tr>
+      <tr><td>READ-ACK</td><td>100</td><td>slave</td></tr>
+      <tr><td>WRITE-ACK</td><td>101</td><td>slave</td></tr>
+      <tr><td>DATA-INVALID</td><td>110</td><td>slave</td></tr>
+      <tr><td>UNKNOWN-DATAID</td><td>111</td><td>slave</td></tr>
+    </table></div>
+
+    <h3>eBUS</h3>
+    <p><strong>eBUS</strong> (energy bus) is a German two-wire bus used by several boiler and heat pump makers (Vaillant
+      and Wolf, among others) to link boilers, controllers, mixer modules and solar controllers. Unlike OpenTherm it is a
+      real <strong>multi-master bus</strong>: 2400 bit/s, about 15–24 V, polarity-free. Devices arbitrate by sending
+      their address byte after a SYN symbol (0xAA); the lower address wins. The framing is open, but most message
+      contents are manufacturer-specific, so integration usually relies on community-decoded message definitions (for
+      example the ebusd project) or the vendor's own gateway.</p>
+
+    <h3>Other routes into a boiler</h3>
+    <ul>
+      <li><strong>0–10 V input</strong>: setpoint or burner output demand as an analog signal (see 4.9).</li>
+      <li><strong>Modbus</strong>: commercial boilers and cascade controllers often offer Modbus RTU or TCP via an
+        option card.</li>
+      <li><strong>Vendor buses</strong>: e.g. proprietary two-wire buses; only the vendor's gateway can talk to them.</li>
+    </ul>
+
+    <figure class="viz">
+      <svg viewBox="0 0 620 170" role="img" aria-label="OpenTherm point-to-point compared with eBUS multi-master">
+        <text class="big" x="150" y="20" text-anchor="middle">OpenTherm</text>
+        <rect class="box" x="20" y="50" width="100" height="50" rx="8"/><text x="70" y="80" text-anchor="middle">Master</text>
+        <rect class="box" x="180" y="50" width="100" height="50" rx="8"/><text x="230" y="80" text-anchor="middle">Boiler</text>
+        <path class="wire" stroke="var(--accent)" d="M120,68 H180"/><path class="wire" stroke="var(--ok)" d="M180,84 H120"/>
+        <text class="small" x="150" y="125" text-anchor="middle">one master, one slave</text>
+        <text class="big" x="460" y="20" text-anchor="middle">eBUS</text>
+        <line x1="320" y1="120" x2="600" y2="120" stroke="var(--accent)" stroke-width="3"/>
+        <rect class="box" x="320" y="50" width="80" height="40" rx="6"/><text class="small" x="360" y="74" text-anchor="middle">Boiler</text>
+        <rect class="box" x="420" y="50" width="80" height="40" rx="6"/><text class="small" x="460" y="74" text-anchor="middle">Controller</text>
+        <rect class="box" x="520" y="50" width="80" height="40" rx="6"/><text class="small" x="560" y="74" text-anchor="middle">Mixer</text>
+        <path class="muted-s wire" d="M360,90 V120 M460,90 V120 M560,90 V120"/>
+        <text class="small" x="460" y="145" text-anchor="middle">many masters, arbitration by address</text>
+      </svg>
+    </figure>
+
+    <div class="callout example">A small office with a 30 kW wall-hung condensing boiler: the BMS talks to an
+      OpenTherm gateway (an OT master with Modbus or MQTT on the other side). The BMS sends ID 1 = 48 °C when the
+      weather-compensated curve asks for it, and reads ID 25 (flow), ID 28 (return) and ID 17 (modulation) for trends
+      and fault detection. When the gateway fails, the boiler falls back to its own outdoor-sensor curve.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Why is OpenTherm better than an on/off relay for a condensing boiler?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="OpenTherm is slower than a relay, not faster.">It switches the burner faster</button>
+        <button class="opt" data-opt="b" data-why="Low flow temperatures keep return water cool, so the boiler condenses and modulates instead of cycling.">The master can ask for a lower flow temperature so the boiler modulates and condenses</button>
+        <button class="opt" data-opt="c" data-why="Both use two wires.">It needs fewer wires</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>OpenTherm: point-to-point, two wires, 32-bit frames, one frame per second, f8.8 temperatures.</li>
+      <li>ID 1 = control setpoint, ID 25 = flow temperature, ID 17 = modulation.</li>
+      <li>eBUS: multi-master, 2400 bit/s, largely vendor-specific content.</li>
+    </ul>
+  </section>
+
+  <!-- 4.9 -->
+  <section class="lesson" id="s9" data-num="4.9">
+    <h2>4.9 Analog and dry-contact I/O: 0–10 V, 4–20 mA, relays</h2>
+    <p>Below every bus there is still copper carrying a single value. Analog and binary I/O is simple, universal and
+      needs no configuration, but every wire carries exactly one value and the controller must know the scaling.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Signal</th><th>Typical use</th><th>Strengths</th><th>Weaknesses</th></tr>
+      <tr><td><strong>0–10 V</strong></td><td>Valve and damper actuators, EC fans, VFD speed</td><td>Cheap, simple, common in HVAC</td><td>Voltage drop and ground offsets add error; 0 V is indistinguishable from a broken wire</td></tr>
+      <tr><td><strong>2–10 V</strong></td><td>Same, with live zero</td><td>Below ~1 V means fault</td><td>Still sensitive to ground offsets</td></tr>
+      <tr><td><strong>4–20 mA</strong></td><td>Pressure, CO₂, level, flow transmitters</td><td>Immune to cable resistance, live zero, long runs</td><td>Needs loop supply and compliance voltage</td></tr>
+      <tr><td><strong>PT1000 / NTC</strong></td><td>Temperature sensors</td><td>Passive, cheap</td><td>Cable resistance adds error (PT1000: ~0.26 °C per ohm)</td></tr>
+      <tr><td><strong>Dry contact</strong></td><td>Status, alarms, enables</td><td>Simplest possible signal</td><td>One bit per pair; choose NO or NC deliberately</td></tr>
+    </table></div>
+
+    <h3>Why current beats voltage on long runs</h3>
+    <p>In a current loop, the same current flows through every part of the series circuit. Cable resistance does not
+      change it, as long as the supply has enough voltage left to push it ("compliance"). A voltage signal is measured
+      against the controller's ground: any current flowing in a shared return wire, or a ground difference between
+      panels, adds directly to the reading.</p>
+
+    <figure class="viz" id="sig">
+      <label for="sigL"><strong>Cable length: <output id="sigLOut">100</output> m</strong> (0.75 mm²)</label>
+      <input type="range" id="sigL" min="10" max="1000" step="10" value="100" style="width:100%">
+      <label for="sigI"><strong>Other current in the shared 0 V return: <output id="sigIOut">0.3</output> A</strong></label>
+      <input type="range" id="sigI" min="0" max="2" step="0.05" value="0.3" style="width:100%">
+      <div id="sigBars"></div>
+      <div class="readout" id="sigText" style="font-family:var(--font)"></div>
+      <figcaption>Sensor reads 50 % in both cases. 0–10 V: the drop on the shared return (the actuator's 24 V AC supply also uses it) shifts the reading. 4–20 mA: 24 V loop supply, 250 Ω input, transmitter needs 10 V minimum.</figcaption>
+    </figure>
+
+    <h3>Relays and dry contacts</h3>
+    <p>A <strong>dry contact</strong> is a switch with no voltage of its own; the input supplies it. Choose the contact
+      type for the failure you care about:</p>
+    <ul>
+      <li><strong>Normally closed (NC) for alarms.</strong> A broken wire looks like an alarm, so faults are never
+        silent. Fire, frost and high-pressure trips are wired this way.</li>
+      <li><strong>Normally open (NO) for status.</strong> "Pump running" closes when true.</li>
+      <li><strong>Outputs</strong>: relays switch the coil of a contactor or a 24 V enable, not the motor directly.
+        Check the contact rating, and use an interposing relay for anything inductive or at mains voltage.</li>
+    </ul>
+
+    <figure class="viz" id="nc">
+      <div class="controls seg" role="group" aria-label="Contact type">
+        <button data-c="nc" aria-pressed="true">NC alarm contact</button><button data-c="no">NO alarm contact</button>
+      </div>
+      <div class="controls seg" role="group" aria-label="Situation">
+        <button data-s="ok" aria-pressed="true">Normal</button><button data-s="alarm">Real alarm</button><button data-s="cut">Wire cut</button>
+      </div>
+      <svg viewBox="0 0 600 120" role="img" aria-label="Alarm contact circuit">
+        <rect class="box" x="20" y="30" width="120" height="60" rx="8"/><text x="80" y="56" text-anchor="middle">Controller</text><text class="small" x="80" y="74" text-anchor="middle">DI</text>
+        <path class="stroke wire" d="M140,45 H300 M140,75 H440 V45 H360"/>
+        <line id="ncSw" x1="300" y1="45" x2="360" y2="45" class="stroke wire" style="stroke-width:3"/>
+        <g id="ncCut"><line x1="210" y1="35" x2="230" y2="55" stroke="var(--bad)" stroke-width="3"/><line x1="230" y1="35" x2="210" y2="55" stroke="var(--bad)" stroke-width="3"/></g>
+        <text class="small" x="330" y="25" text-anchor="middle">frost thermostat</text>
+        <rect id="ncLamp" x="480" y="40" width="100" height="40" rx="6"/>
+        <text id="ncLampT" x="530" y="65" text-anchor="middle"></text>
+      </svg>
+      <div class="readout" id="ncText" style="font-family:var(--font)" aria-live="polite"></div>
+    </figure>
+
+    <h3>Exercise: pick the signal</h3>
+    <div class="classify" data-cats="0–10 V,4–20 mA,Dry contact,PT1000">
+      <div class="item" data-cat="0–10 V" data-why="Modulating HVAC actuators are typically 0–10 V or 2–10 V."><span class="label">Modulating mixing valve actuator in the plant room</span></div>
+      <div class="item" data-cat="4–20 mA" data-why="A transmitter 300 m away across the site: current loop."><span class="label">Tank level transmitter 300 m from the controller</span></div>
+      <div class="item" data-cat="Dry contact" data-why="A status contact from the motor starter, NO."><span class="label">Pump running feedback from the motor starter</span></div>
+      <div class="item" data-cat="PT1000" data-why="A passive resistance sensor, read directly by the controller."><span class="label">Supply air temperature sensor in the AHU</span></div>
+      <div class="item" data-cat="Dry contact" data-why="Wired NC so a broken wire alarms."><span class="label">Frost thermostat trip</span></div>
+      <div class="item" data-cat="0–10 V" data-why="EC fans usually accept a 0–10 V speed reference."><span class="label">EC fan speed reference</span></div>
+    </div>
+
+    <div class="callout example">A typical office AHU controller has about 30 I/O points: PT1000 sensors for supply,
+      return, outdoor and frost temperatures; 0–10 V outputs to the heating valve, cooling valve, damper actuators and EC
+      fans; a 4–20 mA duct pressure transmitter; NC contacts for frost thermostat, fire damper end switches and fan
+      faults; NO contacts for fan running; and relay outputs enabling the fans and the heat recovery wheel.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A 0–10 V damper feedback reads 0.4 V too high, and the error grows when the actuators move. Likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Actuator supply current flows in the same 0 V wire as the signal and adds a voltage drop. Use a separate signal common.">Actuator supply current sharing the signal's 0 V wire</button>
+        <button class="opt" data-opt="b" data-why="A wrong scaling factor gives a proportional error, not one that changes with actuator movement.">Wrong scaling in the controller</button>
+        <button class="opt" data-opt="c" data-why="A broken wire gives 0 V, not a small offset.">A broken signal wire</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>0–10 V is cheap but sensitive to ground offsets. 4–20 mA ignores cable resistance and detects breaks.</li>
+      <li>Give voltage signals their own signal common; never share it with actuator supply current.</li>
+      <li>Wire alarms NC so a broken wire is never silent.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. Where should the 120 Ω termination resistors on an RS-485 bus go?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Terminating every device would load the bus far too much.">At every device</button>
+        <button class="opt" data-opt="b" data-why="Only the two physical ends of the daisy chain.">At the two physical ends of the cable</button>
+        <button class="opt" data-opt="c" data-why="One end leaves reflections from the other.">Only at the master</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. In the Modbus RTU frame <code>01 03 00 00 00 0A C5 CD</code>, what is <code>00 0A</code>?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The slave address is the first byte, 01.">The slave address</button>
+        <button class="opt" data-opt="b" data-why="The start offset is the preceding 00 00.">The start register</button>
+        <button class="opt" data-opt="c" data-why="The quantity of registers to read: 10.">The number of registers to read</button>
+        <button class="opt" data-opt="d" data-why="The CRC is the last two bytes, C5 CD.">The CRC</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. A KNX push button switches four lights in different rooms. How?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="All four actuator channels listen to the same group address.">It sends one telegram to a group address all four channels listen to</button>
+        <button class="opt" data-opt="b" data-why="Individual addresses are for programming, not normal operation.">It sends four telegrams to four individual addresses</button>
+        <button class="opt" data-opt="c" data-why="KNX has no central controller.">A central controller relays the command</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. A DALI "go to scene 3" command reaches 40 drivers. Where is each driver's level for scene 3 stored?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The controller sends one command, not 40 levels.">In the DALI controller</button>
+        <button class="opt" data-opt="b" data-why="The power supply only powers the bus.">In the bus power supply</button>
+        <button class="opt" data-opt="c" data-why="The BMS may trigger scenes, but does not store levels in DALI.">In the BMS</button>
+        <button class="opt" data-opt="d" data-why="Each driver stores its own 16 scene levels.">In each driver</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. A pressure transmitter sits 400 m from the controller. Which signal do you choose?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="0–10 V suffers from voltage drop and ground offsets at that length.">0–10 V</button>
+        <button class="opt" data-opt="b" data-why="Current is unaffected by cable resistance and 4 mA live zero detects a break.">4–20 mA</button>
+        <button class="opt" data-opt="c" data-why="A dry contact carries only on/off.">Dry contact</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="03-networking.html">← Chapter 03</a>
+    <a class="btn" href="05-ip-iot-protocols.html">Chapter 05 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 4 visualizations.
+const hex2 = (n) => n.toString(16).toUpperCase().padStart(2, "0");
+
+// 4.1 Differential signalling with common-mode noise.
+(() => {
+  const r = document.getElementById("noise"), out = document.getElementById("noiseOut");
+  const BITS = [1, 0, 1, 1, 0, 0, 1, 0];
+  const X0 = 70, W = 520;
+  const bitAt = (x) => BITS[Math.min(BITS.length - 1, Math.floor(((x - X0) / W) * BITS.length))];
+  const noiseAt = (x) => Math.sin(x / 9) * 0.6 + Math.sin(x / 3.7 + 1) * 0.4;
+  const draw = () => {
+    const n = Number(r.value);
+    out.textContent = n.toFixed(1);
+    let a = "", b = "", d = "";
+    for (let x = X0; x <= X0 + W; x += 2) {
+      const bit = bitAt(x), nz = noiseAt(x) * n * 6;
+      const s = bit ? 1 : -1;
+      // B swings positive for a 1, A the opposite.
+      a += `${x === X0 ? "M" : "L"}${x},${40 - s * 10 + nz}`;
+      b += `${x === X0 ? "M" : "L"}${x},${110 - (-s) * 10 + nz - 0}`;
+      d += `${x === X0 ? "M" : "L"}${x},${190 - s * 22}`;
+    }
+    document.getElementById("dA").setAttribute("d", a);
+    document.getElementById("dB").setAttribute("d", b);
+    document.getElementById("dD").setAttribute("d", d);
+    document.getElementById("diffText").textContent = n < 0.2
+      ? "No noise: A and B are clean mirror images."
+      : `±${n.toFixed(1)} V of noise on each wire. A single-ended receiver ${n >= 1 ? "would see noise larger than the signal and flip bits" : "would already lose margin"}. Differential: B − A unchanged.`;
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 4.1 RS-485 bus builder.
+(() => {
+  const fig = document.getElementById("bus");
+  const st = { topo: "chain", term: "0", bias: "0" };
+  const FRAME = [0, 1, 0, 1, 1, 0, 0, 1, 0, 1]; // start, 8 data (LSB first), stop
+  const X0 = 60, X1 = 590, IDLE = 2, NB = FRAME.length + IDLE * 2;
+  const bw = (X1 - X0) / NB;
+  const topo = () => {
+    const svg = document.getElementById("busTopo");
+    const t = Number(st.term), star = st.topo === "star";
+    let g = `<rect class="box" x="10" y="45" width="70" height="40" rx="6"/><text x="45" y="70" text-anchor="middle">Master</text>`;
+    if (!star) {
+      g += `<path class="stroke wire" d="M80,58 H560 M80,72 H560"/>`;
+      [170, 270, 370, 470, 560].forEach((x, i) => {
+        g += `<path class="muted-s wire" d="M${x - 6},58 V95 M${x + 6},72 V95"/><rect class="box" x="${x - 30}" y="95" width="60" height="28" rx="5"/><text class="small" x="${x}" y="113" text-anchor="middle">Slave ${i + 1}</text>`;
+      });
+      if (t >= 1) g += `<rect x="540" y="22" width="40" height="18" rx="3" class="fill-ok"/><text x="560" y="35" text-anchor="middle" style="fill:#fff;font-size:10px">120 Ω</text><path class="muted-s wire" d="M560,40 V58"/>`;
+      if (t >= 2) g += `<rect x="84" y="22" width="40" height="18" rx="3" class="fill-ok"/><text x="104" y="35" text-anchor="middle" style="fill:#fff;font-size:10px">120 Ω</text><path class="muted-s wire" d="M104,40 V58"/>`;
+    } else {
+      g += `<path class="stroke wire" d="M80,65 H200"/>`;
+      [[320, 15], [380, 50], [360, 95], [460, 70], [520, 20]].forEach(([x, y], i) => {
+        g += `<path class="stroke wire" d="M200,65 L${x - 30},${y + 14}"/><rect class="box" x="${x - 30}" y="${y}" width="60" height="28" rx="5"/><text class="small" x="${x}" y="${y + 18}" text-anchor="middle">Slave ${i + 1}</text>`;
+      });
+      g += `<circle cx="200" cy="65" r="5" class="fill-text"/><text class="small" x="200" y="120" text-anchor="middle">star point: 5 branches</text>`;
+      if (t >= 1) g += `<rect x="530" y="0" width="40" height="16" rx="3" class="fill-ok"/><text x="550" y="12" text-anchor="middle" style="fill:#fff;font-size:10px">120 Ω</text>`;
+      if (t >= 2) g += `<rect x="84" y="40" width="40" height="16" rx="3" class="fill-ok"/><text x="104" y="52" text-anchor="middle" style="fill:#fff;font-size:10px">120 Ω</text>`;
+    }
+    if (st.bias === "1") g += `<text class="small" x="45" y="38" text-anchor="middle" style="fill:var(--accent)">bias ↑↓</text>`;
+    svg.innerHTML = g;
+  };
+  const wave = () => {
+    const t = Number(st.term), star = st.topo === "star", bias = st.bias === "1";
+    // Ringing amplitude (in volts) and decay per scenario.
+    let ring = [1.4, 0.7, 0.05][t];
+    if (star) ring = Math.max(ring, 0) + (t === 2 ? 0.9 : 0.5);
+    const amp = t === 2 ? 2.0 : t === 1 ? 2.4 : 2.8;
+    // Idle level: bias gives a clear +; two terminations without bias sit near 0.
+    const idle = bias ? (t === 2 ? 0.3 : 0.9) : 0;
+    const Y = (v) => 90 - v * 18;
+    const levelAt = (k) => (k < IDLE || k >= IDLE + FRAME.length) ? null : (FRAME[k - IDLE] ? amp : -amp);
+    const vAt = (x) => {
+      const k = Math.floor((x - X0) / bw), tin = (x - X0) - k * bw;
+      const lv = levelAt(k);
+      let v = lv === null ? idle + (bias ? 0 : Math.sin(x * 1.3) * 0.15 + Math.sin(x * 0.37) * 0.12) : lv;
+      // Ringing after each edge.
+      const prev = levelAt(k - 1), cur = lv;
+      const pv = prev === null ? idle : prev, cv = cur === null ? idle : cur;
+      if (k > 0 && pv !== cv) {
+        const sign = cv > pv ? -1 : 1;
+        v += sign * ring * Math.exp(-tin / (star ? 14 : 9)) * Math.cos(tin / (star ? 2.6 : 3.2)) * 1.6;
+      }
+      return v;
+    };
+    let d = "";
+    for (let x = X0; x <= X1; x += 1) d += `${x === X0 ? "M" : "L"}${x},${Y(vAt(x)).toFixed(1)}`;
+    document.getElementById("busWave").setAttribute("d", d);
+    let dots = "", errs = 0, idleBad = 0;
+    for (let k = 0; k < NB; k++) {
+      // Sample early in the bit to expose ringing, like a UART at 1/2 bit with a long cable.
+      const x = X0 + k * bw + bw * 0.28, v = vAt(x);
+      const exp = levelAt(k) === null ? 1 : (levelAt(k) > 0 ? 1 : 0);
+      const got = v > 0.2 ? 1 : v < -0.2 ? 0 : null;
+      const ok = got === exp;
+      if (!ok) { if (levelAt(k) === null) idleBad++; else errs++; }
+      dots += `<circle cx="${x}" cy="${Y(v)}" r="4" class="${ok ? "fill-ok" : "fill-bad"}"/>`;
+    }
+    document.getElementById("busSamples").innerHTML = dots;
+    const msgs = [];
+    if (star) msgs.push("Star: each branch reflects the edge, termination cannot match all ends.");
+    else if (t === 0) msgs.push("Unterminated: edges bounce off the open ends and ring.");
+    else if (t === 1) msgs.push("One end terminated: the far reflection is gone, the near end still reflects.");
+    else msgs.push("Both ends terminated: edges are absorbed, clean bits.");
+    msgs.push(bias ? "Bias holds the idle bus above +0.2 V (logic 1)." : "No bias: the idle bus floats inside ±0.2 V and noise can fake a start bit.");
+    document.getElementById("busText").innerHTML = msgs.join(" ") + `<br>Data bit errors: <span class="${errs ? "bad-t" : "ok-t"}">${errs}</span> · undefined idle samples: <span class="${idleBad ? "bad-t" : "ok-t"}">${idleBad}</span>`;
+  };
+  const render = () => {
+    fig.querySelectorAll("[data-k]").forEach((b) => b.setAttribute("aria-pressed", st[b.dataset.k] === b.dataset.v));
+    topo(); wave();
+  };
+  fig.querySelectorAll("[data-k]").forEach((b) => b.addEventListener("click", () => { st[b.dataset.k] = b.dataset.v; render(); }));
+  render();
+})();
+
+// Modbus CRC-16: poly 0xA001, init 0xFFFF.
+function crc16(bytes) {
+  let crc = 0xffff;
+  for (const b of bytes) {
+    crc ^= b;
+    for (let i = 0; i < 8; i++) crc = crc & 1 ? (crc >>> 1) ^ 0xa001 : crc >>> 1;
+  }
+  return crc;
+}
+const byteBox = (v, lab, k) => `<div class="byte ${k || ""}"><b>${hex2(v)}</b><span>${lab}</span></div>`;
+
+// 4.2 Modbus frame builder.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v) || 0)));
+  const draw = () => {
+    const addr = clamp($("mbAddr").value, 0, 247), fc = Number($("mbFc").value);
+    const reg = clamp($("mbReg").value, 0, 65535);
+    let q = clamp($("mbQty").value, 0, 65535);
+    const lab = $("mbQtyL").firstChild;
+    const bytes = [[addr, "slave", "k-addr"], [fc, "function", "k-fc"], [reg >> 8, "addr hi"], [reg & 255, "addr lo"]];
+    let note = "";
+    if (fc <= 4) {
+      lab.textContent = "Quantity";
+      const max = fc <= 2 ? 2000 : 125;
+      if (q < 1 || q > max) note = `Quantity must be 1–${max} for FC ${fc}; a slave would answer exception 03. `;
+      bytes.push([q >> 8, "qty hi"], [q & 255, "qty lo"]);
+      const resp = fc <= 2 ? Math.ceil(q / 8) : q * 2;
+      note += `Response: ${addr}, ${fc}, byte count ${resp}, then ${resp} data bytes, CRC.`;
+    } else if (fc === 5) {
+      lab.textContent = "Value (0 = off, 1 = on)";
+      const v = q ? 0xff00 : 0x0000;
+      bytes.push([v >> 8, "value hi"], [v & 255, "value lo"]);
+      note = "FC 05 uses FF 00 for ON and 00 00 for OFF. The response echoes the request.";
+    } else if (fc === 6) {
+      lab.textContent = "Value";
+      bytes.push([q >> 8, "value hi"], [q & 255, "value lo"]);
+      note = `Writes ${q} (0x${q.toString(16).toUpperCase()}). With a ×0.1 scale that is ${(q / 10).toFixed(1)}. The response echoes the request.`;
+    } else {
+      lab.textContent = "Value (written to 2 registers)";
+      bytes.push([0, "qty hi"], [2, "qty lo"], [4, "byte count"], [q >> 8, "reg1 hi"], [q & 255, "reg1 lo"], [q >> 8, "reg2 hi"], [q & 255, "reg2 lo"]);
+      note = "FC 16 adds quantity, byte count and the values. The response returns address and quantity only.";
+    }
+    if (addr === 0) note = "Address 0 = broadcast: every slave executes the write, none answers. " + (fc <= 4 ? "Reads make no sense as broadcast. " : "") + note;
+    const raw = bytes.map((b) => b[0]);
+    const c = crc16(raw);
+    bytes.push([c & 255, "CRC lo", "k-crc"], [c >> 8, "CRC hi", "k-crc"]);
+    $("mbBytes").innerHTML = bytes.map(([v, l, k]) => byteBox(v, l, k)).join("");
+    $("mbHex").textContent = bytes.map((b) => hex2(b[0])).join(" ");
+    const chars = bytes.length;
+    $("mbNote").textContent = note + ` On the wire at 9600 8E1: ${chars} bytes × 11 bits ≈ ${(chars * 11 / 9.6).toFixed(1)} ms.`;
+  };
+  ["mbAddr", "mbFc", "mbReg", "mbQty"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 4.2 Modbus frame decoder.
+(() => {
+  const fig = document.getElementById("mbDec");
+  const inp = document.getElementById("mbHexIn");
+  let dir = "res";
+  const EXC = { 1: "Illegal function", 2: "Illegal data address", 3: "Illegal data value", 4: "Server device failure", 6: "Server device busy" };
+  const NAME = { 1: "Read coils", 2: "Read discrete inputs", 3: "Read holding registers", 4: "Read input registers", 5: "Write single coil", 6: "Write single register", 15: "Write multiple coils", 16: "Write multiple registers" };
+  const draw = () => {
+    fig.querySelectorAll("[data-dir]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.dir === dir));
+    const parts = inp.value.trim().split(/[\s,]+/).filter(Boolean);
+    const b = parts.map((p) => parseInt(p, 16));
+    const out = document.getElementById("mbDecBytes"), txt = document.getElementById("mbDecText");
+    if (b.length < 4 || b.some((v) => isNaN(v) || v < 0 || v > 255)) { out.innerHTML = ""; txt.textContent = "Enter at least 4 hex bytes, e.g. 01 03 00 00 00 0A C5 CD."; return; }
+    const body = b.slice(0, -2), c = crc16(body);
+    const crcOk = (c & 255) === b[b.length - 2] && (c >> 8) === b[b.length - 1];
+    const fc = b[1], labels = ["slave", "function"], lines = [`Slave ${b[0]}${b[0] === 0 ? " (broadcast)" : ""}.`];
+    if (fc & 0x80) {
+      labels.push("exception");
+      lines.push(`Exception response to FC ${fc & 0x7f}: code ${b[2]} ${EXC[b[2]] || "(unknown)"}.`);
+    } else if (dir === "req" || fc === 5 || fc === 6 || fc === 15 || fc === 16) {
+      labels.push("addr hi", "addr lo", fc === 5 || fc === 6 ? "value hi" : "qty hi", fc === 5 || fc === 6 ? "value lo" : "qty lo");
+      const a = (b[2] << 8) | b[3], v = (b[4] << 8) | b[5];
+      lines.push(`${NAME[fc] || "FC " + fc}: offset ${a} (classic ${fc <= 2 || fc === 5 || fc === 15 ? (fc === 2 ? 10001 : 1) + a : (fc === 4 ? 30001 : 40001) + a}), ${fc === 5 || fc === 6 ? "value " + v + (fc === 6 && v > 32767 ? ` (signed ${v - 65536})` : "") : "quantity " + v}.`);
+      if (dir === "res") lines.push("Write responses echo the request.");
+    } else {
+      labels.push("byte count");
+      const n = b[2];
+      if (fc === 3 || fc === 4) {
+        const regs = [];
+        for (let i = 0; i < n; i += 2) { labels.push(`reg ${i / 2} hi`, `reg ${i / 2} lo`); regs.push((b[3 + i] << 8) | b[4 + i]); }
+        lines.push(`${NAME[fc]}: ${n} bytes = ${regs.length} registers: ` + regs.map((r) => `${r}${r > 32767 ? ` (signed ${r - 65536})` : ""} → ×0.1 = ${((r > 32767 ? r - 65536 : r) / 10).toFixed(1)}`).join("; ") + ".");
+      } else {
+        for (let i = 0; i < n; i++) labels.push("bits");
+        lines.push(`${NAME[fc] || "FC " + fc}: ${n} bytes of bit states, LSB = first point.`);
+      }
+    }
+    out.innerHTML = b.map((v, i) => {
+      const crc = i >= b.length - 2;
+      return byteBox(v, crc ? (i === b.length - 2 ? "CRC lo" : "CRC hi") : (labels[i] || "data"), crc ? (crcOk ? "k-crc" : "k-bad") : i === 0 ? "k-addr" : i === 1 ? "k-fc" : "");
+    }).join("");
+    lines.push(crcOk ? "CRC OK." : `CRC mismatch: expected ${hex2(c & 255)} ${hex2(c >> 8)}. A real slave silently discards this frame, so the master sees a timeout.`);
+    txt.innerHTML = lines.join(" ").replace("CRC OK.", '<span class="ok-t">CRC OK.</span>').replace(/CRC mismatch/, '<span class="bad-t">CRC mismatch</span>');
+  };
+  fig.querySelectorAll("[data-dir]").forEach((x) => x.addEventListener("click", () => { dir = x.dataset.dir; draw(); }));
+  fig.querySelectorAll("[data-ex]").forEach((x) => x.addEventListener("click", () => { inp.value = x.dataset.ex; dir = x.dataset.d; draw(); }));
+  inp.addEventListener("input", draw);
+  draw();
+})();
+
+// 4.3 M-Bus sizing.
+(() => {
+  const n = document.getElementById("mbN"), l = document.getElementById("mbL");
+  const draw = () => {
+    const N = Number(n.value), L = Number(l.value);
+    document.getElementById("mbNOut").textContent = N;
+    document.getElementById("mbLOut").textContent = L;
+    const quiet = N * 1.5, peak = quiet + 20; // mA; one meter answering at a time
+    const loop = 2 * L * 0.036; // ohms, both wires
+    const drop = (peak / 1000) * loop;
+    const bars = [
+      ["Quiescent", quiet, 400, `${quiet.toFixed(0)} mA`, quiet > 375],
+      ["Peak (answer)", peak, 400, `${peak.toFixed(0)} mA`, peak > 395],
+      ["Voltage drop", drop, 15, `${drop.toFixed(1)} V`, drop > 10],
+    ];
+    document.getElementById("mbBars").innerHTML = bars.map(([name, v, max, s, bad]) =>
+      `<div class="meter"><span>${name}</span><div class="track"><div class="fill ${bad ? "bad" : ""}" style="width:${Math.min(100, (v / max) * 100)}%"></div></div><span class="v">${s}</span></div>`).join("");
+    document.getElementById("mbText").innerHTML = drop > 10
+      ? `<span class="bad-t">Too much drop.</span> The far meters may not see a valid mark level. Use thicker cable, a more central master or a repeater.`
+      : `<span class="ok-t">Fine.</span> Master must supply about ${peak.toFixed(0)} mA. Check that ${N} unit loads are within its rating (masters are sold for 3, 10, 20, 60, 250 meters and more).`;
+  };
+  n.addEventListener("input", draw); l.addEventListener("input", draw); draw();
+})();
+
+// 4.4 MS/TP token passing.
+(() => {
+  const fig = document.getElementById("mstp");
+  const BASE = [0, 1, 3, 4, 6], MAX = 7;
+  const X = (mac) => 60 + mac * 68;
+  let steps = [], i = -1, timer = null;
+  const build = (join) => {
+    const masters = join ? [...BASE, 2].sort((a, b) => a - b) : BASE.slice();
+    const s = [];
+    const next = (m, set) => set[(set.indexOf(m) + 1) % set.length];
+    // Round 1: normal passing among known masters (BASE).
+    BASE.forEach((m) => {
+      const n = next(m, BASE);
+      s.push({ at: m, to: n, txt: `MAC ${m} holds the token. ${m === 3 ? "It sends a ReadProperty request to MAC 6 and gets the answer, then passes the token." : "Nothing to send, so it passes the token"} to MAC ${n}${n < m ? " (wrap around)" : ""}.` });
+    });
+    // Poll-for-master by MAC 1 for the gap 2.
+    s.push({ at: 1, poll: 2, txt: `After N<sub>poll</sub> = 50 token passes, MAC 1 sends Poll For Master to MAC 2, the gap before its next station (3).` });
+    if (join) {
+      s.push({ at: 2, reply: true, txt: "The new controller at MAC 2 answers Reply To Poll For Master. MAC 1 now knows its next station is 2." });
+      s.push({ at: 1, to: 2, txt: "MAC 1 passes the token to MAC 2. The ring now includes the new device." });
+      s.push({ at: 2, to: 3, txt: "MAC 2 sends its I-Am announcement, then passes the token to MAC 3." });
+    } else {
+      s.push({ at: 1, to: 3, txt: "No answer within the timeout (about 20 ms). MAC 1 passes the token to MAC 3 as before." });
+    }
+    s.push({ at: 6, poll: 7, txt: `The highest master (6) polls the addresses above itself up to Max_Master = ${MAX}: MAC 7. With Max_Master = 127 it would poll 121 empty addresses.` });
+    s.push({ at: 6, to: 0, txt: "No reply. MAC 6 passes the token to MAC 0. The cycle repeats." });
+    steps = s; return masters;
+  };
+  let masters = build(false);
+  const nodes = () => {
+    let g = "";
+    for (let m = 0; m <= MAX; m++) {
+      const on = masters.includes(m) && (m !== 2 || (i >= 0 && steps.slice(0, i + 1).some((s) => s.reply)));
+      const pending = m === 2 && masters.includes(2) && !on;
+      g += `<rect x="${X(m) - 26}" y="95" width="52" height="34" rx="6" class="box" ${on ? "" : `style="stroke-dasharray:4 3;opacity:${pending ? 0.8 : 0.35}"`}/>`
+        + `<text x="${X(m)}" y="116" text-anchor="middle">${m}</text><line x1="${X(m)}" y1="129" x2="${X(m)}" y2="150" class="muted-s wire" ${on ? "" : 'style="opacity:.35"'}/>`;
+    }
+    document.getElementById("mstpNodes").innerHTML = g;
+  };
+  const tok = document.getElementById("mstpTok"), tokT = document.getElementById("mstpTokT"), arc = document.getElementById("mstpArc");
+  const render = () => {
+    nodes();
+    fig.querySelectorAll("#mstpNodes rect").forEach((r) => r.classList.remove("lit"));
+    if (i < 0) {
+      tok.setAttribute("cx", X(0)); tok.setAttribute("cy", 75); tokT.setAttribute("x", X(0)); tokT.setAttribute("y", 79);
+      arc.setAttribute("d", "");
+      document.getElementById("mstpText").textContent = "Press “Next step”. T is the token.";
+      return;
+    }
+    const s = steps[i];
+    tok.setAttribute("cx", X(s.at)); tok.setAttribute("cy", 75); tokT.setAttribute("x", X(s.at)); tokT.setAttribute("y", 79);
+    fig.querySelectorAll("#mstpNodes rect")[s.at].classList.add("lit");
+    const tgt = s.to ?? s.poll;
+    if (tgt !== undefined) {
+      const a = X(s.at), b = X(tgt), h = 60 - Math.min(40, Math.abs(b - a) / 8);
+      arc.setAttribute("d", `M${a},62 Q${(a + b) / 2},${h - 30} ${b},62`);
+      arc.setAttribute("stroke", s.poll !== undefined ? "var(--example)" : "var(--accent)");
+    } else arc.setAttribute("d", "");
+    document.getElementById("mstpText").innerHTML = `${i + 1}/${steps.length} · ${s.txt}`;
+  };
+  const stop = () => { clearInterval(timer); timer = null; fig.querySelector("[data-act=play]").textContent = "▶"; };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { stop(); i = Math.min(steps.length - 1, i + 1); render(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { stop(); i = Math.max(-1, i - 1); render(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { stop(); i = -1; render(); });
+  fig.querySelector("[data-act=play]").addEventListener("click", (e) => {
+    if (timer) return stop();
+    e.target.textContent = "❚❚";
+    timer = setInterval(() => { i = (i + 1) % steps.length; render(); }, 1600);
+  });
+  document.getElementById("mstpJoin").addEventListener("change", (e) => { stop(); masters = build(e.target.checked); i = -1; render(); });
+  render();
+})();
+
+// 4.5 KNX topology drawing.
+(() => {
+  let g = "";
+  [[60, 1], [330, 2]].forEach(([x0, area]) => {
+    g += `<path class="muted-s wire" d="M${x0 + 110},30 V60"/><rect class="box lit" x="${x0 + 70}" y="60" width="80" height="26" rx="5"/><text class="small" x="${x0 + 110}" y="78" text-anchor="middle">Area coupler ${area}.0.0</text>`;
+    g += `<line x1="${x0}" y1="110" x2="${x0 + 230}" y2="110" stroke="var(--example)" stroke-width="3"/><path class="muted-s wire" d="M${x0 + 110},86 V110"/>`;
+    g += `<text class="small" x="${x0}" y="104">Main line ${area}.0</text>`;
+    [1, 2, 3].forEach((ln, k) => {
+      const lx = x0 + 20 + k * 75;
+      g += `<path class="muted-s wire" d="M${lx + 25},110 V130"/><rect class="box" x="${lx}" y="130" width="50" height="22" rx="4"/><text class="small" x="${lx + 25}" y="145" text-anchor="middle">LC ${area}.${ln}.0</text>`;
+      g += `<line x1="${lx + 25}" y1="152" x2="${lx + 25}" y2="240" stroke="var(--ok)" stroke-width="3"/>`;
+      [170, 195, 220].forEach((y, d) => { g += `<circle cx="${lx + 25}" cy="${y}" r="5" class="fill-surface" stroke="var(--text)"/><text class="small" x="${lx + 33}" y="${y + 4}">${area}.${ln}.${d + 1}</text>`; });
+    });
+  });
+  document.getElementById("knxAreas").innerHTML = g;
+})();
+
+// 4.5 KNX group address calculator.
+(() => {
+  const inp = document.getElementById("gaIn");
+  const draw = () => {
+    const m = inp.value.trim().match(/^(\d+)\/(\d+)\/(\d+)$/);
+    const bits = document.getElementById("gaBits"), txt = document.getElementById("gaText");
+    if (!m || +m[1] > 31 || +m[2] > 7 || +m[3] > 255) { bits.innerHTML = ""; txt.textContent = "Format main/middle/sub: main 0–31, middle 0–7, sub 0–255."; return; }
+    const v = (+m[1] << 11) | (+m[2] << 8) | +m[3];
+    const s = v.toString(2).padStart(16, "0");
+    bits.innerHTML = [...s].map((b, k) => `<div style="background:var(${k < 5 ? "--accent-soft" : k < 8 ? "--example-soft" : "--ok-soft"})">${b}</div>`).join("");
+    txt.textContent = `${m[1]}/${m[2]}/${m[3]} = 0x${v.toString(16).toUpperCase().padStart(4, "0")} = ${v} · two-level style: ${m[1]}/${(+m[2] << 8) | +m[3]}`;
+  };
+  inp.addEventListener("input", draw); draw();
+})();
+
+// 4.5 KNX group telegram demo.
+(() => {
+  const BTN = [["1/0/1", "Desk light ON", 1], ["1/0/2", "Window light ON", 1], ["1/0/3", "Meeting light ON", 1], ["1/0/0", "All OFF", 0]];
+  const ACT = [["Ch A · desk", ["1/0/1", "1/0/0"], 110], ["Ch B · window", ["1/0/2", "1/0/0"], 260], ["Ch C · meeting", ["1/0/3", "1/0/0"], 410], ["Blind actuator", ["2/1/1"], 540]];
+  const state = [0, 0, 0, null];
+  const draw = (hit) => {
+    document.getElementById("knxAct").innerHTML = ACT.map(([n, gas, x], k) => {
+      const lit = hit && hit.includes(k);
+      const on = state[k];
+      return `<path class="muted-s wire" d="M${x},100 V128"/><rect class="box ${lit ? "lit" : ""}" x="${x - 60}" y="128" width="120" height="58" rx="6"/>`
+        + `<text x="${x}" y="146" text-anchor="middle" style="font-size:12px">${n}</text>`
+        + `<text class="small" x="${x}" y="162" text-anchor="middle">listens ${gas.join(", ")}</text>`
+        + (on === null ? "" : `<circle cx="${x}" cy="176" r="6" class="${on ? "fill-ok" : "fill-muted"}"/>`);
+    }).join("");
+  };
+  const tg = document.getElementById("knxTg"), tgt = document.getElementById("knxTgT");
+  document.getElementById("knxBtns").innerHTML = BTN.map(([ga, n], k) => `<button data-k="${k}">${n} → ${ga}</button>`).join("");
+  document.querySelectorAll("#knxBtns button").forEach((b) => b.addEventListener("click", () => {
+    const [ga, n, val] = BTN[b.dataset.k];
+    const hit = [];
+    ACT.forEach(([, gas], k) => { if (gas.includes(ga)) { hit.push(k); state[k] = val; } });
+    tg.setAttribute("opacity", 1); tgt.setAttribute("opacity", 1); tgt.textContent = `${ga}=${val}`;
+    draw(hit);
+    document.getElementById("knxText").textContent = `Telegram to ${ga}, value ${val} (DPT 1.001). ${hit.length} channel${hit.length === 1 ? "" : "s"} react${hit.length === 1 ? "s" : ""}: ${hit.map((k) => ACT[k][0]).join(", ")}. The blind actuator sees the telegram but ignores it.`;
+  }));
+  draw();
+  document.getElementById("knxText").textContent = "Press a button. Every device receives every telegram on the line; only those associated with that group address act.";
+})();
+
+// 4.6 DALI groups and scenes.
+(() => {
+  const N = 8;
+  const NAMES = ["Window 1", "Window 2", "Window 3", "Wall 1", "Wall 2", "Wall 3", "Board 1", "Board 2"];
+  const groups = [[0], [0], [0], [1], [1], [1], [2], [2]];
+  // Scene levels as arc power 0–254; 255 = MASK (not in scene).
+  const SCENES = [
+    ["Full", Array(N).fill(254)],
+    ["Presentation", [170, 170, 170, 140, 140, 140, 254, 254]],
+    ["Video", [0, 0, 0, 120, 120, 120, 0, 0]],
+  ];
+  let level = Array(N).fill(0);
+  const pct = (l) => (l === 0 ? 0 : Math.pow(10, (l - 1) / (253 / 3) - 1));
+  const draw = () => {
+    document.getElementById("daliLums").innerHTML = NAMES.map((n, k) =>
+      `<div class="lum"><div class="bulb"><i style="opacity:${Math.min(1, pct(level[k]) / 100 * 0.85 + (level[k] ? 0.15 : 0))}"></i><em>${pct(level[k]).toFixed(pct(level[k]) < 10 ? 1 : 0)} %</em></div>`
+      + `<b>${n}</b> <span style="color:var(--muted)">· A${k}</span><div class="gs">${[0, 1, 2, 3].map((g) => `<button data-l="${k}" data-g="${g}" aria-pressed="${groups[k].includes(g)}" aria-label="Group ${g} for ${n}">G${g}</button>`).join("")}</div></div>`).join("");
+    document.querySelectorAll("#daliLums [data-g]").forEach((b) => b.addEventListener("click", () => {
+      const k = +b.dataset.l, g = +b.dataset.g;
+      groups[k] = groups[k].includes(g) ? groups[k].filter((x) => x !== g) : [...groups[k], g];
+      draw();
+    }));
+  };
+  const CMDS = [
+    ["Broadcast 100 %", 0xfe, 254, () => true, "set"],
+    ["Broadcast OFF", 0xff, 0x00, () => true, "off"],
+    ["Group 0 → 50 %", 0x80, 229, (k) => groups[k].includes(0), "set"],
+    ["Group 1 → 20 %", 0x82, 196, (k) => groups[k].includes(1), "set"],
+    ["Group 2 OFF", 0x85, 0x00, (k) => groups[k].includes(2), "off"],
+    ["A6 → 100 %", 6 << 1, 254, (k) => k === 6, "set"],
+    ...SCENES.map(([n], s) => [`Scene ${s} · ${n}`, 0xff, 0x10 + s, () => true, "scene", s]),
+  ];
+  document.getElementById("daliCmds").innerHTML = CMDS.map((c, k) => `<button data-c="${k}">${c[0]}</button>`).join("");
+  document.querySelectorAll("#daliCmds button").forEach((b) => b.addEventListener("click", () => {
+    const [name, a, d, sel, kind, s] = CMDS[b.dataset.c];
+    let hit = 0;
+    level = level.map((l, k) => {
+      if (!sel(k)) return l;
+      hit++;
+      if (kind === "off") return 0;
+      if (kind === "scene") { const v = SCENES[s][1][k]; return v === 255 ? l : v; }
+      return d;
+    });
+    draw();
+    const addrKind = a === 0xfe || a === 0xff ? "broadcast" : a & 0x80 ? `group ${(a >> 1) & 15}` : `short address ${a >> 1}`;
+    document.getElementById("daliFrame").innerHTML = byteBox(a, "address", "k-addr") + byteBox(d, a & 1 ? "command" : "arc level", "k-fc");
+    document.getElementById("daliText").textContent = `${name}: address byte ${a.toString(2).padStart(8, "0")} (${addrKind}, S=${a & 1}), data 0x${hex2(d)}${a & 1 ? (kind === "scene" ? ` = GO TO SCENE ${s}` : " = OFF") : ` = arc level ${d} ≈ ${pct(d).toFixed(0)} %`}. ${hit} driver${hit === 1 ? "" : "s"} act${hit === 1 ? "s" : ""}.`;
+  }));
+  draw();
+  document.getElementById("daliText").textContent = "Each command is one 16-bit forward frame, however many drivers it reaches.";
+})();
+
+// 4.6 DALI logarithmic curve.
+(() => {
+  const r = document.getElementById("arcL");
+  const pct = (l) => (l === 0 ? 0 : Math.pow(10, (l - 1) / (253 / 3) - 1));
+  const X = (l) => 50 + (l / 254) * 530, Y = (p) => 150 - (p / 100) * 140;
+  let d = "";
+  for (let l = 0; l <= 254; l += 2) d += `${l ? "L" : "M"}${X(l).toFixed(1)},${Y(pct(l)).toFixed(1)}`;
+  document.getElementById("arcCurve").setAttribute("d", d);
+  const draw = () => {
+    const l = Number(r.value), p = pct(l);
+    document.getElementById("arcOut").textContent = l;
+    const dot = document.getElementById("arcDot");
+    dot.setAttribute("cx", X(l)); dot.setAttribute("cy", Y(p));
+    document.getElementById("arcText").textContent = l === 0 ? "Level 0 = off" : `Level ${l} → ${p < 1 ? p.toFixed(2) : p.toFixed(1)} % light output`;
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 4.8 OpenTherm frame builder.
+(() => {
+  const sel = document.getElementById("otId"), val = document.getElementById("otVal");
+  const DEF = { 1: 55, 25: 52.5, 17: 40, 28: 38 };
+  const bits = (n) => n.toString(2).padStart(32, "0");
+  const frame = (type, id, v) => {
+    let f = ((type & 7) << 28) | ((id & 255) << 16) | (v & 0xffff);
+    f >>>= 0;
+    const ones = bits(f).split("").filter((c) => c === "1").length;
+    if (ones % 2) f = (f | 0x80000000) >>> 0; // even parity
+    return f;
+  };
+  const row = (el, f) => {
+    el.innerHTML = [...bits(f)].map((b, k) => `<div class="${k === 0 ? "f-p" : k < 4 ? "f-t" : k < 8 ? "f-s" : k < 16 ? "f-id" : "f-v"}">${b}</div>`).join("");
+  };
+  sel.addEventListener("change", () => { val.value = DEF[sel.value]; draw(); });
+  const draw = () => {
+    const id = Number(sel.value);
+    const x = Math.max(-128, Math.min(127.99, Number(val.value) || 0));
+    const v = Math.round(x * 256) & 0xffff;
+    const write = id === 1;
+    const req = frame(write ? 1 : 0, id, write ? v : 0);
+    const res = frame(write ? 5 : 4, id, v);
+    row(document.getElementById("otReq"), req);
+    row(document.getElementById("otRes"), res);
+    const h = (n) => "0x" + n.toString(16).toUpperCase().padStart(8, "0");
+    document.getElementById("otText").innerHTML = `Request ${h(req)}: ${write ? "WRITE-DATA (001)" : "READ-DATA (000)"}, ID ${id}${write ? `, value ${x} → ×256 = 0x${v.toString(16).toUpperCase().padStart(4, "0")}` : ", value 0"}.<br>Response ${h(res)}: ${write ? "WRITE-ACK (101)" : "READ-ACK (100)"}, ID ${id}, value 0x${v.toString(16).toUpperCase().padStart(4, "0")} = ${(((v > 32767 ? v - 65536 : v)) / 256).toFixed(2)}. Parity bit makes the number of 1s even.`;
+  };
+  val.addEventListener("input", draw); draw();
+})();
+
+// 4.9 0–10 V vs 4–20 mA.
+(() => {
+  const L = document.getElementById("sigL"), I = document.getElementById("sigI");
+  const draw = () => {
+    const len = Number(L.value), amps = Number(I.value);
+    document.getElementById("sigLOut").textContent = len;
+    document.getElementById("sigIOut").textContent = amps.toFixed(2);
+    const rWire = 0.0172 * len / 0.75; // ohms per conductor
+    const offset = amps * rWire; // volts added on the shared return
+    const vRead = 5 + offset, errV = (offset / 10) * 100;
+    const need = 0.02 * (250 + 2 * rWire) + 10; // volts at 20 mA
+    const loopOk = need <= 24;
+    const rows = [
+      ["0–10 V reads", vRead / 10 * 100, `${(vRead / 10 * 100).toFixed(1)} %`, errV > 2],
+      ["4–20 mA reads", loopOk ? 50 : 0, loopOk ? "50.0 %" : "fault", !loopOk],
+      ["Loop needs", need / 24 * 100, `${need.toFixed(1)} V`, !loopOk],
+    ];
+    document.getElementById("sigBars").innerHTML = rows.map(([n, w, s, bad]) =>
+      `<div class="meter"><span>${n}</span><div class="track"><div class="fill ${bad ? "bad" : ""}" style="width:${Math.min(100, w)}%"></div></div><span class="v">${s}</span></div>`).join("");
+    document.getElementById("sigText").innerHTML = `Return wire: ${rWire.toFixed(2)} Ω. 0–10 V error: <span class="${errV > 2 ? "bad-t" : "ok-t"}">+${errV.toFixed(1)} %</span> of span. `
+      + (loopOk ? `4–20 mA: <span class="ok-t">exact</span>, ${(24 - need).toFixed(1)} V of compliance left.` : `4–20 mA: <span class="bad-t">not enough supply voltage</span> to drive 20 mA through ${(250 + 2 * rWire).toFixed(0)} Ω.`);
+  };
+  L.addEventListener("input", draw); I.addEventListener("input", draw); draw();
+})();
+
+// 4.9 NC vs NO alarm contact.
+(() => {
+  const fig = document.getElementById("nc");
+  let c = "nc", s = "ok";
+  const draw = () => {
+    fig.querySelectorAll("[data-c]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.c === c));
+    fig.querySelectorAll("[data-s]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.s === s));
+    // NC contact: closed when normal, opens on alarm. NO: opposite.
+    const closed = c === "nc" ? s !== "alarm" : s === "alarm";
+    const circuit = closed && s !== "cut";
+    const alarm = c === "nc" ? !circuit : circuit;
+    const sw = document.getElementById("ncSw");
+    sw.setAttribute("x2", closed ? 360 : 352); sw.setAttribute("y2", closed ? 45 : 22);
+    document.getElementById("ncCut").style.display = s === "cut" ? "" : "none";
+    document.getElementById("ncLamp").setAttribute("class", alarm ? "fill-bad" : "fill-ok");
+    const t = document.getElementById("ncLampT");
+    t.textContent = alarm ? "ALARM" : "OK"; t.style.fill = "#fff";
+    let msg = `Contact ${closed ? "closed" : "open"}, circuit ${circuit ? "closed" : "open"} → controller shows ${alarm ? "ALARM" : "OK"}.`;
+    if (s === "cut") msg += c === "nc" ? " Good: the broken wire is reported." : " Dangerous: the wire is broken and nobody knows. A real frost trip would now be missed.";
+    fig.querySelector("#ncText").textContent = msg;
+  };
+  fig.querySelectorAll("[data-c]").forEach((b) => b.addEventListener("click", () => { c = b.dataset.c; draw(); }));
+  fig.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { s = b.dataset.s; draw(); }));
+  draw();
+})();
+</script>
+</body>
+</html>

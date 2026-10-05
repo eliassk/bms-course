@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cooling and Heat Pumps</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .hp-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; margin: 10px 0; }
+  .hp-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .hp-row input[type=range] { width: 100%; }
+  .hp-row output { font-family: var(--mono); color: var(--text); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; margin-top: 10px; }
+  .stat { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; min-width: 0; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font: 600 18px var(--mono); overflow-wrap: anywhere; }
+  .stat.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .stat.bad .v { color: var(--bad); }
+  .stat.ok .v { color: var(--ok); }
+  .sg { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 8px 0; }
+  .sg label { display: inline-flex; gap: 6px; align-items: center; font: 600 14px var(--mono); }
+  svg .hot { stroke: var(--bad); stroke-width: 5; fill: none; stroke-linecap: round; }
+  svg .cold { stroke: var(--accent); stroke-width: 5; fill: none; stroke-linecap: round; }
+  svg .pipe { stroke-width: 4; fill: none; stroke-linecap: round; transition: stroke-width .3s; }
+  svg .s-bad { stroke: var(--bad); }
+  svg .s-acc { stroke: var(--accent); }
+  svg .s-ok { stroke: var(--ok); }
+  svg .s-ex { stroke: var(--example); }
+  svg .fill-bad-soft { fill: var(--bad-soft); }
+  svg .fill-ok-soft { fill: var(--ok-soft); }
+  svg .grid { stroke: var(--border); stroke-width: 1; }
+  svg .curve { fill: none; stroke-width: 3; }
+  svg .dash { stroke-dasharray: 6 5; }
+  svg .seg-on { stroke: var(--accent) !important; stroke-width: 5 !important; }
+  svg .iu { cursor: pointer; }
+  svg .iu:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
+  svg .iu-cool rect { fill: var(--accent-soft); stroke: var(--accent); }
+  svg .iu-heat rect { fill: var(--bad-soft); stroke: var(--bad); }
+  svg .iu-wait rect { fill: var(--example-soft); stroke: var(--example); stroke-dasharray: 4 3; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="12">
+<div class="content">
+  <div class="kicker">Chapter 12</div>
+  <h1>Cooling and heat pumps</h1>
+  <p class="lead">One machine moves heat uphill: from a cold place to a warm one. Point it one way and it cools; point it
+    the other and it heats. This chapter explains the refrigeration cycle, the main heat pump and cooling system types,
+    and what a BMS should read, write and leave alone.</p>
+
+  <!-- 12.1 -->
+  <section class="lesson" id="s1" data-num="12.1">
+    <h2>12.1 The refrigeration cycle</h2>
+    <p>Heat flows from hot to cold on its own. To move it the other way you need work. Every vapour-compression machine
+      (a fridge, a split air conditioner, a chiller, a heat pump) does this with the same four parts and one trick:
+      <strong>a liquid boils at a temperature set by its pressure</strong>. Lower the pressure and the refrigerant boils
+      cold, so it can absorb heat from cold air or water. Raise the pressure and it condenses hot, so it can give that heat
+      away to something warmer.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Part</th><th>What enters</th><th>What leaves</th><th>Job</th></tr>
+      <tr><td><strong>Compressor</strong></td><td>Low-pressure vapour, slightly superheated</td><td>High-pressure, hot gas</td><td>Adds work. Raises pressure, and with it the condensing temperature.</td></tr>
+      <tr><td><strong>Condenser</strong></td><td>Hot gas</td><td>High-pressure liquid, slightly subcooled</td><td>Rejects heat to the sink (outdoor air, heating water).</td></tr>
+      <tr><td><strong>Expansion device</strong></td><td>Warm high-pressure liquid</td><td>Cold liquid/vapour mix</td><td>Drops pressure. Meters flow. Usually an electronic expansion valve (EEV).</td></tr>
+      <tr><td><strong>Evaporator</strong></td><td>Cold two-phase mix</td><td>Low-pressure vapour</td><td>Absorbs heat from the source (room air, outdoor air, brine).</td></tr>
+    </table></div>
+
+    <p>The numbers make it concrete. With R32 in a heat pump heating a floor at 35 °C on a 7 °C day, the evaporator might
+      run at about 0 °C, which is roughly 8 bar absolute. The condenser runs at about 40 °C, roughly 25 bar. The
+      compressor discharge gas can be 70–90 °C. These are typical, not fixed: the controller moves both pressures all the
+      time.</p>
+
+    <h3>Walk through the cycle</h3>
+    <figure class="viz" id="cycle">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">◀</button>
+        <button class="btn" data-act="next">Next step ▶</button>
+        <span class="seg" role="group" aria-label="Operating mode">
+          <button data-mode="heat" aria-pressed="true">Heating</button>
+          <button data-mode="cool" aria-pressed="false">Cooling</button>
+        </span>
+      </div>
+      <svg viewBox="0 0 600 300" role="img" aria-label="Refrigeration circuit: compressor, condenser, expansion valve, evaporator">
+        <defs><marker id="ah12" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <path id="loop" d="M480,150 L480,60 L120,60 L120,240 L480,240 L480,150" fill="none" stroke="none"/>
+        <path id="pp1" class="hot" d="M480,150 L480,60 L380,60"/>
+        <path id="pp2" class="hot" d="M220,60 L120,60 L120,120"/>
+        <path id="pp3" class="cold" d="M120,180 L120,240 L220,240"/>
+        <path id="pp4" class="cold" d="M380,240 L480,240 L480,150"/>
+        <path class="hot" d="M380,60 L220,60" style="opacity:.6"/>
+        <path class="cold" d="M220,240 L380,240" style="opacity:.6"/>
+        <g id="c-cond"><rect class="box" x="220" y="30" width="160" height="60" rx="8"/>
+          <text class="big" x="300" y="56" text-anchor="middle">Condenser</text>
+          <text class="small" id="condLbl" x="300" y="76" text-anchor="middle">indoor: heats water</text></g>
+        <g id="c-evap"><rect class="box" x="220" y="210" width="160" height="60" rx="8"/>
+          <text class="big" x="300" y="236" text-anchor="middle">Evaporator</text>
+          <text class="small" id="evapLbl" x="300" y="256" text-anchor="middle">outdoor: takes heat from air</text></g>
+        <g id="c-comp"><circle class="box" cx="480" cy="150" r="38"/>
+          <text class="big" x="480" y="148" text-anchor="middle">Comp.</text>
+          <text class="small" x="480" y="166" text-anchor="middle">+ work</text></g>
+        <g id="c-exp"><rect class="box" x="90" y="120" width="60" height="60" rx="8"/>
+          <path d="M100,130 L140,170 M140,130 L100,170" class="arrow"/>
+          <text class="small" x="120" y="196" text-anchor="middle" dy="0"></text></g>
+        <text class="small" x="70" y="154" text-anchor="end">EEV</text>
+        <text class="small" x="300" y="18" text-anchor="middle">high pressure side ≈ 25 bar</text>
+        <text class="small" x="300" y="292" text-anchor="middle">low pressure side ≈ 8 bar</text>
+        <path class="arrow" d="M300,112 L300,96" marker-end="url(#ah12)"/>
+        <text class="small" id="qOut" x="300" y="128" text-anchor="middle">heat out (Q_hot)</text>
+        <path class="arrow" d="M300,170 L300,204" marker-end="url(#ah12)"/>
+        <text class="small" id="qIn" x="300" y="162" text-anchor="middle">heat in (Q_cold)</text>
+        <path class="arrow" d="M560,150 L522,150" marker-end="url(#ah12)"/>
+        <text class="small" x="575" y="140" text-anchor="end">W</text>
+        <circle id="cyDot" r="7" class="fill-accent" cx="480" cy="150"/>
+      </svg>
+      <svg viewBox="0 0 360 250" role="img" aria-label="Simplified pressure-enthalpy diagram of the cycle">
+        <line class="grid" x1="40" y1="220" x2="345" y2="220"/><line class="grid" x1="40" y1="20" x2="40" y2="220"/>
+        <text class="small" x="345" y="238" text-anchor="end">enthalpy h →</text>
+        <text class="small" x="44" y="16">log pressure ↑</text>
+        <path d="M60,220 C70,60 140,30 190,30 C240,30 290,80 305,220" fill="none" class="muted-s" stroke-width="2"/>
+        <text class="small" x="76" y="140">liquid</text><text class="small" x="170" y="150">liquid + vapour</text><text class="small" x="300" y="120">vapour</text>
+        <path id="ph1" class="arrow" d="M300,180 L335,70"/>
+        <path id="ph2" class="arrow" d="M335,70 L95,70"/>
+        <path id="ph3" class="arrow" d="M95,70 L95,180"/>
+        <path id="ph4" class="arrow" d="M95,180 L300,180"/>
+        <g class="small">
+          <circle cx="300" cy="180" r="4" class="fill-text"/><text class="small" x="306" y="196">1</text>
+          <circle cx="335" cy="70" r="4" class="fill-text"/><text class="small" x="332" y="60">2</text>
+          <circle cx="95" cy="70" r="4" class="fill-text"/><text class="small" x="80" y="62">3</text>
+          <circle cx="95" cy="180" r="4" class="fill-text"/><text class="small" x="80" y="196">4</text>
+        </g>
+        <text class="small" x="195" y="64" text-anchor="middle">condensing: Q_hot out</text>
+        <text class="small" x="195" y="200" text-anchor="middle">evaporating: Q_cold in</text>
+      </svg>
+      <div class="readout" id="cycleText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Left: the physical circuit. Right: the same cycle on a simplified pressure–enthalpy (p–h) chart. Width of each horizontal line is the heat moved; the slanted line is the compressor work.</figcaption>
+    </figure>
+
+    <h3>Energy balance and COP</h3>
+    <p>Energy is conserved: heat out of the condenser equals heat in at the evaporator plus compressor work,
+      <code>Q_hot = Q_cold + W</code>. The ratio of useful heat to electrical work is the <strong>coefficient of
+      performance</strong>. In heating, <code>COP = Q_hot / W</code>. In cooling, the useful effect is Q_cold, and the ratio
+      is usually called <strong>EER</strong> (energy efficiency ratio). A machine that absorbs 6 kW from outdoor air while the
+      compressor draws 2 kW delivers 8 kW of heat: COP 4. The same machine in cooling would have EER 3.</p>
+    <p>On the p–h chart, the horizontal lengths are enthalpy changes per kg of refrigerant. That is why engineers love the
+      chart: you can read COP as a ratio of lengths.</p>
+
+    <h3>Reversing: the four-way valve</h3>
+    <p>A reversible heat pump has a <strong>four-way reversing valve</strong> after the compressor. It swaps which heat
+      exchanger gets hot gas. In heating mode the indoor coil is the condenser. In cooling mode the outdoor coil is.
+      The same valve is used for <em>reverse-cycle defrost</em>: the unit briefly runs in cooling mode to melt ice off the
+      outdoor coil.</p>
+
+    <h3>Refrigerants</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Refrigerant</th><th>GWP (100 yr, approx.)</th><th>Safety class</th><th>Notes</th></tr>
+      <tr><td>R410A</td><td>~2090</td><td>A1</td><td>Long-time standard for splits and VRF. Being phased down.</td></tr>
+      <tr><td>R32</td><td>~675</td><td>A2L (mildly flammable)</td><td>Common in new splits, VRF and monoblock heat pumps.</td></tr>
+      <tr><td>R454B, R513A, R1234ze</td><td>~1 to ~630</td><td>A1/A2L</td><td>HFO and HFO blends, used in chillers and newer VRF.</td></tr>
+      <tr><td>R290 (propane)</td><td>~3</td><td>A3 (flammable)</td><td>Monoblock heat pumps, small charge; high flow temps possible.</td></tr>
+      <tr><td>R744 (CO₂)</td><td>1</td><td>A1</td><td>Very high pressures (often &gt;100 bar). Excellent for hot water at 65–90 °C.</td></tr>
+    </table></div>
+    <p>In the EU the F-gas regulation (EU 2024/573) phases these gases down and requires leak checks based on CO₂-equivalent
+      charge. Details change, so check the current text for a real project.</p>
+
+    <div class="callout warn">A pressure or temperature reading from inside the refrigerant circuit is diagnostic data.
+      It is useful for trends and fault detection. It is not a control point for the BMS. The unit's own controller owns
+      the compressor, EEV and fans.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A heat pump draws 2.5 kW of electricity and delivers 10 kW of heat. How much heat does it take from the outdoor air?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is the useful heat, not the heat absorbed.">10 kW</button>
+        <button class="opt" data-opt="b" data-why="Q_cold = Q_hot − W = 10 − 2.5 = 7.5 kW. COP is 4.">7.5 kW</button>
+        <button class="opt" data-opt="c" data-why="Adding work to useful heat double-counts it.">12.5 kW</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Pressure sets the boiling temperature. The compressor creates a hot side and a cold side.</li>
+      <li>Q_hot = Q_cold + W. COP (heating) and EER (cooling) are ratios of heat to work.</li>
+      <li>A four-way valve reverses the cycle for cooling and for defrost.</li>
+      <li>Refrigerant choice drives safety rules, pressures and regulation.</li>
+    </ul>
+  </section>
+
+  <!-- 12.2 -->
+  <section class="lesson" id="s2" data-num="12.2">
+    <h2>12.2 Air-source and ground-source heat pumps</h2>
+    <p>The source is where the heat comes from. The sink is where it goes. The single biggest factor in efficiency is the
+      <strong>temperature lift</strong> between them. The theoretical best (Carnot) COP for heating is
+      <code>T_hot / (T_hot − T_cold)</code> with temperatures in kelvin. Real machines reach roughly 45–60 % of that, and
+      the refrigerant must run a few kelvin colder than the source and hotter than the sink to move heat across the coils.</p>
+
+    <h3>Explore the lift</h3>
+    <figure class="viz" id="copviz">
+      <div class="hp-row">
+        <label>Heating flow temperature <output id="flowOut">35</output> °C<input type="range" id="flowT" min="25" max="65" step="1" value="35"></label>
+        <label>Outdoor air temperature <output id="oatOut">2</output> °C<input type="range" id="oat" min="-20" max="20" step="1" value="2"></label>
+      </div>
+      <svg viewBox="0 0 600 280" role="img" aria-label="Estimated COP against outdoor temperature for air and ground source">
+        <g id="copGrid"></g>
+        <path id="airCurve" class="curve s-acc"/>
+        <path id="gndCurve" class="curve s-ok dash"/>
+        <line id="oatLine" class="arrow" y1="20" y2="240"/>
+        <circle id="airDot" r="6" class="fill-accent"/>
+        <circle id="gndDot" r="6" class="fill-ok"/>
+        <text x="470" y="34" class="small">— air source</text>
+        <text x="470" y="50" class="small">- - ground source</text>
+      </svg>
+      <div class="stats">
+        <div class="stat"><div class="k">Air COP (est.)</div><div class="v" id="airCop"></div></div>
+        <div class="stat"><div class="k">Ground COP (est.)</div><div class="v" id="gndCop"></div></div>
+        <div class="stat"><div class="k">Air lift (refrigerant)</div><div class="v" id="airLift"></div></div>
+        <div class="stat"><div class="k">Electricity for 10 kW heat (air)</div><div class="v" id="airKw"></div></div>
+      </div>
+      <figcaption>Simplified model: 55 % of Carnot, evaporator 6 K below the air (4 K below a 0 °C brine), condenser 4 K above the flow temperature. Real units also lose capacity in the cold and spend energy on defrost.</figcaption>
+    </figure>
+    <p>Two lessons fall out of the chart. First, <strong>every degree of flow temperature costs about 2–3 % of COP</strong>.
+      A floor at 35 °C is far better than radiators at 55 °C. Second, the ground source is flat: the ground at 50–100 m depth
+      stays near the annual mean air temperature, so the heat pump has a warm source on the coldest day, when the heat is
+      needed most.</p>
+
+    <h3>Comparison</h3>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Air source (air-to-water)</th><th>Ground source (brine-to-water)</th></tr>
+      <tr><td>Source temperature</td><td>Follows the weather, −20 to +35 °C</td><td>Brine around −3 to +10 °C, steady</td></tr>
+      <tr><td>Typical SCOP (floor heating)</td><td>~3.5–4.5</td><td>~4.5–5.5</td></tr>
+      <tr><td>Installation cost</td><td>Low. Outdoor unit on a pad or wall.</td><td>High. Boreholes (often 50–150 m each) or horizontal collectors.</td></tr>
+      <tr><td>Defrost</td><td>Needed around −7 to +5 °C in humid air</td><td>None</td></tr>
+      <tr><td>Noise</td><td>Fan and compressor outside. Planning rules may apply.</td><td>Indoors only</td></tr>
+      <tr><td>Passive cooling</td><td>No. Active cooling only.</td><td>Yes: circulate cool brine through floors via a heat exchanger, compressor off</td></tr>
+      <tr><td>Long-term risk</td><td>Low</td><td>Undersized boreholes cool down year after year. Balance with summer recharge.</td></tr>
+    </table></div>
+
+    <h3>Terms you will see on data sheets</h3>
+    <ul>
+      <li><strong>A7/W35</strong>: air 7 °C in, water 35 °C out. <strong>B0/W35</strong>: brine 0 °C, water 35 °C. Ratings per EN 14511.</li>
+      <li><strong>SCOP</strong>: seasonal COP over a reference climate (EN 14825). Better for comparison than a single-point COP.</li>
+      <li><strong>Bivalent point</strong>: the outdoor temperature below which the heat pump alone cannot cover the load, so a backup (electric heater, boiler) helps.</li>
+      <li><strong>Inverter</strong>: variable-speed compressor. Modulates, say, 25–100 % instead of cycling on and off.</li>
+      <li><strong>Monoblock vs split</strong>: monoblock keeps all refrigerant outdoors and sends water inside; split runs refrigerant pipes to an indoor unit.</li>
+    </ul>
+
+    <div class="callout example">A typical retrofit: a 12 kW air-to-water monoblock on an older house with radiators. With
+      a fixed 55 °C flow it measured a seasonal COP under 3. After the installer enabled weather compensation (flow
+      falls to about 35 °C at +10 °C outdoors) and opened all room valves so the heat pump saw a steady load, the measured
+      figure rose to around 3.5. The machine did not change. The flow temperature did.</div>
+
+    <div class="callout warn">Short cycling kills efficiency and compressors. If the minimum compressor output is higher
+      than the building load on a mild day, the unit starts and stops many times per hour. Check minimum modulation, add
+      system volume (buffer or open circuits), and do not let room thermostats close every circuit at once.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Why does a ground-source heat pump often beat an air-source one most clearly in January?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Compressors are similar. The source is the difference.">It has a more efficient compressor</button>
+        <button class="opt" data-opt="b" data-why="Both use similar refrigerants.">It uses a different refrigerant</button>
+        <button class="opt" data-opt="c" data-why="Brine near 0 °C versus air at −10 °C means a smaller lift, and no defrost.">Its source stays warm while the air is coldest</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Lift drives COP. Lower flow temperatures pay back directly.</li>
+      <li>Air source is cheap to install but swings with the weather and needs defrost.</li>
+      <li>Ground source is stable and can cool passively, at a higher install cost.</li>
+      <li>Compare SCOP, not single-point COP.</li>
+    </ul>
+  </section>
+
+  <!-- 12.3 -->
+  <section class="lesson" id="s3" data-num="12.3">
+    <h2>12.3 VRF/VRV systems</h2>
+    <p><strong>Variable refrigerant flow</strong> (VRF; Daikin's trade name is VRV) connects one outdoor unit, or a group of
+      them, to many indoor units through refrigerant pipes. Each indoor unit has its own EEV and modulates its flow. A single
+      system can serve dozens of indoor units and pipe runs well over 100 m. It is common in offices, hotels and retail,
+      where every room wants its own control.</p>
+
+    <h3>Two families</h3>
+    <ul>
+      <li><strong>Heat pump (2-pipe, cooling <em>or</em> heating).</strong> The whole system is in one mode. A room that
+        wants the other mode must wait.</li>
+      <li><strong>Heat recovery (cooling <em>and</em> heating at once).</strong> Branch selector boxes (or a central branch
+        controller) route hot gas to heating units and liquid to cooling units. Heat removed from one room heats another.
+        Daikin and others use three pipes. Mitsubishi Electric's R2 series does it with two pipes and a branch controller.</li>
+    </ul>
+
+    <figure class="viz" id="vrf">
+      <div class="controls">
+        <span class="seg" role="group" aria-label="System type">
+          <button data-sys="hp" aria-pressed="true">Heat pump (2-pipe)</button>
+          <button data-sys="hr" aria-pressed="false">Heat recovery</button>
+        </span>
+        <button class="btn secondary" data-act="reset">Reset</button>
+      </div>
+      <svg viewBox="0 0 600 300" role="img" aria-label="VRF topology with one outdoor unit and six indoor units">
+        <rect class="box" x="20" y="110" width="110" height="80" rx="8"/>
+        <text class="big" x="75" y="145" text-anchor="middle">Outdoor</text>
+        <text class="small" id="oduMode" x="75" y="166" text-anchor="middle">idle</text>
+        <g id="bsBox" style="display:none">
+          <rect class="box" x="175" y="125" width="80" height="50" rx="6"/>
+          <text class="small" x="215" y="148" text-anchor="middle">branch</text>
+          <text class="small" x="215" y="162" text-anchor="middle">selector</text>
+        </g>
+        <g id="vrfPipes"></g>
+        <g id="vrfUnits"></g>
+      </svg>
+      <div class="readout" id="vrfText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Click an indoor unit to cycle off → cool → heat. Dashed amber means the unit wants a mode the system cannot give it.</figcaption>
+    </figure>
+
+    <h3>Why heat recovery saves energy</h3>
+    <p>In spring and autumn, a building often has south rooms that need cooling and north rooms that need heating. A heat
+      recovery system moves heat between them through the refrigerant. When loads balance, the outdoor unit only covers the
+      difference plus losses. Manufacturers quote combined efficiencies well above a single-mode COP in these conditions;
+      the real gain depends on how often loads overlap.</p>
+
+    <h3>Design rules that matter</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Topic</th><th>Typical constraint</th></tr>
+      <tr><td>Pipe length</td><td>Total, longest run, and height difference between indoor units are all limited by the manufacturer.</td></tr>
+      <tr><td>Connection ratio</td><td>Sum of indoor capacities, often 50–130 % of outdoor capacity, because not every room peaks at once.</td></tr>
+      <tr><td>Refrigerant in occupied rooms</td><td>EN 378 / ISO 5149 limit how much refrigerant may leak into the smallest room. Large systems may need leak detectors, shut-off valves or ventilation.</td></tr>
+      <tr><td>Controls</td><td>Proprietary bus (for example Daikin DIII-NET, Mitsubishi M-NET). The BMS reaches it through a gateway.</td></tr>
+    </table></div>
+
+    <div class="callout warn">A small hotel room served by a large VRF system is the classic safety trap. If the whole
+      charge, say 30 kg, could leak into one 20 m² room, the concentration limit is exceeded. Designers split systems,
+      add detection with isolation valves, or choose a water-based system instead.</div>
+
+    <div class="callout example">A typical office floor: one 45 kW heat recovery outdoor unit, 18 cassette units, four
+      branch selector boxes, a central touch controller and a BACnet gateway. The BMS reads each unit's on/off, mode, setpoint,
+      room temperature and fault code, and writes on/off and setpoint per schedule. It does not touch EEV positions.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">In a 2-pipe heat pump VRF in cooling mode, a north meeting room asks for heat. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The whole system is in one mode. The unit shows a mode conflict and waits.">The indoor unit waits until the system changes mode</button>
+        <button class="opt" data-opt="b" data-why="Only heat recovery systems can do that.">The branch selector sends it hot gas</button>
+        <button class="opt" data-opt="c" data-why="Indoor units have no compressor of their own.">The indoor unit reverses its own cycle</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>VRF: one outdoor unit, many indoor units, refrigerant to every room.</li>
+      <li>Heat pump VRF picks one mode. Heat recovery VRF serves both and moves heat between rooms.</li>
+      <li>Refrigerant charge in small rooms is a safety design issue.</li>
+      <li>Integration is via a vendor gateway, not direct control of the circuit.</li>
+    </ul>
+  </section>
+
+  <!-- 12.4 -->
+  <section class="lesson" id="s4" data-num="12.4">
+    <h2>12.4 Chillers and fan coils</h2>
+    <p>A <strong>chiller</strong> runs the refrigeration cycle and cools water instead of air. The chilled water is pumped to
+      <strong>fan coil units</strong> (FCUs), air handling unit coils, chilled beams or cooled ceilings. Water carries a lot
+      of heat per litre and is safe in occupied rooms, so this scales from one floor to a campus.</p>
+
+    <h3>The one formula</h3>
+    <p><code>Q [kW] = flow [l/s] × 4.19 × ΔT [K]</code>. One litre per second of water warming by 6 K carries about 25 kW.
+      A classic design is <strong>6/12 °C</strong> (supply/return). Chilled beams and cooled ceilings use higher temperatures,
+      such as 14/17 °C, to stay above the room dew point. A higher supply temperature also raises chiller EER, by very
+      roughly 2–4 % per kelvin.</p>
+
+    <figure class="viz" id="chw">
+      <div class="hp-row">
+        <label>Cooling load <output id="loadOut">70</output> % of 100 kW<input type="range" id="load" min="10" max="100" step="5" value="70"></label>
+        <label>Actual ΔT across coils <output id="dtOut">6</output> K<input type="range" id="dt" min="2" max="8" step="0.5" value="6"></label>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Chiller, pump and three fan coil units on a chilled water loop">
+        <rect class="box" x="20" y="90" width="110" height="80" rx="8"/>
+        <text class="big" x="75" y="125" text-anchor="middle">Chiller</text>
+        <text class="small" x="75" y="145" text-anchor="middle">100 kW · 6/12 °C</text>
+        <circle class="box" cx="175" cy="60" r="16"/><text class="small" x="175" y="64" text-anchor="middle">P</text>
+        <path id="chwS" class="pipe s-acc" d="M130,110 L160,60 M191,60 L560,60 L560,90"/>
+        <path id="chwR" class="pipe s-bad" d="M560,210 L560,220 L100,220 L100,170"/>
+        <g id="fcus"></g>
+        <text class="small" x="360" y="50" text-anchor="middle" id="supLbl">supply 6 °C</text>
+        <text class="small" x="360" y="240" text-anchor="middle" id="retLbl">return 12 °C</text>
+      </svg>
+      <div class="stats">
+        <div class="stat"><div class="k">Flow needed</div><div class="v" id="flowNeed"></div></div>
+        <div class="stat"><div class="k">Design flow</div><div class="v">3.98 l/s</div></div>
+        <div class="stat" id="delivStat"><div class="k">Cooling delivered</div><div class="v" id="deliv"></div></div>
+        <div class="stat"><div class="k">Pump power (∝ flow³)</div><div class="v" id="pumpP"></div></div>
+      </div>
+      <div class="readout" id="chwText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Design: 100 kW at 6 K ΔT needs 3.98 l/s. Lower the ΔT and watch the loop run out of water before the chiller runs out of capacity.</figcaption>
+    </figure>
+
+    <p>This is <strong>low ΔT syndrome</strong>, one of the most common faults in chilled water plants. Causes include
+      three-way valves that bypass cold water, fouled coils, valves that are oversized or stuck open, and supply setpoints
+      set too low. The fix is mostly in hydraulics and control, which is why the BMS should trend supply and return
+      temperatures and flow.</p>
+
+    <h3>Chiller types</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>Heat rejection</th><th>Typical use</th></tr>
+      <tr><td>Air-cooled</td><td>Fans on the condenser, roof or yard</td><td>20 kW to ~1.5 MW. Simple, no cooling tower.</td></tr>
+      <tr><td>Water-cooled</td><td>Condenser water to a cooling tower or dry cooler</td><td>Large plants. Higher EER, more equipment and water treatment.</td></tr>
+      <tr><td>Reversible (heat pump chiller)</td><td>Air or water, either way</td><td>Supplies chilled water in summer and warm water in winter on 2-pipe systems.</td></tr>
+      <tr><td>Multi-purpose (4-pipe)</td><td>Recovers condenser heat</td><td>Hot and chilled water at the same time, for example a hotel.</td></tr>
+    </table></div>
+
+    <h3>Fan coils: 2-pipe vs 4-pipe</h3>
+    <p>A <strong>2-pipe</strong> FCU has one coil. The whole building switches between chilled and hot water by season
+      (changeover). A <strong>4-pipe</strong> FCU has a cooling coil and a heating coil with separate valves, so each room
+      can choose. The room controller sequences: heating valve, deadband, cooling valve, with fan speed following demand.
+      Fans are 3-speed or EC with 0–10 V. Condensate is collected in a drip tray, often with a pump and a float switch.</p>
+
+    <div class="callout warn">Chilled surfaces below the dew point drip water. Chilled ceilings and beams need a dew point
+      or condensation sensor that raises the supply temperature or closes the valve. Open windows in humid weather are the
+      usual trigger.</div>
+
+    <div class="callout example">A 4-pipe FCU room controller on Modbus or BACnet typically exposes: room temperature,
+      effective setpoint, occupancy, fan speed, heating and cooling valve positions, window contact, condensate alarm and
+      filter hours. A central "season changeover" and "chilled water available" signal come from the plant.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A chilled water loop is designed for 6 K ΔT but runs at 3 K. The pumps are at full speed. What is the likely result?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Lower ΔT means less heat per litre, not more.">More cooling than design, because flow is high</button>
+        <button class="opt" data-opt="b" data-why="At design flow, 3 K moves only half the heat. Rooms run warm even though the chiller has spare capacity.">Only about half the design cooling reaches the rooms</button>
+        <button class="opt" data-opt="c" data-why="ΔT has a direct effect on delivered capacity.">No effect, the chiller compensates</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Q = flow × 4.19 × ΔT. Protect the design ΔT.</li>
+      <li>Higher chilled water temperatures improve EER and avoid condensation.</li>
+      <li>2-pipe FCUs change over by season; 4-pipe FCUs let each room choose.</li>
+      <li>Trend supply, return and flow to catch low ΔT early.</li>
+    </ul>
+  </section>
+
+  <!-- 12.5 -->
+  <section class="lesson" id="s5" data-num="12.5">
+    <h2>12.5 Integration with the BMS</h2>
+    <p>Heat pumps, chillers and VRF systems come with their own controllers. They protect the compressor, manage oil return,
+      defrost and refrigerant flow. The BMS sits <em>above</em> this. Its job is to say <strong>when</strong>,
+      <strong>how much</strong> and <strong>to what setpoint</strong>, and to watch how well the machine performs.</p>
+
+    <h3>Typical interfaces</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Interface</th><th>What you get</th><th>Watch out for</th></tr>
+      <tr><td>Hard-wired I/O</td><td>Enable contact, mode contact, 0–10 V setpoint or demand, fault relay</td><td>Few points, but robust. Often still used for enable and fault.</td></tr>
+      <tr><td>Modbus RTU/TCP</td><td>Most monoblocks and chillers. Dozens to hundreds of registers.</td><td>Vendor register maps; some writes go to EEPROM, so do not write setpoints every few seconds.</td></tr>
+      <tr><td>BACnet</td><td>Chillers and VRF gateways, with objects and alarms</td><td>Check the PICS and BTL listing for supported objects and COV.</td></tr>
+      <tr><td>VRF gateway</td><td>Per indoor unit: on/off, mode, setpoint, fan, room temp, fault code</td><td>Polling large systems is slow. Gateways are licensed by unit count.</td></tr>
+      <tr><td>SG Ready / utility lock</td><td>Two contacts for grid or PV signals</td><td>Behaviour of each state is vendor-specific in detail.</td></tr>
+      <tr><td>Vendor cloud</td><td>Easy app control</td><td>Not a basis for building control. Prefer local interfaces.</td></tr>
+    </table></div>
+
+    <h3>SG Ready: four states with two contacts</h3>
+    <p>SG Ready is a German label (from the heat pump association BWP) that many European heat pumps support. Two digital
+      inputs give four operating states. A BMS or energy manager can use it to soak up PV surplus or respect a grid
+      signal.</p>
+    <figure class="viz" id="sgready">
+      <div class="sg">
+        <label><input type="checkbox" id="sg1"> Contact 1</label>
+        <label><input type="checkbox" id="sg2"> Contact 2</label>
+      </div>
+      <svg viewBox="0 0 600 90" role="img" aria-label="SG Ready state scale">
+        <g id="sgBars"></g>
+      </svg>
+      <div class="readout" id="sgText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Contact naming differs between manufacturers. Always check the installation manual for which terminal is which.</figcaption>
+    </figure>
+
+    <h3>Measure performance, not just state</h3>
+    <p>A heat meter on the heat pump output and an electricity meter on its supply give the real COP. Logged every 15 minutes
+      and summed per day, this is the single most useful KPI. A drop from 4 to 3 at the same weather points to a fault:
+      a dirty coil, low refrigerant, a stuck valve, or a setpoint someone raised.</p>
+    <div class="table-wrap"><table>
+      <tr><th>KPI</th><th>Source</th><th>What it catches</th></tr>
+      <tr><td>Daily COP / EER</td><td>Heat meter + electricity meter</td><td>Gradual degradation, wrong settings</td></tr>
+      <tr><td>Starts per hour</td><td>Compressor running status</td><td>Short cycling (more than ~3–6 starts per hour is a warning sign)</td></tr>
+      <tr><td>Flow / return ΔT</td><td>Temperature sensors</td><td>Low ΔT, bypassing, flow problems</td></tr>
+      <tr><td>Backup heater hours</td><td>Relay status or energy</td><td>A bivalent point set too high, or a heat pump fault hidden by the heater</td></tr>
+      <tr><td>Defrost count</td><td>Status register</td><td>Iced coils, low airflow, poor siting</td></tr>
+    </table></div>
+
+    <h3>Exercise: who owns the point?</h3>
+    <div class="classify" data-cats="BMS writes,BMS reads,Leave alone">
+      <div class="item" data-cat="BMS writes" data-why="Scheduling the machine on and off is a supervisory job."><span class="label">Heat pump enable / demand</span></div>
+      <div class="item" data-cat="BMS writes" data-why="A weather or demand-based flow setpoint is a classic BMS optimisation. Write only on change."><span class="label">Heating flow temperature setpoint</span></div>
+      <div class="item" data-cat="Leave alone" data-why="The unit's controller owns the expansion valve. Writing it would break superheat control."><span class="label">EEV opening (steps)</span></div>
+      <div class="item" data-cat="BMS reads" data-why="Fault codes drive alarms and service tickets."><span class="label">Unit fault code</span></div>
+      <div class="item" data-cat="BMS reads" data-why="Useful for trends and diagnostics, never a control output."><span class="label">Compressor discharge temperature</span></div>
+      <div class="item" data-cat="Leave alone" data-why="Defrost is internal protection logic. The BMS may read the state but must not force it."><span class="label">Defrost start command</span></div>
+      <div class="item" data-cat="BMS writes" data-why="A demand limit lets the BMS shave peaks or follow a tariff."><span class="label">Chiller demand limit (%)</span></div>
+      <div class="item" data-cat="BMS reads" data-why="Feeds the COP calculation."><span class="label">Heat meter energy (kWh)</span></div>
+    </div>
+
+    <div class="callout warn">Do not build a BMS loop that fights the unit's own loop. If the heat pump modulates its
+      compressor to hold 35 °C flow and the BMS also pulses enable on and off to hold a room temperature, you get short
+      cycling. Pick one controller per variable: the BMS moves the setpoint, the unit holds it.</div>
+
+    <div class="callout example">A common supervisory sequence for a chiller plant: the BMS enables chillers by time
+      schedule and outdoor temperature, resets the chilled water setpoint up from 6 °C to 10 °C as valve positions show low
+      demand, stages chillers on load, trends ΔT, and raises an alarm if the fault relay closes or the supply temperature
+      stays 2 K above setpoint for 15 minutes.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">You want the heat pump to use more PV surplus at midday. Which approach fits the layering best?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Compressor speed is owned by the unit's controller.">Write the compressor frequency directly over Modbus</button>
+        <button class="opt" data-opt="b" data-why="Pulsing enable causes short cycling and wear.">Toggle the enable contact every few minutes</button>
+        <button class="opt" data-opt="c" data-why="SG Ready or a raised setpoint asks the unit to do more, and it decides how.">Use the SG Ready "recommended on" state or raise the setpoint</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The unit controller protects the machine. The BMS decides when, how much and what setpoint.</li>
+      <li>Prefer local interfaces: hard-wired, Modbus, BACnet, vendor gateways.</li>
+      <li>Measure COP with meters. It is the best health indicator.</li>
+      <li>One controller per variable. Avoid fighting loops.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. Which part lowers the refrigerant pressure so it can boil cold?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The compressor raises pressure.">Compressor</button>
+        <button class="opt" data-opt="b" data-why="The expansion valve drops the pressure and meters the flow.">Expansion valve</button>
+        <button class="opt" data-opt="c" data-why="The condenser works at high pressure.">Condenser</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">2. Which change raises the COP of an air-to-water heat pump the most on a typical day?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Lift is the main driver; every kelvin of flow temperature counts.">Lowering the flow temperature from 55 °C to 40 °C</button>
+        <button class="opt" data-opt="b" data-why="A buffer may prevent cycling but does not reduce lift.">Adding a larger buffer tank</button>
+        <button class="opt" data-opt="c" data-why="Raising the setpoint increases the lift and lowers COP.">Raising the room setpoint by 2 K</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">3. What makes heat recovery VRF different from heat pump VRF?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Both use inverter compressors.">An inverter compressor</button>
+        <button class="opt" data-opt="b" data-why="Both use refrigerant in the rooms.">Water instead of refrigerant indoors</button>
+        <button class="opt" data-opt="c" data-why="Branch selectors let units heat and cool at the same time.">Simultaneous heating and cooling on one system</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">4. Water at 2 l/s warms from 7 °C to 12 °C across a coil. About how much cooling is that?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Check the formula: 2 × 4.19 × 5.">10 kW</button>
+        <button class="opt" data-opt="b" data-why="2 × 4.19 × 5 ≈ 42 kW.">42 kW</button>
+        <button class="opt" data-opt="c" data-why="That would need 12 K ΔT, not 5 K.">100 kW</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">5. A heat pump's daily COP falls from 4.1 to 3.0 over a month at similar weather. Best first step?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A drop at equal weather points to a fault or a changed setting. Trends tell you which.">Check trends: flow setpoint, backup heater hours, starts per hour, defrosts</button>
+        <button class="opt" data-opt="b" data-why="Masks the symptom and raises cost.">Raise the flow setpoint so rooms stay warm</button>
+        <button class="opt" data-opt="c" data-why="Outdoor temperature was similar, so weather is not the cause.">Ignore it, COP always varies with the weather</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="11-ventilation.html">← Chapter 11</a>
+    <a class="btn" href="13-lighting.html">Chapter 13 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// 12.1 Refrigeration cycle stepper.
+(() => {
+  const fig = document.getElementById("cycle");
+  const $ = (id) => document.getElementById(id);
+  const loop = $("loop"), dot = $("cyDot"), L = loop.getTotalLength();
+  // Fractions of the loop path where each step starts and ends.
+  const STEPS = [
+    { c: "c-comp", pp: "pp1", ph: "ph1", r: [0, 0.18], txt: "1 → 2 · Compressor. Low-pressure vapour (~8 bar, ~5 °C) is squeezed to ~25 bar. Electrical work W is added; the gas leaves at roughly 70–90 °C." },
+    { c: "c-cond", pp: "pp2", ph: "ph2", r: [0.18, 0.47], txt: "2 → 3 · Condenser. The hot gas cools, condenses at ~40 °C and gives off Q_hot. It leaves as a slightly subcooled liquid." },
+    { c: "c-exp", pp: "pp3", ph: "ph3", r: [0.47, 0.61], txt: "3 → 4 · Expansion valve. Pressure falls to ~8 bar. Part of the liquid flashes to vapour and the mix drops to about 0 °C. No heat is exchanged." },
+    { c: "c-evap", pp: "pp4", ph: "ph4", r: [0.61, 1], txt: "4 → 1 · Evaporator. The cold mix boils and absorbs Q_cold from the source. The EEV keeps a few kelvin of superheat so only vapour reaches the compressor." },
+  ];
+  const MODES = {
+    heat: ["indoor: heats water", "outdoor: takes heat from air", "heat out → building", "heat in ← outdoor air"],
+    cool: ["outdoor: rejects heat", "indoor: cools room air", "heat out → outdoor air", "heat in ← room"],
+  };
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let i = -1, raf = 0;
+  const place = (f) => { const p = loop.getPointAtLength(L * f); dot.setAttribute("cx", p.x); dot.setAttribute("cy", p.y); };
+  const animate = ([a, b]) => {
+    cancelAnimationFrame(raf);
+    if (reduce) return place(b);
+    const t0 = performance.now(), dur = 900;
+    const tick = (t) => { const k = Math.min(1, (t - t0) / dur); place(a + (b - a) * k); if (k < 1) raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+  };
+  const render = () => {
+    fig.querySelectorAll(".lit").forEach((e) => e.classList.remove("lit"));
+    fig.querySelectorAll(".seg-on").forEach((e) => e.classList.remove("seg-on"));
+    if (i < 0) { place(0); $("cycleText").textContent = "Press “Next step” to follow 1 kg of refrigerant around the circuit."; return; }
+    const s = STEPS[i];
+    $(s.c).querySelector("rect, circle").classList.add("lit");
+    $(s.ph).classList.add("seg-on");
+    animate(s.r);
+    $("cycleText").textContent = s.txt;
+  };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = (i + 1) % STEPS.length; render(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(-1, i - 1); render(); });
+  fig.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+    const m = MODES[b.dataset.mode];
+    ["condLbl", "evapLbl", "qOut", "qIn"].forEach((id, k) => ($(id).textContent = m[k]));
+    fig.querySelectorAll("[data-mode]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  }));
+  render();
+})();
+
+// 12.2 COP vs lift chart.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const X = (t) => 60 + ((t + 20) / 40) * 520, Y = (c) => 240 - (c / 8) * 220;
+  const ETA = 0.55, K = 273.15;
+  const cop = (tEvap, tCond) => Math.min(8, (ETA * (tCond + K)) / (tCond - tEvap));
+  const air = (oat, flow) => cop(oat - 6, flow + 4);
+  const gnd = (flow) => cop(0 - 4, flow + 4);
+  let g = "";
+  for (let c = 0; c <= 8; c += 2) g += `<line class="grid" x1="60" x2="580" y1="${Y(c)}" y2="${Y(c)}"/><text class="small" x="52" y="${Y(c) + 4}" text-anchor="end">${c}</text>`;
+  for (let t = -20; t <= 20; t += 10) g += `<text class="small" x="${X(t)}" y="258" text-anchor="middle">${t} °C</text>`;
+  g += `<text class="small" x="60" y="14">COP</text><text class="small" x="580" y="274" text-anchor="end">outdoor air temperature</text>`;
+  $("copGrid").innerHTML = g;
+  const draw = () => {
+    const flow = +$("flowT").value, oat = +$("oat").value;
+    $("flowOut").textContent = flow; $("oatOut").textContent = oat;
+    let d = "";
+    for (let t = -20; t <= 20; t++) d += (t === -20 ? "M" : "L") + X(t) + "," + Y(air(t, flow)).toFixed(1);
+    $("airCurve").setAttribute("d", d);
+    const gc = gnd(flow);
+    $("gndCurve").setAttribute("d", `M${X(-20)},${Y(gc)} L${X(20)},${Y(gc)}`);
+    const ac = air(oat, flow);
+    ["x1", "x2"].forEach((a) => $("oatLine").setAttribute(a, X(oat)));
+    $("airDot").setAttribute("cx", X(oat)); $("airDot").setAttribute("cy", Y(ac));
+    $("gndDot").setAttribute("cx", X(oat)); $("gndDot").setAttribute("cy", Y(gc));
+    $("airCop").textContent = ac.toFixed(1);
+    $("gndCop").textContent = gc.toFixed(1);
+    $("airLift").textContent = `${flow + 4 - (oat - 6)} K`;
+    $("airKw").textContent = `${(10 / ac).toFixed(1)} kW`;
+  };
+  $("flowT").addEventListener("input", draw); $("oat").addEventListener("input", draw); draw();
+})();
+
+// 12.3 VRF topology: heat pump vs heat recovery.
+(() => {
+  const fig = document.getElementById("vrf");
+  const $ = (id) => document.getElementById(id);
+  const N = 6, state = Array(N).fill("off");
+  let sys = "hp", order = [];
+  const pos = (k) => ({ x: 330 + (k % 2) * 140, y: 30 + Math.floor(k / 2) * 90 });
+  const NAMES = ["Office N1", "Office S1", "Meeting N", "Office S2", "Server", "Lobby"];
+  const draw = () => {
+    // Heat pump: the first unit that called sets the system mode.
+    const active = order.filter((k) => state[k] !== "off");
+    const sysMode = sys === "hp" && active.length ? state[active[0]] : null;
+    let pipes = "", units = "";
+    $("bsBox").style.display = sys === "hr" ? "" : "none";
+    for (let k = 0; k < N; k++) {
+      const p = pos(k), wait = sysMode && state[k] !== "off" && state[k] !== sysMode;
+      const from = sys === "hr" ? "M255,150" : "M130,150";
+      const cls = state[k] === "off" || wait ? "arrow" : "pipe " + (state[k] === "cool" ? "s-acc" : "s-bad");
+      pipes += `<path class="${cls}" d="${from} C${sys === "hr" ? 290 : 230},150 ${p.x - 40},${p.y + 25} ${p.x},${p.y + 25}"/>`;
+      const c = wait ? "iu-wait" : state[k] === "cool" ? "iu-cool" : state[k] === "heat" ? "iu-heat" : "";
+      const lbl = wait ? "waiting" : state[k];
+      units += `<g class="iu ${c}" data-k="${k}" role="button" tabindex="0" aria-label="${NAMES[k]}: ${lbl}"><rect class="box" x="${p.x}" y="${p.y}" width="115" height="50" rx="6"/><text x="${p.x + 57}" y="${p.y + 21}" text-anchor="middle">${NAMES[k]}</text><text class="small" x="${p.x + 57}" y="${p.y + 39}" text-anchor="middle">${lbl}</text></g>`;
+    }
+    if (sys === "hr") pipes += `<path class="arrow" d="M130,145 L175,145 M130,155 L175,155"/>`;
+    $("vrfPipes").innerHTML = pipes; $("vrfUnits").innerHTML = units;
+    const c = state.filter((s) => s === "cool").length, h = state.filter((s) => s === "heat").length;
+    let txt, odu;
+    if (!c && !h) { odu = "idle"; txt = "All units off. Click a unit to give it a demand."; }
+    else if (sys === "hp") {
+      const waiting = active.filter((k) => state[k] !== sysMode).length;
+      odu = sysMode === "cool" ? "cooling" : "heating";
+      txt = `System in ${odu} mode (set by the first unit that called). ` + (waiting ? `${waiting} unit(s) want the other mode and must wait.` : "No conflicts.");
+    } else {
+      odu = c === h ? "balanced, low load" : c > h ? "net cooling" : "net heating";
+      txt = `${c} cooling, ${h} heating. ` + (c && h ? `Heat removed from cooling rooms feeds the heating rooms. The outdoor unit only covers the difference (${odu}).` : "Single mode: behaves like a heat pump system.");
+    }
+    $("oduMode").textContent = odu; $("vrfText").textContent = txt;
+  };
+  const cycle = (k) => {
+    const next = { off: "cool", cool: "heat", heat: "off" }[state[k]];
+    state[k] = next;
+    order = order.filter((x) => x !== k);
+    if (next !== "off") order.push(k);
+    draw();
+  };
+  $("vrfUnits").addEventListener("click", (e) => { const g = e.target.closest(".iu"); if (g) cycle(+g.dataset.k); });
+  $("vrfUnits").addEventListener("keydown", (e) => {
+    const g = e.target.closest(".iu");
+    if (g && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); cycle(+g.dataset.k); $("vrfUnits").querySelector(`[data-k="${g.dataset.k}"]`).focus(); }
+  });
+  fig.querySelectorAll("[data-sys]").forEach((b) => b.addEventListener("click", () => {
+    sys = b.dataset.sys;
+    fig.querySelectorAll("[data-sys]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    draw();
+  }));
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { state.fill("off"); order = []; draw(); });
+  draw();
+})();
+
+// 12.4 Chilled water loop and low delta-T.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const CP = 4.19, DESIGN_KW = 100, DESIGN_FLOW = DESIGN_KW / (CP * 6);
+  $("fcus").innerHTML = [0, 1, 2].map((k) => {
+    const x = 250 + k * 110;
+    return `<path class="arrow" d="M${x + 30},60 L${x + 30},100 M${x + 30},160 L${x + 30},220"/><rect class="box" x="${x}" y="100" width="60" height="60" rx="6"/><text class="small" x="${x + 30}" y="126" text-anchor="middle">FCU</text><text class="small fcuV" x="${x + 30}" y="144" text-anchor="middle"></text>`;
+  }).join("");
+  const draw = () => {
+    const load = +$("load").value, dt = +$("dt").value;
+    $("loadOut").textContent = load; $("dtOut").textContent = dt;
+    const q = DESIGN_KW * load / 100;
+    const need = q / (CP * dt);
+    const flow = Math.min(need, DESIGN_FLOW);
+    const deliv = flow * CP * dt;
+    const short = need > DESIGN_FLOW + 1e-9;
+    $("flowNeed").textContent = need.toFixed(2) + " l/s";
+    $("deliv").textContent = `${deliv.toFixed(0)} of ${q.toFixed(0)} kW`;
+    $("delivStat").className = "stat " + (short ? "bad" : "ok");
+    $("pumpP").textContent = Math.round(Math.pow(flow / DESIGN_FLOW, 3) * 100) + " %";
+    const w = 2 + (flow / DESIGN_FLOW) * 7;
+    $("chwS").style.strokeWidth = w; $("chwR").style.strokeWidth = w;
+    $("retLbl").textContent = `return ${(6 + dt).toFixed(1)} °C`;
+    document.querySelectorAll(".fcuV").forEach((t) => (t.textContent = Math.round(Math.min(100, (need / DESIGN_FLOW) * 100)) + " %"));
+    $("chwText").textContent = short
+      ? `Low ΔT: the coils need ${need.toFixed(2)} l/s but the loop gives ${DESIGN_FLOW.toFixed(2)} l/s. Rooms get ${deliv.toFixed(0)} kW while the chiller still has spare capacity.`
+      : `OK: ${need.toFixed(2)} l/s at ${dt} K carries ${q.toFixed(0)} kW. Pumps can slow down; pump power falls with the cube of flow.`;
+  };
+  $("load").addEventListener("input", draw); $("dt").addEventListener("input", draw); draw();
+})();
+
+// 12.5 SG Ready states.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  // Common mapping (contact1:contact2). Vendors may label terminals differently.
+  const S = [
+    ["1", "1:0", "Blocked", "Utility lock. Compressor off, at most a short time per day. Frost protection stays active."],
+    ["2", "0:0", "Normal", "Normal efficient operation. Some units allow a hot water boost window here."],
+    ["3", "0:1", "Recommended on", "Run more: raise setpoints for heating and hot water, use cheap or PV power. The unit decides how much."],
+    ["4", "1:1", "Forced on", "Definite start command. Setpoints raised further, backup heaters may be allowed."],
+  ];
+  const draw = () => {
+    const key = `${$("sg1").checked ? 1 : 0}:${$("sg2").checked ? 1 : 0}`;
+    const cur = S.findIndex((s) => s[1] === key);
+    $("sgBars").innerHTML = S.map((s, k) => `<rect x="${10 + k * 147}" y="10" width="137" height="60" rx="8" class="${k === cur ? "fill-accent" : "box"}"/><text x="${78 + k * 147}" y="36" text-anchor="middle" style="${k === cur ? "fill:#fff;font-weight:650" : ""}">State ${s[0]} · ${s[1]}</text><text x="${78 + k * 147}" y="56" text-anchor="middle" style="font-size:12px;${k === cur ? "fill:#fff" : ""}">${s[2]}</text>`).join("");
+    $("sgText").innerHTML = `<strong>State ${S[cur][0]}: ${S[cur][2]}.</strong> ${S[cur][3]}`;
+  };
+  $("sg1").addEventListener("change", draw); $("sg2").addEventListener("change", draw); draw();
+})();
+</script>
+</body>
+</html>

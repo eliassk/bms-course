@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infrastructure and Backup</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .ix-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; margin: 10px 0; }
+  .ix-card { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+  .ix-card.on { border-color: var(--accent); background: var(--accent-soft); }
+  .ix-card.ok { border-color: var(--ok); background: var(--ok-soft); }
+  .ix-card.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .ix-card h4 { margin: 0 0 4px; font-size: 14px; }
+  .ix-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 10px; margin: 8px 0; }
+  .ix-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .ix-sel { font: 14px var(--font); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; width: 100%; min-width: 0; }
+  .ix-check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; margin: 0 14px 6px 0; }
+  .verdict { font-weight: 700; padding: 8px 12px; border-radius: 8px; margin-top: 10px; display: inline-block; }
+  .verdict.ok { background: var(--ok-soft); color: var(--ok); }
+  .verdict.bad { background: var(--bad-soft); color: var(--bad); }
+  .rule-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; }
+  .rule-list li { font-size: 14px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); }
+  .rule-list li.yes { border-color: var(--ok); background: var(--ok-soft); }
+  .rule-list li.yes::before { content: "✓ "; color: var(--ok); }
+  .rule-list li.no { border-color: var(--bad); background: var(--bad-soft); }
+  .rule-list li.no::before { content: "✗ "; color: var(--bad); }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; }
+  .steps { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0; }
+  .steps span { flex: 1 1 28px; height: 6px; border-radius: 3px; background: var(--border); }
+  .steps span.done { background: var(--ok); }
+  .steps span.cur { background: var(--accent); }
+  .step-box { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px 14px; min-height: 150px; }
+  .step-box h4 { margin: 0 0 6px; }
+  .step-nav { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .bar { height: 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+  .bar.badbar > span { background: var(--bad); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="22">
+<div class="content">
+  <div class="kicker">Chapter 22</div>
+  <h1>Infrastructure: virtualisation, containers, backup</h1>
+  <p class="lead">The supervisory layer of a modern BMS is software. That software runs on hardware, inside virtual
+    machines or containers, and it must survive disk failures, bad updates and ransomware. This chapter covers the
+    platform under the BMS and how to get it back when it breaks.</p>
+
+  <!-- 22.1 -->
+  <section class="lesson" id="s1" data-num="22.1">
+    <h2>22.1 Hypervisors: ESXi, Proxmox</h2>
+    <p>A <strong>hypervisor</strong> lets one physical machine run several isolated operating systems, called
+      <strong>virtual machines (VMs)</strong>. Each VM believes it has its own CPU, RAM, disk and network cards.
+      The hypervisor shares the real hardware between them and keeps them apart.</p>
+    <p>For a BMS this is useful for three reasons. First, consolidation: the BMS server, a historian database, a
+      VPN gateway and a test instance can share one well-built host instead of four small boxes. Second, isolation:
+      a crash or a bad update inside one VM does not touch the others. Third, and most important, <em>snapshots and
+      whole-machine backups</em>: a VM is just a few files, so it can be copied, rolled back and restored onto
+      different hardware.</p>
+
+    <h3>Type 1 and type 2</h3>
+    <p>A <strong>type 1</strong> (bare-metal) hypervisor is the operating system of the host. It boots directly on the
+      hardware. VMware ESXi, Proxmox VE (KVM on Debian Linux), Microsoft Hyper-V and XCP-ng are type 1. A
+      <strong>type 2</strong> (hosted) hypervisor is an application on a normal desktop OS: VirtualBox, VMware
+      Workstation, Parallels. Type 2 is fine for a laptop lab. It is wrong for production, because the VM now
+      depends on a desktop OS that reboots for updates, sleeps and runs other software.</p>
+
+    <figure class="viz" id="hvType">
+      <div class="controls seg" role="group" aria-label="Hypervisor type">
+        <button data-t="1" aria-pressed="true">Type 1 (bare metal)</button>
+        <button data-t="2">Type 2 (hosted)</button>
+      </div>
+      <svg viewBox="0 0 600 270" role="img" aria-label="Layer stack of a hypervisor host">
+        <g id="hvLayers"></g>
+      </svg>
+      <div class="readout" id="hvText"></div>
+      <figcaption>Each extra layer between the VM and the hardware is one more thing that can reboot, update or fail.</figcaption>
+    </figure>
+
+    <h3>ESXi and Proxmox compared</h3>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>VMware ESXi / vSphere</th><th>Proxmox VE</th></tr>
+      <tr><td>Base</td><td>Proprietary VMkernel</td><td>Debian Linux + KVM/QEMU, plus LXC containers</td></tr>
+      <tr><td>Licence</td><td>Commercial. After the Broadcom acquisition the licensing moved to subscriptions; a free edition has been withdrawn and later reintroduced in limited form. Check the current terms.</td><td>Open source (AGPLv3). Optional paid subscription for the enterprise update repository and support.</td></tr>
+      <tr><td>Management</td><td>Host web client; vCenter for clusters</td><td>Built-in web UI on every node, clusters without an extra server</td></tr>
+      <tr><td>Hardware support</td><td>Strict compatibility list. Consumer NICs and some mini PCs need community drivers or do not work.</td><td>Whatever Linux supports. Very wide.</td></tr>
+      <tr><td>Storage</td><td>VMFS datastores, vSAN</td><td>ZFS, LVM-thin, Ceph, NFS, directories</td></tr>
+      <tr><td>Backup</td><td>Third party via APIs (Veeam, Nakivo and others)</td><td>Built-in vzdump; Proxmox Backup Server with deduplication</td></tr>
+    </table></div>
+
+    <h3>Sizing a host</h3>
+    <p>A supervisory BMS is light on CPU and heavy on reliability. A typical small site might run a BMS VM with
+      2 vCPU and 4–8 GB RAM, a time-series database with 2 vCPU and 4 GB, and a few utility VMs. A 6-core host with
+      32 GB RAM and mirrored NVMe disks has plenty of headroom. CPU can be <strong>overcommitted</strong> (more vCPUs
+      than physical cores) because most VMs are idle most of the time. RAM should not be overcommitted on a small host:
+      when the host runs out, it swaps or kills VMs, and you lose the most important one first.</p>
+    <div class="callout warn">Give a VM the vCPUs it needs, not the most you can. A VM with 8 vCPUs on a 6-core host can
+      wait longer to be scheduled than one with 2, because the hypervisor has to find free cores for it. Start small and
+      grow from measured load.</div>
+
+    <h3>Snapshots</h3>
+    <p>A <strong>snapshot</strong> freezes a VM's disk at a point in time. New writes go to a delta file. Rolling back
+      throws the delta away. Snapshots are perfect before an upgrade: take one, upgrade, test, then delete it. They are
+      <em>not</em> backups. They live on the same storage as the VM, so a failed disk takes both. On VMware, long-lived
+      snapshots also grow without limit and slow the VM down.</p>
+
+    <div class="callout example">An integrator runs a BMS server, an InfluxDB historian and a WireGuard VPN as three VMs
+      on one fanless mini PC with Proxmox VE. Before every BMS upgrade the technician takes a snapshot. When an upgrade
+      breaks a driver, rollback takes under a minute. Nightly backups go to a separate backup server, not to the
+      snapshot.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Why is a type 2 hypervisor a poor choice for a production BMS server?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Hardware virtualisation extensions are used by both types.">It cannot use CPU virtualisation extensions</button>
+        <button class="opt" data-opt="b" data-why="The VM depends on a desktop OS that updates, reboots and sleeps on its own schedule.">The VM depends on a general-purpose host OS that can reboot or sleep</button>
+        <button class="opt" data-opt="c" data-why="Type 2 hypervisors run Linux and Windows guests fine.">It cannot run Linux guests</button>
+        <button class="opt" data-opt="d" data-why="Snapshots exist in VirtualBox and Workstation too.">It has no snapshots</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Type 1 runs on bare metal. Use it for production. Type 2 is for labs.</li>
+      <li>Overcommit CPU carefully. Do not overcommit RAM on small hosts.</li>
+      <li>A snapshot is a rollback point, not a backup.</li>
+    </ul>
+  </section>
+
+  <!-- 22.2 -->
+  <section class="lesson" id="s2" data-num="22.2">
+    <h2>22.2 Virtual NICs and multi-network VMs</h2>
+    <p>A VM has <strong>virtual NICs</strong>. Each one plugs into a <strong>virtual switch</strong> inside the host.
+      The virtual switch is connected to one or more physical NICs, called <em>uplinks</em>. With VLANs, one physical
+      cable can carry several networks, and each VM NIC can be placed on exactly the network it needs.</p>
+    <p>A BMS server is often multi-homed. It needs the office or management LAN for operators, the OT network for
+      BACnet and Modbus devices, and maybe a separate VLAN for AV or audio. Giving it one virtual NIC per network keeps
+      the networks separate at layer 2 and makes the firewall rules explicit.</p>
+
+    <h3>Names on each platform</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Concept</th><th>VMware ESXi</th><th>Proxmox / Linux</th></tr>
+      <tr><td>Virtual switch</td><td>vSwitch (standard) or distributed switch</td><td>Linux bridge (<code>vmbr0</code>) or Open vSwitch</td></tr>
+      <tr><td>Network a VM attaches to</td><td>Port group, with a VLAN ID</td><td>Bridge plus a VLAN tag on the VM NIC (VLAN-aware bridge)</td></tr>
+      <tr><td>Paravirtual NIC</td><td>VMXNET3</td><td>virtio-net</td></tr>
+      <tr><td>Emulated NIC</td><td>E1000 / E1000E</td><td>e1000, rtl8139</td></tr>
+      <tr><td>Pass a whole NIC to a VM</td><td>DirectPath I/O</td><td>PCI passthrough (VFIO)</td></tr>
+    </table></div>
+
+    <h3>Emulated vs paravirtual NICs</h3>
+    <p>An <strong>emulated</strong> NIC pretends to be a real, well-known chip, such as an Intel E1000. Every guest has
+      a driver, but each packet costs extra work because the hypervisor imitates hardware registers. A
+      <strong>paravirtual</strong> NIC (VMXNET3, virtio) is designed for VMs. The guest needs a driver, which modern Linux
+      has built in, and in return gets far lower CPU use and higher throughput. Use paravirtual NICs by default. Fall back
+      to emulated ones only for installers or old guests without drivers.</p>
+    <div class="callout warn">High packet rates (multicast audio, PTP-timed media streams, busy BACnet broadcast domains) are
+      where emulated NICs struggle first. If a VM shows drops or timing errors under multicast load, switching to a
+      paravirtual NIC is one of the first things to try.</div>
+
+    <h3>Trace the path</h3>
+    <figure class="viz" id="vnic">
+      <div class="controls seg" role="group" aria-label="Pick a virtual NIC">
+        <button data-n="mgmt" aria-pressed="true">BMS eth0 · LAN</button>
+        <button data-n="ot">BMS eth1 · OT</button>
+        <button data-n="av">BMS eth2 · AV</button>
+        <button data-n="db">DB eth0 · LAN</button>
+      </div>
+      <svg viewBox="0 0 600 330" role="img" aria-label="VM NICs, port groups, virtual switch and physical uplinks">
+        <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="10" y="10" width="270" height="90" rx="10"/><text class="big" x="24" y="34">BMS VM</text>
+        <rect class="box" x="320" y="10" width="270" height="90" rx="10"/><text class="big" x="334" y="34">DB VM</text>
+        <rect class="box" id="v-mgmt" x="24" y="50" width="76" height="36" rx="6"/><text x="62" y="73" text-anchor="middle">eth0</text>
+        <rect class="box" id="v-ot" x="108" y="50" width="76" height="36" rx="6"/><text x="146" y="73" text-anchor="middle">eth1</text>
+        <rect class="box" id="v-av" x="192" y="50" width="76" height="36" rx="6"/><text x="230" y="73" text-anchor="middle">eth2</text>
+        <rect class="box" id="v-db" x="334" y="50" width="76" height="36" rx="6"/><text x="372" y="73" text-anchor="middle">eth0</text>
+        <rect class="box" x="10" y="130" width="580" height="90" rx="10"/><text class="small" x="24" y="148">virtual switch (VLAN-aware)</text>
+        <rect class="box" id="p-lan" x="40" y="160" width="150" height="44" rx="6"/><text x="115" y="180" text-anchor="middle">LAN</text><text class="small" x="115" y="196" text-anchor="middle">VLAN 10</text>
+        <rect class="box" id="p-ot" x="225" y="160" width="150" height="44" rx="6"/><text x="300" y="180" text-anchor="middle">OT</text><text class="small" x="300" y="196" text-anchor="middle">VLAN 20</text>
+        <rect class="box" id="p-av" x="410" y="160" width="150" height="44" rx="6"/><text x="485" y="180" text-anchor="middle">AV</text><text class="small" x="485" y="196" text-anchor="middle">VLAN 30</text>
+        <rect class="box" id="u-1" x="80" y="250" width="180" height="44" rx="6"/><text x="170" y="270" text-anchor="middle">NIC 1 · trunk</text><text class="small" x="170" y="286" text-anchor="middle">tagged 10, 20</text>
+        <rect class="box" id="u-2" x="340" y="250" width="180" height="44" rx="6"/><text x="430" y="270" text-anchor="middle">NIC 2 · access</text><text class="small" x="430" y="286" text-anchor="middle">VLAN 30, dedicated</text>
+        <path id="w-mgmt" class="arrow" d="M62,88 L115,158"/>
+        <path id="w-ot" class="arrow" d="M146,88 L300,158"/>
+        <path id="w-av" class="arrow" d="M230,88 L485,158"/>
+        <path id="w-db" class="arrow" d="M372,88 L115,158"/>
+        <path id="w-lan" class="arrow" d="M115,206 L170,248"/>
+        <path id="w-otu" class="arrow" d="M300,206 L170,248"/>
+        <path id="w-avu" class="arrow" d="M485,206 L430,248"/>
+        <text class="small" x="300" y="318" text-anchor="middle">physical switch ports must be configured to match: trunk with the same tags, or access</text>
+      </svg>
+      <div class="readout" id="vnicText"></div>
+      <figcaption>Each VM NIC lands on one port group (one VLAN). The port group leaves the host on an uplink, tagged or untagged.</figcaption>
+    </figure>
+
+    <p>Inside the guest, a VM NIC on a port group with a VLAN ID sees plain untagged frames. The tagging and untagging
+      happen in the virtual switch. This is the most common setup. The alternative, <em>VLAN trunking into the guest</em>
+      (VMware VLAN 4095, or an untagged bridge in Proxmox with VLAN interfaces inside the guest), is useful for routers
+      and firewalls but adds configuration inside the VM.</p>
+
+    <h3>Rules for a multi-homed VM</h3>
+    <ul>
+      <li>Only one NIC gets a default gateway. The others get addresses without a gateway, plus specific routes if
+        needed. Two default gateways cause asymmetric routing that is hard to debug.</li>
+      <li>Do not let the VM route between its networks. Disable IP forwarding unless it is meant to be a router.</li>
+      <li>Fix MAC addresses for NICs used by licences or DHCP reservations. Some platforms regenerate MACs when a VM is
+        cloned or restored.</li>
+      <li>Map NICs by MAC, not by order. After a restore or hardware change, guest names like <code>eth1</code> or
+        <code>ens19</code> can swap.</li>
+      <li>For latency-critical media networks, consider a dedicated physical NIC, or PCI passthrough so the guest owns the
+        hardware. Passthrough blocks live migration and some snapshot types.</li>
+    </ul>
+
+    <div class="callout example">A BMS VM on Proxmox has <code>net0</code> on <code>vmbr0</code> with tag 10 for the office,
+      <code>net1</code> on <code>vmbr0</code> tag 20 for BACnet/IP controllers, and <code>net2</code> on <code>vmbr1</code>, a
+      bridge bound to a second physical NIC that connects only to an audio network switch. All three are virtio. Only
+      <code>net0</code> has a gateway.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A VM NIC sits on a port group with VLAN ID 20. What does the guest OS see?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="With a port-group VLAN ID, the virtual switch strips the tag before delivery.">Frames tagged with VLAN 20, so it needs a VLAN interface</button>
+        <button class="opt" data-opt="b" data-why="Only VLAN 20 traffic reaches this NIC.">Traffic from all VLANs on the uplink</button>
+        <button class="opt" data-opt="c" data-why="The virtual switch tags and untags. The guest sees an ordinary access port.">Plain untagged frames from VLAN 20 only</button>
+        <button class="opt" data-opt="d" data-why="VLANs work fine with paravirtual NICs.">Nothing, unless the NIC is E1000</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>VM NIC → port group/VLAN → virtual switch → physical uplink → physical switch port.</li>
+      <li>Use paravirtual NICs (VMXNET3, virtio) by default.</li>
+      <li>One default gateway per VM. Map NICs by MAC.</li>
+    </ul>
+  </section>
+
+  <!-- 22.3 -->
+  <section class="lesson" id="s3" data-num="22.3">
+    <h2>22.3 Docker and containers</h2>
+    <p>A <strong>container</strong> is a group of processes that the host kernel isolates. Linux
+      <em>namespaces</em> give it its own view of process IDs, network interfaces, mount points and hostnames.
+      <em>cgroups</em> limit its CPU and memory. The container shares the host kernel. There is no guest OS to boot,
+      so a container starts in a second and costs megabytes, not gigabytes.</p>
+
+    <figure class="viz" id="cvm">
+      <div class="controls seg" role="group" aria-label="Isolation model">
+        <button data-m="vm" aria-pressed="true">Virtual machines</button>
+        <button data-m="ct">Containers</button>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="VM stack versus container stack">
+        <g id="cvmLayers"></g>
+      </svg>
+      <div class="readout" id="cvmText"></div>
+      <figcaption>VMs isolate at the hardware boundary. Containers isolate at the kernel boundary. Many sites use both: containers inside a VM.</figcaption>
+    </figure>
+
+    <h3>Images, containers, volumes</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Term</th><th>What it is</th></tr>
+      <tr><td><strong>Image</strong></td><td>A read-only, layered file system plus metadata. Built from a Dockerfile, pulled from a registry. Identified by a tag (<code>:2.7</code>) and, more precisely, by a digest (<code>@sha256:…</code>).</td></tr>
+      <tr><td><strong>Container</strong></td><td>A running instance of an image, with a thin writable layer on top. Delete the container and that layer is gone.</td></tr>
+      <tr><td><strong>Volume / bind mount</strong></td><td>Storage outside the container. Databases, configuration and logs MUST live here, or they vanish on the next update.</td></tr>
+      <tr><td><strong>Network</strong></td><td>Bridge (private network with NAT, the default), host (shares the host's stack), macvlan/ipvlan (own address on a physical LAN).</td></tr>
+    </table></div>
+
+    <h3>Compose: the whole stack in one file</h3>
+    <p>Docker Compose describes several containers and their volumes and networks in a YAML file. That file is the
+      documentation of your deployment and belongs in version control.</p>
+<pre class="code">services:
+  mqtt:
+    image: eclipse-mosquitto:2.0.18   # pin a version, never :latest
+    restart: unless-stopped
+    ports: ["1883:1883"]
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - mqtt-data:/mosquitto/data
+  historian:
+    image: influxdb:2.7
+    restart: unless-stopped
+    volumes: ["influx-data:/var/lib/influxdb2"]
+    mem_limit: 2g
+volumes:
+  mqtt-data:
+  influx-data:</pre>
+
+    <h3>Network modes matter for building protocols</h3>
+    <p>The default bridge network uses NAT. That is fine for TCP services like MQTT or HTTP. It breaks protocols that rely on
+      broadcast or multicast: BACnet/IP Who-Is, mDNS discovery, SSDP, and multicast audio streams. For those, use
+      <code>network_mode: host</code> or a macvlan network, so the container sits directly on the LAN.</p>
+
+    <h3>How much does each model cost?</h3>
+    <figure class="viz" id="dens">
+      <div class="demo" style="margin:0;border:0;padding:0">
+        <label for="densN">Services to run: <output id="densNOut">6</output></label>
+        <input type="range" id="densN" min="1" max="20" value="6">
+      </div>
+      <div class="ix-row">
+        <div><div class="small" style="font-size:13px">One VM per service (≈ 1 GB OS overhead each)</div><div class="bar badbar"><span id="densVm"></span></div><div class="readout" id="densVmT"></div></div>
+        <div><div class="small" style="font-size:13px">One VM, services as containers</div><div class="bar"><span id="densCt"></span></div><div class="readout" id="densCtT"></div></div>
+      </div>
+      <figcaption>Rough illustration. Assumes 300 MB per service, a guest OS overhead of about 1 GB per VM and about 20 MB per container. Real numbers vary widely.</figcaption>
+    </figure>
+
+    <div class="callout warn"><strong>Containers are not a security boundary as strong as VMs.</strong> A container
+      started with <code>--privileged</code>, with the Docker socket mounted, or running as root with host networking can
+      often take over the host. Treat those options as "this container is the host".</div>
+
+    <div class="callout example">A common small-site stack: an MQTT broker, Node-RED for glue logic, a time-series
+      database and Grafana, all in Compose on one Debian VM. An update is <code>docker compose pull &amp;&amp; docker compose up -d</code>.
+      A rollback is changing the tag back. The data survives because it lives in named volumes, which the nightly backup
+      copies.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">A BACnet/IP gateway in a container cannot discover any devices, but it can reach a device by IP. The container uses the default bridge network. Likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Port 47808 is UDP, but the issue is broadcast, not the port.">BACnet needs TCP port 47808 to be published</button>
+        <button class="opt" data-opt="b" data-why="Containers share the host kernel; that is not the issue.">Containers cannot run UDP services</button>
+        <button class="opt" data-opt="c" data-why="Unicast already works, so the image is fine.">The image is too old</button>
+        <button class="opt" data-opt="d" data-why="Who-Is is a broadcast. NAT bridge networks do not pass LAN broadcasts into the container.">Broadcast discovery does not cross the NAT bridge; use host or macvlan networking</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Containers share the host kernel. Light and fast, weaker isolation than VMs.</li>
+      <li>Data lives in volumes. Pin image versions. Keep Compose files in git.</li>
+      <li>Broadcast and multicast protocols need host or macvlan networking.</li>
+    </ul>
+  </section>
+
+  <!-- 22.4 -->
+  <section class="lesson" id="s4" data-num="22.4">
+    <h2>22.4 Edge hardware: mini PCs, industrial PCs</h2>
+    <p>The <strong>edge</strong> is the computer that sits in the building, close to the controllers. It might host
+      the whole BMS, or only a gateway that forwards data to a central server. Choosing it is a trade-off between price,
+      lifetime, environment and how easy it is to replace.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Class</th><th>Examples</th><th>Typical spec</th><th>Strengths</th><th>Weaknesses</th></tr>
+      <tr><td>Single-board computer</td><td>Raspberry Pi 4/5 and similar</td><td>4 ARM cores, 4–8 GB, SD card or NVMe HAT, 5–10 W</td><td>Cheap, low power, huge community</td><td>SD cards wear out; consumer power supply; no ECC; limited for VMs</td></tr>
+      <tr><td>Consumer mini PC</td><td>Intel NUC-class, many vendor mini PCs</td><td>4–8 x86 cores, 16–64 GB, NVMe, 10–40 W</td><td>Fast, cheap, runs any hypervisor</td><td>Fan, 0–35 °C rating, short model life, often one NIC</td></tr>
+      <tr><td>Fanless industrial PC</td><td>OnLogic, Advantech, Siemens SIMATIC IPC and others</td><td>x86, 8–64 GB, wide temperature (often −20 to 60 °C), 9–36 V DC input, DIN rail or wall mount</td><td>No moving parts, long availability (often 5–10 years), several NICs, serial ports</td><td>2–5× the price of a mini PC</td></tr>
+      <tr><td>Rack server</td><td>Dell PowerEdge, HPE ProLiant, Lenovo ThinkSystem</td><td>Xeon/EPYC, ECC RAM, hot-swap disks, redundant PSUs, iDRAC/iLO</td><td>Redundancy, remote management, vendor support</td><td>Needs a rack, cooling and noise tolerance</td></tr>
+    </table></div>
+
+    <h3>What really matters</h3>
+    <ul>
+      <li><strong>Storage endurance.</strong> Databases and logs write all day. A historian writing 5 GB/day uses about
+        1.8 TB/year. A cheap 256 GB SSD rated 150 TBW lasts decades at that rate, but an SD card does not. Check TBW
+        and prefer drives with power-loss protection.</li>
+      <li><strong>Redundant disks.</strong> A ZFS mirror or RAID 1 of two SSDs turns a disk failure from an outage into a
+        maintenance task.</li>
+      <li><strong>Power.</strong> DC input that fits the panel's 24 V supply, and a UPS that signals shutdown over USB or
+        network (see chapter 17).</li>
+      <li><strong>NICs.</strong> Count networks before buying. Two or more Intel NICs avoid driver trouble with some
+        hypervisors.</li>
+      <li><strong>Out-of-band access.</strong> IPMI, iDRAC, iLO or Intel AMT lets you see the console and power-cycle the
+        box remotely. Without it, a hung boot means a site visit.</li>
+      <li><strong>Lifecycle.</strong> If the model is discontinued in a year, a spare in five years is a different machine.
+        Virtualisation softens this: the VM moves to new hardware.</li>
+    </ul>
+
+    <h3>Pick a class</h3>
+    <figure class="viz" id="hw">
+      <div>
+        <label class="ix-check"><input type="checkbox" data-r="fanless"> Must be fanless (dusty plant room)</label>
+        <label class="ix-check"><input type="checkbox" data-r="temp"> Ambient may exceed 35 °C</label>
+        <label class="ix-check"><input type="checkbox" data-r="dc"> 24 V DC supply only</label>
+        <label class="ix-check"><input type="checkbox" data-r="vm"> Must run several VMs</label>
+        <label class="ix-check"><input type="checkbox" data-r="redund"> Redundant PSU and hot-swap disks</label>
+        <label class="ix-check"><input type="checkbox" data-r="cheap"> Budget under ~600 EUR</label>
+      </div>
+      <div class="ix-grid" id="hwCards"></div>
+      <figcaption>Each requirement rules classes out. If nothing is left, a requirement has to give.</figcaption>
+    </figure>
+
+    <div class="callout warn">A consumer mini PC on top of a hot boiler-room cabinet, with its fan full of dust, is a
+      very common cause of "the BMS was down for three days". Environment ratings are not marketing: check them against
+      the room.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A historian writes 8 GB per day. The SSD is rated 300 TBW. Roughly how long until the rated endurance is used?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="8 GB × 365 ≈ 2.9 TB/year. 300 / 2.9 ≈ 100 years. Write amplification shortens this, but endurance is not the limit here.">About 100 years, so endurance is not the problem</button>
+        <button class="opt" data-opt="b" data-why="Check the arithmetic: 8 GB/day is under 3 TB/year.">About 1 year</button>
+        <button class="opt" data-opt="c" data-why="300 TBW is 300,000 GB, far more than 8 GB/day for 10 years.">About 10 years</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Match the hardware to the room: temperature, dust, power.</li>
+      <li>Mirror the disks, check TBW, avoid SD cards for databases.</li>
+      <li>Remote console access saves site visits.</li>
+    </ul>
+  </section>
+
+  <!-- 22.5 -->
+  <section class="lesson" id="s5" data-num="22.5">
+    <h2>22.5 Backup strategy: 3-2-1, offsite</h2>
+    <p>A backup is a copy that survives the event that destroyed the original. Different events destroy different
+      things: a disk failure kills one drive, a fire kills the building, ransomware kills everything it can reach over
+      the network, and an operator mistake kills data that is then faithfully copied to every replica.</p>
+    <p>The classic rule is <strong>3-2-1</strong>: at least <strong>3</strong> copies of the data, on <strong>2</strong>
+      different media or systems, with <strong>1</strong> copy offsite. A modern extension is <strong>3-2-1-1-0</strong>:
+      plus 1 copy that is offline or immutable, and 0 errors when restores are tested.</p>
+
+    <h3>What to back up</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Item</th><th>Why</th><th>How</th></tr>
+      <tr><td>Whole VMs</td><td>Fastest full restore</td><td>Hypervisor backup (vzdump, Proxmox Backup Server, Veeam)</td></tr>
+      <tr><td>Application config</td><td>Small, changes often, needed to rebuild anywhere</td><td>Git, application export, file backup</td></tr>
+      <tr><td>Databases</td><td>A copied file of a running DB may be inconsistent</td><td>Native dump or snapshot-aware backup</td></tr>
+      <tr><td>Controller programs</td><td>PLC and DDC programs exist only on the controller and an engineer's laptop</td><td>Export after every change, store with the BMS backups</td></tr>
+      <tr><td>Network configs</td><td>Switches, firewalls, VLAN plans</td><td>Scheduled config export</td></tr>
+      <tr><td>Secrets and docs</td><td>Restore is impossible without passwords and licence keys</td><td>Password manager with offline export, printed runbook</td></tr>
+    </table></div>
+
+    <h3>Build a backup plan</h3>
+    <figure class="viz" id="b321">
+      <p style="margin-top:0">Toggle copies on and set where each one lives. The checker applies 3-2-1-1.</p>
+      <div id="bRows"></div>
+      <ul class="rule-list" id="bRules"></ul>
+      <div id="bVerdict"></div>
+      <figcaption>The production copy counts as one of the three.</figcaption>
+    </figure>
+
+    <h3>Retention and immutability</h3>
+    <p>Keep many restore points, not just the last one. A common scheme keeps 7 daily, 4 weekly and 12 monthly
+      backups. Ransomware or a silent misconfiguration may sit unnoticed for weeks, and the last good copy may be old.
+      <strong>Immutable</strong> storage (object lock in S3-compatible storage, append-only backup repositories,
+      rotated offline disks) prevents an attacker with admin rights on the BMS from deleting the backups too.</p>
+    <p>Encrypt offsite copies, and store the key somewhere that does not depend on the system being restored.</p>
+
+    <div class="callout warn">Sync is not backup. RAID is not backup. Replication is not backup. All three copy a deletion or
+      an encryption instantly. They protect availability, not history.</div>
+
+    <div class="callout example">A site backs up its BMS VMs nightly to a Proxmox Backup Server on a separate box in
+      another room, which then syncs to a second backup server at the integrator's office. Every quarter, a USB disk is
+      filled and taken offline. That is four copies, three systems, one offsite, one offline.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Production data on a RAID 1 array, plus a nightly copy to a NAS in the same rack. Does it meet 3-2-1?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="RAID mirrors are one copy: a deletion hits both disks at once.">Yes, the RAID mirror counts as a third copy</button>
+        <button class="opt" data-opt="b" data-why="Two copies, both in the same place. A fire or ransomware takes both.">No: only two real copies and nothing offsite</button>
+        <button class="opt" data-opt="c" data-why="Different media is satisfied by NAS versus server, but the offsite rule is not.">Yes, because the NAS is different media</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>3 copies, 2 media or systems, 1 offsite. Add 1 offline/immutable and 0 restore errors.</li>
+      <li>Back up controller programs and network configs, not just servers.</li>
+      <li>Keep history. Snapshots, RAID and sync are not backups.</li>
+    </ul>
+  </section>
+
+  <!-- 22.6 -->
+  <section class="lesson" id="s6" data-num="22.6">
+    <h2>22.6 Disaster recovery</h2>
+    <p>Backups are the ingredients. <strong>Disaster recovery (DR)</strong> is the tested procedure that turns them back
+      into a working system. Two numbers define the target:</p>
+    <ul>
+      <li><strong>RPO, recovery point objective:</strong> how much data you can afford to lose, measured in time. Nightly
+        backups give an RPO of up to 24 hours.</li>
+      <li><strong>RTO, recovery time objective:</strong> how long the service may be down before it is back.</li>
+    </ul>
+    <p>For a BMS, the RTO is often set by how long the building can run "headless" on its local controllers. If the
+      controllers keep heating and ventilating on their own (chapter 1), a few hours of supervisory outage is
+      uncomfortable but safe. Trend history has a softer RPO; alarm configuration and programs have a strict one, because
+      redoing a week of engineering work is expensive.</p>
+
+    <h3>RPO and RTO on a timeline</h3>
+    <figure class="viz" id="rpo">
+      <div class="ix-row">
+        <label>Backup interval
+          <select class="ix-sel" id="rpoInt"><option value="1">every hour</option><option value="6">every 6 h</option><option value="24" selected>daily</option><option value="168">weekly</option></select></label>
+        <label>Restore method
+          <select class="ix-sel" id="rpoMeth"><option value="0.5">Standby VM on second host (≈ 30 min)</option><option value="2" selected>Restore VM from local backup server (≈ 2 h)</option><option value="8">Download from offsite, spare hardware on site (≈ 8 h)</option><option value="48">Order new hardware, rebuild (≈ 48 h)</option></select></label>
+      </div>
+      <div class="demo" style="margin:6px 0;border:0;padding:0">
+        <label for="rpoFail">Failure happens at: <output id="rpoFailOut"></output> after the last backup window began</label>
+        <input type="range" id="rpoFail" min="0" max="100" value="70">
+      </div>
+      <svg viewBox="0 0 600 170" role="img" aria-label="Timeline of backups, failure, data loss and downtime">
+        <line x1="20" y1="90" x2="580" y2="90" class="muted-s" stroke-width="2"/>
+        <g id="rpoMarks"></g>
+      </svg>
+      <div class="readout" id="rpoText"></div>
+      <figcaption>Worst-case RPO equals the backup interval. RTO is set by how fast you can get a working copy running.</figcaption>
+    </figure>
+
+    <h3>Runbook</h3>
+    <p>A <strong>runbook</strong> is a written, step-by-step restore procedure that a competent person who did not build
+      the system can follow at 3 a.m. It lists where backups are, which credentials are needed, the order of restore and
+      how to verify success. Step through a typical one.</p>
+    <figure class="viz" id="runbook">
+      <div class="steps" id="rbBar"></div>
+      <div class="step-box" id="rbBox" aria-live="polite"></div>
+      <div class="step-nav">
+        <button class="btn secondary" id="rbPrev">← Back</button>
+        <button class="btn" id="rbNext">Next →</button>
+      </div>
+      <figcaption>Restore of a failed single-host BMS server from a local backup server.</figcaption>
+    </figure>
+
+    <h3>Test it, or it does not exist</h3>
+    <p>An untested backup is a hope. Schedule restore tests: at least once a year a full restore onto spare hardware or an
+      isolated network, and more often for single VMs. Time the test, which gives you your real RTO. Many backup tools
+      can verify checksums automatically, but only a real restore proves the application starts.</p>
+    <div class="callout warn">Restore tests MUST run on an isolated network. A restored BMS that comes up on the live OT
+      network will start writing to real controllers with old setpoints and schedules.</div>
+
+    <div class="callout example">After a disk failure, a facility team restored its BMS VM from the previous night's backup
+      onto a spare mini PC in about 90 minutes. The controllers ran the building the whole time. The only loss was 14 hours
+      of trend data, which was within the agreed 24-hour RPO.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Backups run daily at 02:00. The server dies at 17:00 and is back at 19:30. What were the RPO and RTO achieved?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Swapped: data loss is 15 h, downtime is 2.5 h.">RPO 2.5 h, RTO 15 h</button>
+        <button class="opt" data-opt="b" data-why="Data since 02:00 is lost, not a full day.">RPO 24 h, RTO 2.5 h</button>
+        <button class="opt" data-opt="c" data-why="Data from 02:00 to 17:00 is lost (15 h). Down from 17:00 to 19:30 (2.5 h).">RPO 15 h, RTO 2.5 h</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>RPO is data loss in time; RTO is downtime.</li>
+      <li>Write a runbook someone else can follow, and keep it outside the system.</li>
+      <li>Test restores on an isolated network and time them.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. Which is a type 1 hypervisor?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="VirtualBox runs as an application on a host OS.">VirtualBox</button>
+        <button class="opt" data-opt="b" data-why="Proxmox VE boots on bare metal and runs KVM in the Linux kernel.">Proxmox VE</button>
+        <button class="opt" data-opt="c" data-why="Workstation is hosted, type 2.">VMware Workstation</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">2. A VM shows packet drops on a busy multicast network. It uses an emulated E1000 NIC. First change to try?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Paravirtual NICs cost far less CPU per packet.">Switch to a paravirtual NIC (VMXNET3 or virtio)</button>
+        <button class="opt" data-opt="b" data-why="More vCPUs may even hurt scheduling.">Give the VM more vCPUs</button>
+        <button class="opt" data-opt="c" data-why="A second default gateway causes routing trouble and does not help drops.">Add a second default gateway</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">3. After <code>docker compose pull &amp;&amp; up -d</code> the historian is empty. Most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Pinning would not lose data either way.">The image tag was pinned</button>
+        <button class="opt" data-opt="b" data-why="Restart policy only affects restarts.">The restart policy was unless-stopped</button>
+        <button class="opt" data-opt="c" data-why="Data in the container's writable layer is discarded when the container is recreated.">The data lived in the container layer, not a volume</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. Which copy best protects against ransomware that gains admin rights on the BMS host?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Snapshots are on the same host and can be deleted.">A VM snapshot</button>
+        <button class="opt" data-opt="b" data-why="RAID mirrors the encryption instantly.">A RAID 1 mirror</button>
+        <button class="opt" data-opt="c" data-why="A share writable from the host can be encrypted too.">A NAS share mounted on the host</button>
+        <button class="opt" data-opt="d" data-why="The attacker cannot alter or delete it from the compromised host.">An immutable or offline copy offsite</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. Why must a DR restore test run on an isolated network?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Speed is not the concern.">Restores are faster on isolated networks</button>
+        <button class="opt" data-opt="b" data-why="The restored copy would command live controllers with old data, and may clash with the production server.">The restored BMS could write stale setpoints to live controllers</button>
+        <button class="opt" data-opt="c" data-why="Licensing varies, but safety is the main reason.">Licences forbid running two copies</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="21-alarm-management.html">← Chapter 21</a>
+    <a class="btn" href="23-cybersecurity.html">Chapter 23 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 22 visualizations.
+
+// Draws a stack of labelled layers. Each layer: [label, sub, cls].
+function stackSvg(cols, w, x0) {
+  return cols.map((col, ci) => col.map(([t, s, c], i) => {
+    const h = 40, gap = 6, x = x0 + ci * (w + 12), y = 250 - (i + 1) * (h + gap);
+    return `<rect class="box ${c || ""}" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>` +
+      `<text x="${x + w / 2}" y="${y + 18}" text-anchor="middle">${t}</text>` +
+      (s ? `<text class="small" x="${x + w / 2}" y="${y + 33}" text-anchor="middle">${s}</text>` : "");
+  }).join("")).join("");
+}
+
+// 22.1 Hypervisor type toggle.
+(() => {
+  const fig = document.getElementById("hvType");
+  const g = fig.querySelector("#hvLayers"), txt = fig.querySelector("#hvText");
+  const T = {
+    "1": { layers: [["Hardware", "CPU · RAM · NIC · disk"], ["Type 1 hypervisor", "ESXi · Proxmox VE · Hyper-V", "lit"], ["VM: BMS", "guest OS + app"], ["VM: database", "guest OS + app"]],
+      txt: "Type 1: the hypervisor is the host OS. Minimal, server-grade, managed remotely." },
+    "2": { layers: [["Hardware", "CPU · RAM · NIC · disk"], ["Desktop OS", "Windows · macOS · Linux desktop", "lit"], ["Type 2 hypervisor", "VirtualBox · Workstation"], ["VM: BMS", "guest OS + app"]],
+      txt: "Type 2: a desktop OS sits in between. Its updates, sleep and crashes take the VM down." },
+  };
+  const draw = (k) => {
+    const L = T[k].layers;
+    // Last two layers of type 1 are side-by-side VMs.
+    let html = stackSvg([L.slice(0, 2)], 560, 20);
+    // Type 1 hosts two VMs side by side on the hypervisor.
+    if (k === "1") html += stackSvg([[["", ""], ["", ""], L[2]]], 274, 20).split("<rect").slice(3).map((x) => "<rect" + x).join("") +
+      stackSvg([[["", ""], ["", ""], L[3]]], 274, 306).split("<rect").slice(3).map((x) => "<rect" + x).join("");
+    else html = stackSvg([L], 560, 20);
+    g.innerHTML = html;
+    txt.textContent = T[k].txt;
+    fig.querySelectorAll("[data-t]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.t === k));
+  };
+  fig.querySelectorAll("[data-t]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.t)));
+  draw("1");
+})();
+
+// 22.2 Virtual NIC path tracer.
+(() => {
+  const fig = document.getElementById("vnic");
+  const P = {
+    mgmt: { ids: ["v-mgmt", "w-mgmt", "p-lan", "w-lan", "u-1"], txt: "BMS eth0 → LAN port group (VLAN 10) → NIC 1, leaves tagged 10. Default gateway lives here." },
+    ot: { ids: ["v-ot", "w-ot", "p-ot", "w-otu", "u-1"], txt: "BMS eth1 → OT port group (VLAN 20) → NIC 1, leaves tagged 20. Same cable as LAN, separate network." },
+    av: { ids: ["v-av", "w-av", "p-av", "w-avu", "u-2"], txt: "BMS eth2 → AV port group → dedicated NIC 2, untagged access port. Media traffic does not share the uplink." },
+    db: { ids: ["v-db", "w-db", "p-lan", "w-lan", "u-1"], txt: "DB eth0 → LAN port group. It has no path to OT at all, so it cannot talk to controllers." },
+  };
+  const all = [...fig.querySelectorAll("svg [id]")];
+  const draw = (k) => {
+    all.forEach((el) => el.classList.toggle("lit", P[k].ids.includes(el.id)));
+    fig.querySelector("#vnicText").textContent = P[k].txt;
+    fig.querySelectorAll("[data-n]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.n === k));
+  };
+  fig.querySelectorAll("[data-n]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.n)));
+  draw("mgmt");
+})();
+
+// 22.3 VM vs container stacks.
+(() => {
+  const fig = document.getElementById("cvm");
+  const g = fig.querySelector("#cvmLayers"), txt = fig.querySelector("#cvmText");
+  const M = {
+    vm: { cols: [
+        [["Hardware", ""], ["Hypervisor", ""], ["Guest kernel", "", "lit"], ["Guest OS libs", ""], ["App A", ""]],
+        [["Hardware", ""], ["Hypervisor", ""], ["Guest kernel", "", "lit"], ["Guest OS libs", ""], ["App B", ""]],
+        [["Hardware", ""], ["Hypervisor", ""], ["Guest kernel", "", "lit"], ["Guest OS libs", ""], ["App C", ""]]],
+      txt: "Each VM boots its own kernel. Strong isolation; ~0.5–2 GB and tens of seconds per VM." },
+    ct: { cols: [
+        [["Hardware", ""], ["Host OS + kernel", "", "lit"], ["Container runtime", ""], ["Image libs", ""], ["App A", ""]],
+        [["Hardware", ""], ["Host OS + kernel", "", "lit"], ["Container runtime", ""], ["Image libs", ""], ["App B", ""]],
+        [["Hardware", ""], ["Host OS + kernel", "", "lit"], ["Container runtime", ""], ["Image libs", ""], ["App C", ""]]],
+      txt: "One shared kernel; namespaces and cgroups separate the apps. Megabytes and about a second per container." },
+  };
+  const draw = (k) => {
+    g.innerHTML = stackSvg(M[k].cols, 184, 10);
+    txt.textContent = M[k].txt;
+    fig.querySelectorAll("[data-m]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === k));
+  };
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.m)));
+  draw("vm");
+})();
+
+// 22.3 Density estimate.
+(() => {
+  const r = document.getElementById("densN");
+  const APP = 0.3, VM_OS = 1.0, CT = 0.02, MAX = 30;
+  const draw = () => {
+    const n = Number(r.value);
+    const vm = n * (APP + VM_OS), ct = VM_OS + n * (APP + CT);
+    document.getElementById("densNOut").textContent = n;
+    document.getElementById("densVm").style.width = `${Math.min(100, (vm / MAX) * 100)}%`;
+    document.getElementById("densCt").style.width = `${Math.min(100, (ct / MAX) * 100)}%`;
+    document.getElementById("densVmT").textContent = `≈ ${vm.toFixed(1)} GB RAM`;
+    document.getElementById("densCtT").textContent = `≈ ${ct.toFixed(1)} GB RAM`;
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 22.4 Hardware class picker. A class survives if it does not fail any ticked requirement.
+(() => {
+  const fig = document.getElementById("hw");
+  const C = [
+    ["Single-board computer", ["vm", "redund", "temp", "dc"], "Low power, cheap. Poor for VMs and harsh rooms."],
+    ["Consumer mini PC", ["fanless", "temp", "dc", "redund"], "Fast and cheap, but office-grade environment rating."],
+    ["Fanless industrial PC", ["redund", "cheap"], "Built for cabinets: wide temperature, DC input, no fan."],
+    ["Rack server", ["fanless", "dc", "cheap", "temp"], "Redundancy and remote management. Needs a server room."],
+  ];
+  const cards = fig.querySelector("#hwCards");
+  const draw = () => {
+    const req = [...fig.querySelectorAll("[data-r]:checked")].map((c) => c.dataset.r);
+    cards.innerHTML = C.map(([n, fails, d]) => {
+      const bad = req.filter((r) => fails.includes(r));
+      return `<div class="ix-card ${bad.length ? "bad" : req.length ? "ok" : ""}"><h4>${n}</h4>${d}` +
+        (bad.length ? `<div style="margin-top:4px"><strong>Fails:</strong> ${bad.length} requirement(s)</div>` : "") + `</div>`;
+    }).join("");
+  };
+  fig.querySelectorAll("[data-r]").forEach((c) => c.addEventListener("change", draw));
+  draw();
+})();
+
+// 22.5 3-2-1 builder.
+(() => {
+  const fig = document.getElementById("b321");
+  const COPIES = [
+    { name: "Production (VM disks on host)", on: true, fixed: true, media: "host", loc: "site", off: false },
+    { name: "Backup copy 1", on: true, media: "backup-server", loc: "site", off: false },
+    { name: "Backup copy 2", on: false, media: "cloud", loc: "offsite", off: false },
+    { name: "Backup copy 3", on: false, media: "usb", loc: "offsite", off: true },
+  ];
+  const MEDIA = [["host", "Host disks"], ["backup-server", "Backup server"], ["nas", "NAS"], ["cloud", "Cloud object storage"], ["usb", "Removable disk"], ["tape", "Tape"]];
+  const LOC = [["site", "Same building"], ["offsite", "Offsite"]];
+  const rows = fig.querySelector("#bRows");
+  const opt = (list, v) => list.map(([k, t]) => `<option value="${k}"${k === v ? " selected" : ""}>${t}</option>`).join("");
+  rows.innerHTML = COPIES.map((c, i) => `<div class="ix-card" data-i="${i}" style="margin-bottom:8px">
+      <label class="ix-check"><input type="checkbox" data-f="on"${c.on ? " checked" : ""}${c.fixed ? " disabled" : ""}> <strong>${c.name}</strong></label>
+      <div class="ix-row">
+        <label>Media / system<select class="ix-sel" data-f="media"${c.fixed ? " disabled" : ""}>${opt(MEDIA, c.media)}</select></label>
+        <label>Location<select class="ix-sel" data-f="loc"${c.fixed ? " disabled" : ""}>${opt(LOC, c.loc)}</select></label>
+        <label>Protection<span><input type="checkbox" data-f="off"${c.off ? " checked" : ""}${c.fixed ? " disabled" : ""}> offline / immutable</span></label>
+      </div></div>`).join("");
+  const draw = () => {
+    rows.querySelectorAll("[data-i]").forEach((el) => {
+      const c = COPIES[el.dataset.i];
+      c.on = el.querySelector('[data-f="on"]').checked;
+      c.media = el.querySelector('[data-f="media"]').value;
+      c.loc = el.querySelector('[data-f="loc"]').value;
+      c.off = el.querySelector('[data-f="off"]').checked;
+      el.classList.toggle("on", c.on);
+    });
+    const live = COPIES.filter((c) => c.on);
+    const media = new Set(live.map((c) => c.media)).size;
+    const rules = [
+      [live.length >= 3, `3 copies: you have ${live.length}`],
+      [media >= 2, `2 different media or systems: you have ${media}`],
+      [live.some((c) => c.loc === "offsite"), "1 copy offsite"],
+      [live.some((c) => c.off && !c.fixed), "1 copy offline or immutable (the extra 1 in 3-2-1-1-0)"],
+    ];
+    fig.querySelector("#bRules").innerHTML = rules.map(([ok, t]) => `<li class="${ok ? "yes" : "no"}">${t}</li>`).join("");
+    const pass = rules.slice(0, 3).every((r) => r[0]);
+    fig.querySelector("#bVerdict").innerHTML = `<span class="verdict ${pass ? "ok" : "bad"}">${pass ? (rules[3][0] ? "Meets 3-2-1-1. Now test a restore." : "Meets 3-2-1.") : "Does not meet 3-2-1."}</span>`;
+  };
+  rows.addEventListener("change", draw);
+  draw();
+})();
+
+// 22.6 RPO / RTO timeline.
+(() => {
+  const int = document.getElementById("rpoInt"), meth = document.getElementById("rpoMeth"), fail = document.getElementById("rpoFail");
+  const g = document.getElementById("rpoMarks");
+  const fmt = (h) => (h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${+h.toFixed(1)} h` : `${+(h / 24).toFixed(1)} days`);
+  const draw = () => {
+    const I = Number(int.value), R = Number(meth.value);
+    const lost = (Number(fail.value) / 100) * I;
+    document.getElementById("rpoFailOut").textContent = fmt(lost);
+    // Window: one interval before the last backup, through recovery.
+    const span = I + lost + R + I * 0.2;
+    const X = (h) => 20 + ((h + I) / span) * 560;
+    const tB = 0, tF = lost, tR = lost + R;
+    let s = `<rect x="${X(tB)}" y="70" width="${X(tF) - X(tB)}" height="40" class="fill-example-soft"/>`;
+    s += `<rect x="${X(tF)}" y="70" width="${X(tR) - X(tF)}" height="40" class="fill-bad" opacity=".35"/>`;
+    [-I, 0].forEach((t) => { s += `<circle cx="${X(t)}" cy="90" r="7" class="fill-ok"/><text class="small" x="${X(t)}" y="62" text-anchor="middle">backup</text>`; });
+    s += `<line x1="${X(tF)}" y1="40" x2="${X(tF)}" y2="130" stroke="var(--bad)" stroke-width="3"/><text x="${X(tF)}" y="34" text-anchor="middle" class="fill-bad">failure</text>`;
+    s += `<line x1="${X(tR)}" y1="50" x2="${X(tR)}" y2="130" stroke="var(--ok)" stroke-width="3"/><text x="${X(tR)}" y="44" text-anchor="middle">back online</text>`;
+    s += `<text class="small" x="${(X(tB) + X(tF)) / 2}" y="150" text-anchor="middle">data lost (RPO) ${fmt(lost)}</text>`;
+    s += `<text class="small" x="${(X(tF) + X(tR)) / 2}" y="166" text-anchor="middle">downtime (RTO) ${fmt(R)}</text>`;
+    g.innerHTML = s;
+    document.getElementById("rpoText").textContent = `Lost ${fmt(lost)} of data (worst case ${fmt(I)}). Down for about ${fmt(R)}.`;
+  };
+  [int, meth].forEach((e) => e.addEventListener("change", draw));
+  fail.addEventListener("input", draw);
+  draw();
+})();
+
+// 22.6 DR runbook stepper.
+(() => {
+  const S = [
+    ["1. Declare and protect", "Confirm the server is really down (ping, out-of-band console). Tell operators the BMS front end is unavailable and that local controllers keep running. Start an incident log with times."],
+    ["2. Find the cause", "Disk, power, host OS or a guest problem? If ransomware is suspected, isolate the host from the network first and do not restore onto it."],
+    ["3. Get hardware", "Use the repaired host or the spare. Install the hypervisor from the documented version. Configure the same NICs, bridges and VLAN tags as the network plan says."],
+    ["4. Restore on an isolated network", "Restore the latest good backup with its VM NICs disconnected or on an isolated VLAN. Check that it boots, that services start and that the database opens."],
+    ["5. Verify data", "Check the restore point date. Compare config versions. Re-apply any changes made since the backup from the change log."],
+    ["6. Reconnect", "Attach the OT and LAN NICs. Watch the first polls: device online counts, alarm list, no unexpected writes. Confirm schedules and setpoints are the current ones."],
+    ["7. Close out", "Record actual RTO and RPO. Re-enable backup jobs on the new host and run one now. Update the runbook with whatever was wrong or missing."],
+  ];
+  let i = 0;
+  const bar = document.getElementById("rbBar"), box = document.getElementById("rbBox");
+  const prev = document.getElementById("rbPrev"), next = document.getElementById("rbNext");
+  bar.innerHTML = S.map(() => "<span></span>").join("");
+  const draw = () => {
+    bar.querySelectorAll("span").forEach((s, k) => s.className = k < i ? "done" : k === i ? "cur" : "");
+    box.innerHTML = `<h4>${S[i][0]}</h4><p style="margin:0">${S[i][1]}</p>`;
+    prev.disabled = i === 0;
+    next.textContent = i === S.length - 1 ? "Restart" : "Next →";
+  };
+  prev.addEventListener("click", () => { if (i > 0) { i--; draw(); } });
+  next.addEventListener("click", () => { i = i === S.length - 1 ? 0 : i + 1; draw(); });
+  draw();
+})();
+</script>
+</body>
+</html>

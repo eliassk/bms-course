@@ -1,0 +1,1069 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Energy Management</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .en-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px 16px; margin: 10px 0; }
+  .en-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .en-row input[type=range] { width: 100%; }
+  .en-row input[type=number] {
+    font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px; width: 100%; min-width: 0;
+  }
+  .en-row output { font-family: var(--mono); color: var(--text); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-top: 12px; }
+  .kpi { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; min-width: 0; }
+  .kpi .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .kpi .v { font: 650 20px var(--mono); overflow-wrap: anywhere; }
+  .kpi .u { font-size: 12px; color: var(--muted); }
+  .kpi.good { border-color: var(--ok); background: var(--ok-soft); }
+  .kpi.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; margin-top: 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .donut-wrap { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 16px; align-items: center; }
+  @media (max-width: 560px) { .donut-wrap { grid-template-columns: minmax(0, 1fr); } }
+  .donut-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+  .donut-list li { display: grid; grid-template-columns: 14px minmax(0, 1fr) 48px; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 6px; cursor: pointer; }
+  .donut-list li.on { background: var(--accent-soft); }
+  .donut-list li b { font-family: var(--mono); text-align: right; }
+  .donut-list i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .c1 { fill: var(--bad); background: var(--bad); }
+  .c2 { fill: var(--accent); background: var(--accent); }
+  .c3 { fill: var(--example); background: var(--example); }
+  .c4 { fill: var(--ok); background: var(--ok); }
+  .c5 { fill: var(--muted); background: var(--muted); }
+  .c6 { fill: var(--text); background: var(--text); }
+  svg .seg-arc { stroke: var(--surface-2); stroke-width: 2; cursor: pointer; transition: opacity .2s; }
+  svg .seg-arc.dim { opacity: .3; }
+  svg .grid { stroke: var(--border); stroke-width: 1; }
+  .flag-list { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 10px; overflow-wrap: anywhere; }
+  .flag-list .bad { color: var(--bad); } .flag-list .ok { color: var(--ok); }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="24">
+<div class="content">
+  <div class="kicker">Chapter 24</div>
+  <h1>Energy management</h1>
+  <p class="lead">Where a building's energy goes, how to measure it honestly, which control strategies save the most,
+    how to report it, and how software finds the faults that quietly waste it. A BMS that does not save energy is
+    only a very expensive set of thermostats.</p>
+
+  <!-- 24.1 -->
+  <section class="lesson" id="s1" data-num="24.1">
+    <h2>24.1 Where energy goes in a building</h2>
+    <p>Before you optimise anything, you need a picture of the <strong>end uses</strong>: what the energy is
+      actually used for. Meters measure <em>carriers</em> (electricity, gas, district heat, oil). Energy management
+      works on <em>end uses</em> (space heating, cooling, fans, lighting, hot water, plug loads). The two rarely line
+      up one to one. A gas meter may feed both space heating and hot water. One electricity meter feeds lighting,
+      fans, chillers, lifts and every laptop charger in the building.</p>
+
+    <p>The split depends strongly on building type and climate. In a heating-dominated European climate, space
+      heating is often the largest single end use in offices and schools. In hot climates or in deep-plan offices
+      with high internal gains, cooling and fans take over. Hospitals and hotels have large hot water and 24-hour
+      loads. Data rooms can dominate everything.</p>
+
+    <h3>Try it: typical end-use splits</h3>
+    <figure class="viz" id="donut">
+      <div class="controls seg" role="group" aria-label="Building type">
+        <button data-b="office" aria-pressed="true">Office</button>
+        <button data-b="school">School</button>
+        <button data-b="hotel">Hotel</button>
+        <button data-b="retail">Retail</button>
+      </div>
+      <div class="donut-wrap">
+        <svg viewBox="0 0 220 220" role="img" aria-label="Donut chart of energy end uses"></svg>
+        <ul class="donut-list"></ul>
+      </div>
+      <div class="readout" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Illustrative shares of delivered energy for a temperate, heating-dominated climate. Real buildings
+        vary by ±50 % per end use. Click a slice or a row.</figcaption>
+    </figure>
+
+    <h3>Delivered, final and primary energy</h3>
+    <p>Three numbers describe the "same" energy and are easy to confuse:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Term</th><th>Meaning</th><th>Where it is used</th></tr>
+      <tr><td><strong>Delivered / site energy</strong></td><td>What crosses the building boundary and the meters read.</td><td>Bills, operational dashboards, most KPIs.</td></tr>
+      <tr><td><strong>Useful energy</strong></td><td>Heat or light actually delivered to the space, after plant losses.</td><td>Engineering calculations.</td></tr>
+      <tr><td><strong>Primary / source energy</strong></td><td>Delivered energy times a primary energy factor for the carrier, including generation and grid losses.</td><td>Energy certificates (EPCs), regulation.</td></tr>
+    </table></div>
+    <p>Primary energy factors are set nationally and change as grids decarbonise. Electricity has historically been
+      given factors well above 1 (often 1.8–2.5 in EU methods), natural gas close to 1.1. That is why a kWh of
+      electricity saved can "count" twice as much on a certificate as a kWh of gas, and why a heat pump with a COP of
+      3 still usually wins on primary energy.</p>
+
+    <h3>Base load vs weather-dependent load</h3>
+    <p>Split every carrier in two. <strong>Base load</strong> runs regardless of weather: hot water, lighting,
+      servers, lifts, ventilation fans on a fixed schedule. <strong>Weather-dependent load</strong> scales with
+      outdoor temperature: space heating and cooling. A night-time and weekend look at the electricity profile shows
+      the base load directly. In many offices the out-of-hours base load is 30–50 % of the daytime peak, which is a
+      strong hint that something runs that should not.</p>
+
+    <figure class="viz">
+      <svg viewBox="0 0 600 220" role="img" aria-label="Weekly electricity profile with a high night-time base load">
+        <line class="grid" x1="50" y1="180" x2="580" y2="180"/>
+        <line class="grid" x1="50" y1="30" x2="50" y2="180"/>
+        <text class="small" x="44" y="34" text-anchor="end">100 kW</text>
+        <text class="small" x="44" y="184" text-anchor="end">0</text>
+        <rect x="50" y="125" width="530" height="55" class="fill-example-soft"/>
+        <path id="weekPath" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <line x1="50" y1="125" x2="580" y2="125" stroke="var(--example)" stroke-dasharray="5 4" stroke-width="2"/>
+        <text x="575" y="118" text-anchor="end" style="fill:var(--example);font-size:12px">base load ≈ 37 kW</text>
+        <g id="weekDays"></g>
+      </svg>
+      <figcaption>An office's week at 15-minute resolution. Five working-day peaks of ~95 kW, and a floor of ~37 kW
+        that never goes away, even on Sunday. That floor is the first thing to investigate.</figcaption>
+    </figure>
+
+    <div class="callout example">A 6,000 m² office uses about 900 MWh a year: roughly 520 MWh of gas and 380 MWh of
+      electricity. Sub-metering shows that the ventilation fans run 24/7 because a schedule was overridden during
+      commissioning and never reset. Fans of 22 kW total running 128 extra hours a week waste about 145 MWh a year,
+      close to 40 % of the electricity bill. No new hardware is needed to fix it.</div>
+
+    <div class="callout warn">Shares from benchmarks are a starting point, not a measurement. Never plan a project
+      around "lighting is 20 %" without sub-meter data or at least a load inventory for the actual building.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">An office's electricity at 03:00 on a Sunday is 40 % of its weekday peak. What is the best first step?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="New luminaires save little if they are already off at night.">Replace the lighting with LEDs</button>
+        <button class="opt" data-opt="b" data-why="A high out-of-hours base load usually means plant or equipment running outside schedule. Find it first.">Find out which loads run out of hours and why</button>
+        <button class="opt" data-opt="c" data-why="Gas does not explain an electrical base load.">Lower the boiler flow temperature</button>
+        <button class="opt" data-opt="d" data-why="The base load is a waste signal; normalising for weather does not remove it.">Normalise the data for degree days</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Meters measure carriers; energy management works on end uses.</li>
+      <li>Heating, cooling, fans and lighting are usually the big controllable end uses.</li>
+      <li>Delivered, useful and primary energy are different numbers. Say which one you mean.</li>
+      <li>The out-of-hours base load is the cheapest place to start.</li>
+    </ul>
+  </section>
+
+  <!-- 24.2 -->
+  <section class="lesson" id="s2" data-num="24.2">
+    <h2>24.2 Measuring and baselining</h2>
+    <p>"We saved 15 % this year" means nothing unless you know what consumption <em>would have been</em> without the
+      change. That counterfactual is the <strong>baseline</strong>. It is a model, built from a reference period,
+      that predicts consumption from the things that drive it: weather, occupancy, opening hours, production.</p>
+
+    <h3>Metering hierarchy</h3>
+    <p>A useful metering plan has three levels. The <strong>main meters</strong> are the utility's billing meters.
+      <strong>Sub-meters</strong> split the building by carrier and by major end use: boiler gas, chiller
+      electricity, AHU fans, lighting boards, tenant areas. <strong>Check meters</strong> or virtual meters close the
+      balance: the sum of sub-meters should match the main meter within a few per cent. An unexplained remainder of
+      more than about 10 % means a meter is wrong or a load is missing.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Meter type</th><th>Typical interface</th><th>Resolution</th><th>Notes</th></tr>
+      <tr><td>Electricity (MID class B or better)</td><td>Modbus RTU/TCP, M-Bus, pulse</td><td>15 min or better</td><td>Use CT-based multifunction meters for sub-circuits.</td></tr>
+      <tr><td>Heat meter</td><td>M-Bus, wireless M-Bus, pulse</td><td>15–60 min</td><td>Flow sensor plus a matched pair of temperature sensors. Accuracy drops at small ΔT.</td></tr>
+      <tr><td>Gas</td><td>Pulse, M-Bus, utility smart meter</td><td>Hourly</td><td>Convert volume to energy with the calorific value (about 10–11 kWh/m³ for natural gas).</td></tr>
+      <tr><td>Water</td><td>Pulse, M-Bus</td><td>Hourly</td><td>Night flow reveals leaks.</td></tr>
+    </table></div>
+
+    <h3>Degree days</h3>
+    <p>Heating demand grows roughly linearly with how cold it is outside, below a <strong>base temperature</strong>
+      at which internal gains cover the losses. Heating degree days (HDD) sum that shortfall over a period:</p>
+    <pre class="code">HDD (per day) = max(0, T_base − T_mean_outdoor)
+example: T_base 15.5 °C, daily mean 3.5 °C  →  12 HDD</pre>
+    <p>Common base temperatures are 15.5 °C (UK practice), 18 °C or 65 °F (US practice) and the Eurostat method,
+      which counts days below 15 °C against 18 °C. The "right" base differs per building: a well-insulated office
+      with high gains may need no heating above 12 °C. A regression of consumption against HDD at several bases
+      finds the one with the best fit. Cooling degree days (CDD) work the same way above a cooling base.</p>
+
+    <h3>The regression baseline</h3>
+    <p>Plot monthly (or weekly, or daily) consumption against degree days for a reference year. Fit a line:</p>
+    <pre class="code">E = a + b · HDD
+a = base load per period (kWh)
+b = weather sensitivity (kWh per degree day)</pre>
+    <p>In the reporting period, feed the <em>actual</em> degree days into the model. The result is the
+      <strong>adjusted baseline</strong>: what the building would have used this year, with this weather, without
+      the change. Savings are the adjusted baseline minus actual consumption. This is the core of IPMVP Option C
+      (whole-building metering) and of ISO 50015 / ISO 50006 practice.</p>
+
+    <h3>Try it: raw vs weather-normalised savings</h3>
+    <figure class="viz" id="baseline">
+      <div class="en-row">
+        <label>Real saving from the measure: <output id="blS">10 %</output>
+          <input type="range" id="blSav" min="0" max="25" step="1" value="10"></label>
+        <label>Reporting winter vs reference: <output id="blW">80 %</output>
+          <input type="range" id="blWx" min="60" max="140" step="5" value="80"></label>
+      </div>
+      <svg viewBox="0 0 600 300" role="img" aria-label="Scatter of monthly gas use against heating degree days with baseline regression line"></svg>
+      <div class="legend">
+        <span><i class="c5"></i>reference year</span>
+        <span><i class="c2"></i>reporting year</span>
+        <span><i class="c3"></i>baseline E = a + b·HDD</span>
+      </div>
+      <div class="kpis" id="blKpis"></div>
+      <figcaption>Monthly gas use against heating degree days (base 15.5 °C). Make the reporting winter mild and
+        watch the raw comparison take credit for the weather.</figcaption>
+    </figure>
+
+    <h3>How good is the model?</h3>
+    <p>A baseline is only useful if it predicts well. ASHRAE Guideline 14 gives the commonly quoted limits for a
+      calibrated model: <strong>CV(RMSE)</strong> within 15 % and <strong>NMBE</strong> within ±5 % for monthly data,
+      or 30 % and ±10 % for hourly data. R² above about 0.75 is a sensible sanity check. If the fit is poor, look for
+      missing drivers (occupancy, school holidays, a change in opening hours) before trusting any savings figure.</p>
+    <p>Equally important are <strong>non-routine adjustments</strong>: a new tenant floor, a server room added, a
+      wing closed for refurbishment. These change consumption for reasons unrelated to your measure and MUST be
+      adjusted for explicitly and documented.</p>
+
+    <div class="callout example">A school installs room-by-room heating control in summer. The following winter is
+      18 % milder than the reference year. Gas use falls from 1,050 MWh to 790 MWh, a raw drop of 25 %. With the
+      degree-day model the adjusted baseline is 885 MWh, so the measure saved about 95 MWh, or 11 %. The rest was the
+      weather. Reporting 25 % would set the project up for a "savings disappeared" crisis the next cold winter.</div>
+
+    <div class="callout warn">Do not use a single change-point line for a building that both heats and cools. Use a
+      model with both HDD and CDD terms (a "5-parameter" change-point model), or split the analysis per carrier.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">The baseline is E = 9,000 kWh + 60 kWh/HDD per month. This January had 400 HDD and used 30,000 kWh. What was saved?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That ignores the weather term.">Nothing; 30,000 kWh is above the 9,000 kWh base</button>
+        <button class="opt" data-opt="b" data-why="Check the arithmetic: 60 × 400 = 24,000.">1,000 kWh</button>
+        <button class="opt" data-opt="c" data-why="Adjusted baseline = 9,000 + 60 × 400 = 33,000 kWh. 33,000 − 30,000 = 3,000 kWh, about 9 %.">3,000 kWh</button>
+        <button class="opt" data-opt="d" data-why="That would be a comparison with last January, without weather adjustment.">It depends on last January's consumption</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Savings are always relative to a modelled baseline, never just "last year".</li>
+      <li>E = a + b·HDD splits base load from weather sensitivity.</li>
+      <li>Check fit quality (CV(RMSE), NMBE) and document non-routine adjustments.</li>
+      <li>Sub-meters must reconcile with the main meter.</li>
+    </ul>
+  </section>
+
+  <!-- 24.3 -->
+  <section class="lesson" id="s3" data-num="24.3">
+    <h2>24.3 Setbacks and optimal start</h2>
+    <p>A building loses heat in proportion to the difference between inside and outside temperature. Lowering the
+      inside temperature when nobody is there reduces that difference, so the losses fall. That is a
+      <strong>setback</strong> (heating) or <strong>setup</strong> (cooling). The idea is old and still one of the
+      most effective measures a BMS can implement, because it costs only configuration.</p>
+
+    <h3>Why setbacks save energy</h3>
+    <p>A common myth says "the building has to reheat in the morning, so you save nothing". It is false for a
+      simple reason: the heat lost overnight depends on the indoor temperature overnight. A cooler building loses less
+      heat. The morning reheat only replaces what was lost, and what was lost was less. The saving is roughly
+      proportional to the temperature reduction times the hours it lasts, adjusted for how quickly the building
+      actually cools down.</p>
+    <p>That last point matters. A heavy, well-insulated building has a long <strong>time constant</strong>
+      τ = C / UA (thermal capacity divided by heat loss coefficient), often 20–100 hours. It barely cools in one night,
+      so the setback temperature is never reached and the saving is small. A light, leaky building has a τ of a few
+      hours: it cools fast, saves more per night, but also needs more power to recover.</p>
+
+    <h3>Optimal start</h3>
+    <p>With a fixed schedule, the heating starts at the same time every day, say 05:00. On a mild day the building
+      is warm by 06:00 and wastes two hours at comfort temperature before anyone arrives. On a very cold day 05:00 may
+      be too late. <strong>Optimal start</strong> calculates the latest start time that still reaches the comfort
+      setpoint at occupancy. Inputs are the current indoor temperature, the outdoor temperature and a learned heating
+      rate (K per hour) for this building. Most controllers adapt the rate after each morning by comparing predicted
+      and actual warm-up times. <strong>Optimal stop</strong> does the reverse: switch off before the end of occupancy
+      if the building will coast within a comfort band until people leave.</p>
+
+    <h3>Try it: one winter day</h3>
+    <figure class="viz" id="setback">
+      <div class="controls seg" role="group" aria-label="Control strategy">
+        <button data-m="none">No setback</button>
+        <button data-m="fixed">Setback, fixed start 05:00</button>
+        <button data-m="opt" aria-pressed="true">Setback, optimal start</button>
+      </div>
+      <div class="en-row">
+        <label>Outdoor temperature: <output id="sbTo">0 °C</output>
+          <input type="range" id="sbOut" min="-15" max="12" step="1" value="0"></label>
+        <label>Setback setpoint: <output id="sbTs">16 °C</output>
+          <input type="range" id="sbSet" min="10" max="20" step="1" value="16"></label>
+        <label>Building time constant τ: <output id="sbTau">12 h</output>
+          <input type="range" id="sbTauR" min="4" max="60" step="2" value="12"></label>
+        <label>Plant oversize vs design load: <output id="sbP">50 %</output>
+          <input type="range" id="sbPow" min="0" max="150" step="10" value="50"></label>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Indoor temperature and heating power over 24 hours"></svg>
+      <div class="kpis" id="sbKpis"></div>
+      <figcaption>Lumped model: UA = 4 kW/K, comfort 21 °C from 08:00 to 18:00, design load at −15 °C. Blue: indoor
+        temperature. Shaded: heating power. Try τ = 60 h, then τ = 6 h.</figcaption>
+    </figure>
+
+    <p>Rules of thumb you will see quoted, for example from the US Department of Energy for homes, are on the order
+      of up to 10 % of annual heating energy for a 4–5 K setback over 8 hours a day. Offices and schools with long
+      nights and weekends often do better, because they are unoccupied for about 70 % of the hours in a year.</p>
+
+    <h3>Limits and side effects</h3>
+    <ul>
+      <li><strong>Frost and condensation.</strong> Keep a frost protection floor (often 5–8 °C for spaces, higher where
+        water pipes run near external walls) and watch humidity in buildings with poor insulation.</li>
+      <li><strong>Slow systems.</strong> Underfloor heating in a thick screed responds in many hours. Setbacks of 1–2 K
+        are typical; deep setbacks cause long recovery and uncomfortable mornings.</li>
+      <li><strong>Heat pumps.</strong> Fast recovery at high flow temperature lowers the COP, and electric backup
+        heaters may switch on. A shallow setback with a longer, gentler recovery is usually better.</li>
+      <li><strong>Peak demand.</strong> Every zone recovering at 06:00 creates a morning peak. Staggering starts per zone
+        helps with demand charges.</li>
+    </ul>
+
+    <div class="callout example">A 1970s school with lightweight construction (τ ≈ 8 h) runs heating 06:00–16:00 on
+      weekdays with a 14 °C setback. Before, a fixed start at 04:00 was used all winter. Optimal start moved the
+      average start to 05:20 and cut about 1.5 boiler hours on mild days, saving roughly 6 % of heating gas on top of
+      the setback itself.</div>
+
+    <div class="callout warn">Weekend and holiday calendars are where setbacks quietly fail. A Monday-morning
+      recovery after a 60-hour weekend needs a longer lead time, and a holiday that is not in the BMS calendar means
+      a whole empty building heated to comfort. Check the calendar every year.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Two identical offices use a 5 K night setback. One is heavyweight concrete (τ = 60 h), one is lightweight (τ = 6 h). Which saves more from the setback?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="It cools further during the night, so its average indoor temperature, and therefore its losses, are lower.">The lightweight one</button>
+        <button class="opt" data-opt="b" data-why="The heavy building hardly cools in one night, so its losses barely change.">The heavyweight one</button>
+        <button class="opt" data-opt="c" data-why="Reheating does not cancel the saving; less heat was lost overnight.">Neither: reheating cancels the saving</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Setbacks save because a cooler building loses less heat; the morning reheat does not cancel that.</li>
+      <li>Savings depend on the time constant τ = C/UA.</li>
+      <li>Optimal start finds the latest start that still meets comfort on time.</li>
+      <li>Slow systems and heat pumps want shallow setbacks.</li>
+    </ul>
+  </section>
+
+  <!-- 24.4 -->
+  <section class="lesson" id="s4" data-num="24.4">
+    <h2>24.4 Event-driven and occupancy-based control</h2>
+    <p>A time schedule assumes the building is used as planned. Real rooms are not. Meeting rooms are booked and
+      then empty. Classrooms stand empty during exams. A hotel room is sold but the guest is out all day.
+      <strong>Occupancy-based control</strong> conditions a space only when it is used, using events from sensors
+      and systems instead of a clock.</p>
+
+    <h3>Sources of occupancy information</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Source</th><th>What it tells you</th><th>Strengths</th><th>Weaknesses</th></tr>
+      <tr><td>PIR motion sensor</td><td>Movement in view</td><td>Cheap, fast, common in lighting</td><td>Misses people sitting still; needs a hold-off timer</td></tr>
+      <tr><td>Ultrasonic / dual-tech</td><td>Movement, including small</td><td>Better for desks and toilets</td><td>Can trigger on air movement</td></tr>
+      <tr><td>CO₂ sensor</td><td>How many people, roughly</td><td>Drives ventilation rate directly</td><td>Slow: minutes of lag</td></tr>
+      <tr><td>Room booking system</td><td>Planned use</td><td>Lets you pre-condition</td><td>No-shows; needs integration</td></tr>
+      <tr><td>Hotel key card / access control</td><td>Someone is in or has entered</td><td>Reliable presence signal</td><td>Card left in the slot</td></tr>
+      <tr><td>People counters, Wi-Fi, camera analytics</td><td>Counts per zone</td><td>Good for large spaces</td><td>Privacy, cost, calibration</td></tr>
+    </table></div>
+
+    <h3>Three room states</h3>
+    <p>Good occupancy control is not on/off. EN ISO 52120-1 and most room controllers use three or four modes:</p>
+    <ul>
+      <li><strong>Comfort</strong>: occupied. Full setpoint, ventilation on demand, lights on.</li>
+      <li><strong>Standby (pre-comfort)</strong>: scheduled but nobody detected. Setpoint 1–2 K away from comfort, so
+        the room recovers within minutes when someone comes in. Ventilation at minimum.</li>
+      <li><strong>Economy / unoccupied</strong>: outside schedule. Full setback, ventilation off.</li>
+      <li><strong>Protection</strong>: frost or overheat protection only, for example when a window is open.</li>
+    </ul>
+    <p>The window contact is a classic event: open the window, the room goes to protection mode and the heating valve
+      closes. No energy goes straight out of the window.</p>
+
+    <h3>Try it: a meeting room's day</h3>
+    <figure class="viz" id="occ">
+      <div class="controls seg" role="group" aria-label="Control mode">
+        <button data-m="sched">Schedule only</button>
+        <button data-m="occ" aria-pressed="true">Schedule + occupancy</button>
+      </div>
+      <div class="controls seg" role="group" aria-label="Day">
+        <button data-d="busy" aria-pressed="true">Busy day</button>
+        <button data-d="quiet">Quiet day</button>
+        <button data-d="empty">Nobody came</button>
+      </div>
+      <div class="en-row">
+        <label>PIR hold-off timer: <output id="occT">15 min</output>
+          <input type="range" id="occTimer" min="2" max="45" step="1" value="15"></label>
+      </div>
+      <svg viewBox="0 0 600 220" role="img" aria-label="Timeline of occupancy, PIR, room mode and lights"></svg>
+      <div class="kpis" id="occKpis"></div>
+      <figcaption>Schedule 07:00–19:00. Room: 1.2 kW heating at comfort, 0.6 kW at standby; fan 0.4 kW;
+        lights 0.5 kW. Grey bars are when people are present; ticks are PIR motion events. Set the timer to 3 minutes
+        and count the false offs.</figcaption>
+    </figure>
+
+    <h3>Demand-controlled ventilation</h3>
+    <p>Ventilation is sized for full occupancy, but most rooms are at full occupancy for a small fraction of the
+      time. <strong>Demand-controlled ventilation (DCV)</strong> modulates the air flow on CO₂. A typical sequence holds
+      minimum flow below 600–800 ppm and reaches full flow at 1,000–1,200 ppm. Because fan power grows roughly with
+      the cube of flow, running at 50 % flow needs well under half the power in theory (real systems with fixed
+      pressure setpoints save less). Heating and cooling the outdoor air drops in proportion to the flow.</p>
+
+    <h3>Event-driven architecture</h3>
+    <p>On the software side, occupancy control is a natural fit for events: a PIR change, a booking starting, a door
+      card swipe. Each event updates a room state machine. Two design rules matter. First, the controller that owns
+      the room keeps the state machine, so it keeps working when the network or the supervisory system is down.
+      Second, every event source has a <em>timeout fallback</em>: if a sensor goes silent, the room falls back to
+      the schedule, not to "unoccupied forever" or "comfort forever".</p>
+
+    <div class="callout example">A hotel links the key-card holder to the room controller. Without a card the room
+      goes to standby after 10 minutes (heating 2 K lower, fan coil on low, lights off). When the booking system marks
+      the room as unsold, it goes to economy with a 6 K setback. Studies and vendor data for such systems commonly
+      report HVAC savings in the range of 20–40 % per room, depending on climate and occupancy rate.</div>
+
+    <div class="callout warn">A hold-off timer that is too short switches lights and comfort off while people sit
+      still reading. Users respond by taping over sensors or asking for "always on", and all savings are lost. Start
+      with 15–20 minutes for offices and tune with data.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">Why does a room in "standby" mode keep its setpoint only 1–2 K below comfort?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Standby saves less than economy, but it does save.">Because a larger offset saves no energy</button>
+        <button class="opt" data-opt="b" data-why="Frost protection is a separate, much lower limit.">For frost protection</button>
+        <button class="opt" data-opt="c" data-why="The sensors are the same in every mode.">Because PIR sensors are inaccurate</button>
+        <button class="opt" data-opt="d" data-why="During scheduled hours someone may walk in at any moment, and the room must recover in minutes.">So the room recovers within minutes when someone arrives</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Condition spaces when they are used, not when the clock says.</li>
+      <li>Use comfort, standby, economy and protection modes rather than on/off.</li>
+      <li>DCV on CO₂ cuts fan and outdoor-air energy.</li>
+      <li>Keep the state machine local and give every event source a timeout fallback.</li>
+    </ul>
+  </section>
+
+  <!-- 24.5 -->
+  <section class="lesson" id="s5" data-num="24.5">
+    <h2>24.5 KPIs and reporting (ISO 50001)</h2>
+    <p>Saving energy once is a project. Keeping it saved is a management system. <strong>ISO 50001</strong>
+      (current edition 2018) defines an <em>energy management system (EnMS)</em>: a set of roles, processes and records
+      that makes an organisation keep improving its energy performance. It does not prescribe technology. It does
+      require data, and a BMS is usually the main source.</p>
+
+    <h3>The ISO 50001 cycle</h3>
+    <div class="explorer">
+      <div class="layers">
+        <button class="layer" data-target="iso-plan">Plan</button>
+        <button class="layer" data-target="iso-do">Do</button>
+        <button class="layer" data-target="iso-check">Check</button>
+        <button class="layer" data-target="iso-act">Act</button>
+      </div>
+      <div class="panel" aria-live="polite">
+        <template id="iso-plan">
+          <h4>Plan: energy review and targets</h4>
+          <ul>
+            <li><strong>Energy review</strong>: where energy is used, and how much.</li>
+            <li><strong>Significant energy uses (SEUs)</strong>: the few uses that account for most consumption or most improvement potential.</li>
+            <li><strong>Energy baseline (EnB)</strong>: the reference, as in 24.2.</li>
+            <li><strong>Energy performance indicators (EnPIs)</strong>: the metrics you will track.</li>
+            <li>Objectives, targets and action plans.</li>
+          </ul>
+        </template>
+        <template id="iso-do">
+          <h4>Do: implement and operate</h4>
+          <ul>
+            <li>Run the action plans: control changes, retrofits, schedules.</li>
+            <li>Operational control of SEUs: setpoints, procedures, maintenance.</li>
+            <li>Competence and awareness of staff.</li>
+            <li>Energy considered in design and procurement.</li>
+          </ul>
+        </template>
+        <template id="iso-check">
+          <h4>Check: monitor, measure, analyse</h4>
+          <ul>
+            <li>Track EnPIs against the baseline.</li>
+            <li>Investigate significant deviations.</li>
+            <li>Internal audits and a data collection plan.</li>
+            <li>This is where BMS trends and meter data live.</li>
+          </ul>
+        </template>
+        <template id="iso-act">
+          <h4>Act: management review and improvement</h4>
+          <ul>
+            <li>Top management reviews results and resources.</li>
+            <li>Correct nonconformities.</li>
+            <li>Demonstrate <em>continual improvement</em> of energy performance, which certification audits check.</li>
+          </ul>
+        </template>
+      </div>
+    </div>
+    <p>Supporting standards fill in the detail: ISO 50006 covers baselines and EnPIs, ISO 50015 covers measurement and
+      verification, and ISO 50002 covers energy audits. In the EU, large enterprises must either run a certified
+      energy management system or have periodic energy audits under the Energy Efficiency Directive. The thresholds
+      changed in the 2023 recast, so check current national law.</p>
+
+    <h3>Common building KPIs</h3>
+    <div class="table-wrap"><table>
+      <tr><th>KPI</th><th>Unit</th><th>Notes</th></tr>
+      <tr><td><strong>EUI</strong> (energy use intensity)</td><td>kWh/m²·a</td><td>Delivered energy per floor area per year. State which area (gross, net, heated).</td></tr>
+      <tr><td>Weather-normalised heating</td><td>kWh/m²·HDD</td><td>Heating energy divided by area and degree days. Compares years and sites fairly.</td></tr>
+      <tr><td>Out-of-hours ratio</td><td>%</td><td>Energy outside occupied hours as a share of total.</td></tr>
+      <tr><td>Base-to-peak ratio</td><td>%</td><td>Night base load vs daytime peak (24.1).</td></tr>
+      <tr><td>Carbon intensity</td><td>kg CO₂e/m²·a</td><td>Uses emission factors per carrier, which vary by country and year.</td></tr>
+      <tr><td>Plant efficiency</td><td>COP, SCOP, kW/kW</td><td>Heat out over energy in, for chillers, heat pumps, boilers.</td></tr>
+      <tr><td>Normalised by use</td><td>kWh/pupil, kWh/room-night, kWh/bed-day</td><td>For schools, hotels, hospitals where area is a poor driver.</td></tr>
+    </table></div>
+
+    <h3>Try it: a KPI dashboard</h3>
+    <figure class="viz" id="kpi">
+      <div class="en-row">
+        <label>Floor area (m²) <input type="number" id="kArea" value="6000" min="100" step="100"></label>
+        <label>Electricity (MWh/a) <input type="number" id="kEl" value="380" min="0" step="10"></label>
+        <label>Gas for heating (MWh/a) <input type="number" id="kGas" value="520" min="0" step="10"></label>
+        <label>Out-of-hours electricity (MWh/a) <input type="number" id="kOoh" value="150" min="0" step="10"></label>
+        <label>HDD this year <input type="number" id="kHdd" value="2300" min="100" step="50"></label>
+        <label>HDD reference year <input type="number" id="kHddRef" value="2600" min="100" step="50"></label>
+      </div>
+      <svg viewBox="0 0 600 90" role="img" aria-label="EUI on an illustrative benchmark scale"></svg>
+      <div class="kpis" id="kOut"></div>
+      <figcaption>Illustrative bands for offices in a temperate climate. Carbon uses example factors of
+        0.30 kg CO₂e/kWh for electricity and 0.20 for gas; real factors differ by country and year.</figcaption>
+    </figure>
+
+    <h3>Reports people actually read</h3>
+    <p>A good energy report fits on one page per audience. Management wants cost, carbon and trend against target.
+      The facilities team wants exceptions: which meter, which day, which deviation. Engineers want the trend that
+      explains it. Typical cadences are a daily exception list, a monthly EnPI report and an annual review. Use
+      <strong>CUSUM</strong> charts (cumulative sum of actual minus baseline) to show when savings started, or
+      stopped. A flat CUSUM line means "as baseline"; a falling line means savings are accumulating.</p>
+
+    <div class="callout example">A retail chain with 120 stores ranks every store weekly by weather-normalised kWh/m².
+      The bottom ten get a remote check of schedules and setpoints by the central energy team. Most outliers turn
+      out to be overrides: a store manager who set the heating to "permanent comfort" during a cold snap and forgot
+      it.</div>
+
+    <div class="callout warn">KPIs invite gaming. Divide by area and a building that adds a storage hall looks
+      better; divide by occupants and one that crams in staff looks better. Always show absolute consumption next to
+      intensity metrics.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">In ISO 50001, what is a significant energy use (SEU)?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The baseline is a reference, not a use.">The energy baseline for the whole site</button>
+        <button class="opt" data-opt="b" data-why="SEUs are where energy management effort concentrates.">An energy use with substantial consumption or substantial improvement potential</button>
+        <button class="opt" data-opt="c" data-why="Utility metering points are just meters.">Any use measured by a utility billing meter</button>
+        <button class="opt" data-opt="d" data-why="ISO 50001 does not define SEU by a fixed percentage.">Any use above 5 % of total consumption</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>ISO 50001 is a Plan-Do-Check-Act management system; the BMS feeds its Check step.</li>
+      <li>EnB, EnPI and SEU are the core terms; ISO 50006 and 50015 give the method.</li>
+      <li>EUI in kWh/m²·a is the headline KPI; normalise heating for degree days.</li>
+      <li>Show absolute values beside intensities, and use CUSUM to show trends.</li>
+    </ul>
+  </section>
+
+  <!-- 24.6 -->
+  <section class="lesson" id="s6" data-num="24.6">
+    <h2>24.6 Fault detection and diagnostics (FDD)</h2>
+    <p>Buildings drift. Sensors go out of calibration, valves stick, someone overrides a schedule and leaves. None of
+      this raises an alarm, because the building still feels fine. It just uses more energy. Studies of commercial
+      buildings, including work by Lawrence Berkeley National Laboratory, commonly find that faults and poor
+      operation waste somewhere between 5 % and 30 % of energy. <strong>FDD</strong> software finds these problems
+      automatically from trend data.</p>
+
+    <h3>Detection vs diagnosis</h3>
+    <p><strong>Detection</strong> says that something is wrong: "heating and cooling valves are open at the same
+      time". <strong>Diagnosis</strong> says why: "the cooling valve is leaking" or "the heating valve has a broken
+      actuator". Detection is much easier. Many products stop there and leave diagnosis to an engineer, ideally with
+      the relevant trends attached.</p>
+
+    <h3>Three families of methods</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Method</th><th>How it works</th><th>Pros</th><th>Cons</th></tr>
+      <tr><td><strong>Rule-based</strong></td><td>Expert rules on point values, e.g. the NIST APAR rules for AHUs</td><td>Transparent, explainable, works from day one</td><td>Thresholds need tuning; needs good point metadata</td></tr>
+      <tr><td><strong>Model-based</strong></td><td>Compare measurements with a physical model (e.g. expected coil ΔT)</td><td>Can detect subtle degradation</td><td>Model building effort per system</td></tr>
+      <tr><td><strong>Data-driven</strong></td><td>Statistical or machine-learning models of "normal", flagging anomalies</td><td>Little engineering effort</td><td>Hard to explain; needs clean history; learns existing faults as normal</td></tr>
+    </table></div>
+
+    <h3>Anatomy of a rule</h3>
+    <p>A useful rule has four parts: a <strong>condition</strong>, a <strong>threshold</strong> with a dead band for
+      sensor error, a <strong>persistence</strong> time so short transients do not trigger it, and a
+      <strong>mode filter</strong> so it only runs when it makes sense (fan on, not during start-up, not in test).</p>
+    <pre class="code">rule  simultaneous_heating_cooling
+when  fan_status = on  and  not start_up(30 min)
+if    heating_valve &gt; 5 %  and  cooling_valve &gt; 5 %
+for   ≥ 2 h
+then  fault "Simultaneous heating and cooling", cost estimate attached</pre>
+
+    <h3>Try it: rule tester on a day of AHU data</h3>
+    <figure class="viz" id="fdd">
+      <div class="controls seg" role="group" aria-label="Rule">
+        <button data-r="shc" aria-pressed="true">Simultaneous heat/cool</button>
+        <button data-r="eco">Missed free cooling</button>
+        <button data-r="sat">Supply temp not met</button>
+        <button data-r="sched">Running out of hours</button>
+      </div>
+      <div class="en-row">
+        <label>Threshold: <output id="fThO">5 %</output>
+          <input type="range" id="fTh" min="0" max="30" step="1" value="5"></label>
+        <label>Persistence: <output id="fPerO">2 h</output>
+          <input type="range" id="fPer" min="1" max="6" step="1" value="2"></label>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="24 hours of AHU trend data with flagged hours shaded"></svg>
+      <div class="legend" id="fLegend"></div>
+      <div class="flag-list" id="fOut" aria-live="polite"></div>
+      <figcaption>Hourly trend of one AHU on a mild spring day. Schedule 07:00–19:00. Red bands are hours where the
+        rule fires after persistence.</figcaption>
+    </figure>
+
+    <h3>From fault to fix</h3>
+    <p>FDD only saves energy when someone acts. Good systems rank faults by <strong>estimated cost</strong> (kWh and
+      money per day) and by comfort impact, so the team fixes the expensive ones first. They link faults to work
+      orders and re-check after the fix. Semantic tagging (Brick, Project Haystack) lets the same rule library run on
+      any building without hand-mapping each point.</p>
+
+    <div class="callout example">An FDD platform runs about 40 rules on a 25,000 m² campus with 14 AHUs. In the first
+      month it flags 160 issues. After grouping duplicates and ranking by cost, the top five are: two leaking cooling
+      valves causing simultaneous heating and cooling, one economiser damper stuck at minimum, one supply air sensor
+      reading 3 K high, and a ventilation schedule overridden to 24/7. Fixing those five recovers most of the
+      estimated savings.</div>
+
+    <div class="callout warn">Too many alerts kill FDD faster than too few. If the first week produces hundreds of
+      unranked faults, the team stops reading them. Start with a few high-value rules, tune thresholds and
+      persistence, and only then widen the library.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Why does an FDD rule need a persistence time?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Persistence does not make sensors more accurate.">To improve sensor accuracy</button>
+        <button class="opt" data-opt="b" data-why="Storage is unrelated.">To reduce trend storage</button>
+        <button class="opt" data-opt="c" data-why="Transients during start-up or setpoint changes are normal; only lasting conditions are faults.">So short, normal transients do not raise false faults</button>
+        <button class="opt" data-opt="d" data-why="Persistence delays detection; it never speeds it up.">To detect faults faster</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Faults waste energy silently; FDD finds them from trends.</li>
+      <li>Rules need a condition, threshold, persistence and mode filter.</li>
+      <li>Rank by cost and close the loop with work orders.</li>
+      <li>Fewer, well-tuned rules beat many noisy ones.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. Gas use fell 20 % this year, and the winter had 15 % fewer degree days. What do you report?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Raw comparison credits the weather to the project.">20 % savings</button>
+        <button class="opt" data-opt="b" data-why="Simple subtraction ignores the base load term.">Exactly 5 % savings</button>
+        <button class="opt" data-opt="c" data-why="Feed actual HDD into the baseline model and compare. The result is likely a few per cent, not 20 %.">Savings against a weather-adjusted baseline</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">2. Optimal start computes…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="From indoor and outdoor temperature and a learned heat-up rate.">The latest start time that still reaches comfort at occupancy</button>
+        <button class="opt" data-opt="b" data-why="That would waste energy on mild days.">The earliest possible start time</button>
+        <button class="opt" data-opt="c" data-why="That is a setback, not optimal start.">The lowest setpoint during the night</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">3. Which sensor most directly drives demand-controlled ventilation?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="PIR says someone is there, not how many.">PIR</button>
+        <button class="opt" data-opt="b" data-why="A window contact triggers protection mode.">Window contact</button>
+        <button class="opt" data-opt="c" data-why="Outdoor temperature drives weather compensation.">Outdoor temperature</button>
+        <button class="opt" data-opt="d" data-why="CO₂ rises with the number of people and indicates air quality.">CO₂</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">4. A 5,000 m² office uses 450 MWh of electricity and 400 MWh of gas a year. Its EUI is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That uses electricity only.">90 kWh/m²·a</button>
+        <button class="opt" data-opt="b" data-why="850,000 kWh ÷ 5,000 m² = 170 kWh/m²·a.">170 kWh/m²·a</button>
+        <button class="opt" data-opt="c" data-why="Check the units: MWh to kWh is × 1,000.">0.17 kWh/m²·a</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">5. An FDD rule flags "heating and cooling valves both open" for 20 minutes every morning at fan start. Best response?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The rule is valuable; it just needs tuning.">Delete the rule</button>
+        <button class="opt" data-opt="b" data-why="That hides real faults too.">Raise the threshold to 80 %</button>
+        <button class="opt" data-opt="c" data-why="Start-up transients are normal. A mode filter or longer persistence removes the false positives.">Add a start-up mode filter or a longer persistence time</button>
+        <button class="opt" data-opt="d" data-why="Valves are probably fine; the rule is too eager.">Replace both valves</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="23-cybersecurity.html">← Chapter 23</a>
+    <a class="btn" href="25-operations.html">Chapter 25 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 24 visualizations.
+const NS = "http://www.w3.org/2000/svg";
+
+// 24.1 End-use donut.
+(() => {
+  const NAMES = ["Space heating", "Cooling", "Fans and pumps", "Lighting", "Hot water", "Plug loads and other"];
+  const DATA = {
+    office: [[40, 6, 12, 15, 4, 23], "Heating dominates, but fans, lighting and plug loads together are almost as large. Most of the electrical part is controllable by schedules."],
+    school: [[58, 1, 8, 14, 7, 12], "Long holidays and short days. Heating dominates; setbacks and holiday calendars are the biggest levers."],
+    hotel: [[33, 7, 10, 9, 23, 18], "Hot water is large: showers, kitchen, laundry. 24-hour operation makes the base load high."],
+    retail: [[26, 12, 12, 30, 2, 18], "Display lighting and refrigeration (in 'other') are big. Long opening hours."],
+  };
+  const fig = document.getElementById("donut");
+  const svg = fig.querySelector("svg"), list = fig.querySelector(".donut-list"), txt = fig.querySelector(".readout");
+  let cur = "office", sel = -1;
+  const arc = (a0, a1, r0, r1) => {
+    const p = (a, r) => [110 + r * Math.sin(a), 110 - r * Math.cos(a)];
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const [x0, y0] = p(a0, r1), [x1, y1] = p(a1, r1), [x2, y2] = p(a1, r0), [x3, y3] = p(a0, r0);
+    return `M${x0},${y0} A${r1},${r1} 0 ${large} 1 ${x1},${y1} L${x2},${y2} A${r0},${r0} 0 ${large} 0 ${x3},${y3} Z`;
+  };
+  const draw = () => {
+    const [vals, note] = DATA[cur];
+    let a = 0, html = "";
+    vals.forEach((v, i) => {
+      const a1 = a + (v / 100) * 2 * Math.PI;
+      html += `<path class="seg-arc c${i + 1}${sel >= 0 && sel !== i ? " dim" : ""}" data-i="${i}" d="${arc(a, a1, 58, 100)}"><title>${NAMES[i]} ${v} %</title></path>`;
+      a = a1;
+    });
+    const s = sel >= 0 ? [vals[sel] + " %", NAMES[sel]] : ["100 %", "delivered energy"];
+    html += `<text class="big" x="110" y="110" text-anchor="middle">${s[0]}</text><text class="small" x="110" y="128" text-anchor="middle">${s[1]}</text>`;
+    svg.innerHTML = html;
+    list.innerHTML = vals.map((v, i) => `<li data-i="${i}" class="${sel === i ? "on" : ""}"><i class="c${i + 1}"></i><span>${NAMES[i]}</span><b>${v} %</b></li>`).join("");
+    txt.textContent = note;
+    fig.querySelectorAll("[data-b]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.b === cur));
+  };
+  const pick = (e) => { const t = e.target.closest("[data-i]"); if (!t) return; const i = Number(t.dataset.i); sel = sel === i ? -1 : i; draw(); };
+  svg.addEventListener("click", pick); list.addEventListener("click", pick);
+  fig.querySelectorAll("[data-b]").forEach((b) => b.addEventListener("click", () => { cur = b.dataset.b; draw(); }));
+  draw();
+})();
+
+// 24.1 Weekly electricity profile.
+(() => {
+  const X = (h) => 50 + (h / 168) * 530, Y = (kw) => 180 - (kw / 100) * 150;
+  let d = "";
+  for (let q = 0; q <= 168 * 4; q++) {
+    const h = q / 4, day = Math.floor(h / 24), hd = h % 24;
+    let kw = 37 + 2 * Math.sin(q * 1.7) + 1.5 * Math.sin(q * 0.37);
+    if (day < 5) {
+      const ramp = Math.min(1, Math.max(0, (hd - 6) / 2)) * Math.min(1, Math.max(0, (19 - hd) / 2));
+      kw += ramp * (55 + 4 * Math.sin(q * 0.9) - (hd > 12 && hd < 13.5 ? 6 : 0));
+    }
+    d += (q ? " L" : "M") + X(h).toFixed(1) + "," + Y(kw).toFixed(1);
+  }
+  document.getElementById("weekPath").setAttribute("d", d);
+  document.getElementById("weekDays").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    .map((n, i) => `<text class="small" x="${X(i * 24 + 12)}" y="198" text-anchor="middle">${n}</text><line class="grid" x1="${X(i * 24)}" y1="30" x2="${X(i * 24)}" y2="180"/>`).join("");
+})();
+
+// 24.2 Degree-day baseline.
+(() => {
+  const HDD = [450, 390, 330, 220, 110, 40, 15, 20, 90, 220, 330, 420];
+  const A = 12000, B = 55;
+  // Deterministic scatter so the chart does not jump on every redraw.
+  const NOISE = [0.03, -0.02, 0.01, -0.04, 0.05, -0.01, 0.02, -0.03, 0.04, -0.02, 0.01, 0.0];
+  const NOISE2 = [-0.02, 0.03, -0.01, 0.02, -0.03, 0.04, -0.02, 0.01, -0.04, 0.02, 0.0, 0.01];
+  const fig = document.getElementById("baseline"), svg = fig.querySelector("svg");
+  const rS = document.getElementById("blSav"), rW = document.getElementById("blWx");
+  const X = (h) => 60 + (h / 650) * 520, Y = (e) => 260 - (e / 50000) * 230;
+  const fmt = (n) => Math.round(n).toLocaleString("en-GB");
+  const draw = () => {
+    const s = Number(rS.value) / 100, w = Number(rW.value) / 100;
+    document.getElementById("blS").textContent = rS.value + " %";
+    document.getElementById("blW").textContent = rW.value + " %";
+    const ref = HDD.map((h, i) => [h, (A + B * h) * (1 + NOISE[i])]);
+    const rep = HDD.map((h, i) => { const hh = h * w; return [hh, (A + B * hh) * (1 - s) * (1 + NOISE2[i])]; });
+    let g = "";
+    for (let e = 0; e <= 50000; e += 10000) g += `<line class="grid" x1="60" y1="${Y(e)}" x2="580" y2="${Y(e)}"/><text class="small" x="54" y="${Y(e) + 4}" text-anchor="end">${e / 1000}k</text>`;
+    for (let h = 0; h <= 600; h += 100) g += `<text class="small" x="${X(h)}" y="276" text-anchor="middle">${h}</text>`;
+    g += `<text class="small" x="320" y="294" text-anchor="middle">heating degree days per month</text><text class="small" x="8" y="18">kWh/month</text>`;
+    g += `<line x1="${X(0)}" y1="${Y(A)}" x2="${X(650)}" y2="${Y(A + B * 650)}" stroke="var(--example)" stroke-width="2.5"/>`;
+    g += ref.map(([h, e]) => `<circle cx="${X(h)}" cy="${Y(e)}" r="5" class="fill-muted" opacity=".7"/>`).join("");
+    g += rep.map(([h, e]) => `<circle cx="${X(h)}" cy="${Y(e)}" r="5" class="fill-accent"/>`).join("");
+    svg.innerHTML = g;
+    const sum = (arr) => arr.reduce((a, [, e]) => a + e, 0);
+    const refTot = sum(ref), repTot = sum(rep);
+    const adj = rep.reduce((a, [h]) => a + A + B * h, 0);
+    const raw = (refTot - repTot) / refTot, norm = (adj - repTot) / adj;
+    const err = Math.abs(raw - s) > 0.04;
+    document.getElementById("blKpis").innerHTML = [
+      ["Reference year", fmt(refTot / 1000), "MWh", ""],
+      ["Reporting year", fmt(repTot / 1000), "MWh", ""],
+      ["Adjusted baseline", fmt(adj / 1000), "MWh", ""],
+      ["Raw saving", (raw * 100).toFixed(1) + " %", err ? "misleading" : "close by luck", err ? "bad" : ""],
+      ["Normalised saving", (norm * 100).toFixed(1) + " %", "vs true " + rS.value + " %", "good"],
+    ].map(([k, v, u, c]) => `<div class="kpi ${c}"><div class="k">${k}</div><div class="v">${v}</div><div class="u">${u}</div></div>`).join("");
+  };
+  rS.addEventListener("input", draw); rW.addEventListener("input", draw); draw();
+})();
+
+// 24.3 Setback and optimal start, lumped RC model.
+(() => {
+  const UA = 4, TC = 21, OCC0 = 8, OCC1 = 18, DT = 0.05;
+  const DESIGN = UA * (TC + 15);
+  const fig = document.getElementById("setback"), svg = fig.querySelector("svg");
+  const $ = (id) => document.getElementById(id);
+  let mode = "opt";
+  // Simulate from 18:00 the day before so the night starts realistically.
+  const sim = (To, Ts, tau, Pmax, start) => {
+    const C = UA * tau;
+    let T = TC, E = 0;
+    const out = [];
+    for (let t = -6; t < 24 - 1e-9; t += DT) {
+      const h = (t + 24) % 24;
+      const occ = h >= OCC0 && h < OCC1;
+      let sp = TC;
+      if (start !== null && !occ && !(h >= start && h < OCC0)) sp = Ts;
+      // P-plus-feedforward thermostat, limited by plant capacity.
+      const P = Math.min(Pmax, Math.max(0, UA * (sp - To) + (C * (sp - T)) / 0.5));
+      T += ((P - UA * (T - To)) / C) * DT;
+      if (t >= 0) { E += P * DT; out.push([t, T, P]); }
+    }
+    return { out, E };
+  };
+  const draw = () => {
+    const To = Number($("sbOut").value), Ts = Number($("sbSet").value), tau = Number($("sbTauR").value);
+    const Pmax = DESIGN * (1 + Number($("sbPow").value) / 100);
+    $("sbTo").textContent = To + " °C"; $("sbTs").textContent = Ts + " °C"; $("sbTau").textContent = tau + " h"; $("sbP").textContent = $("sbPow").value + " %";
+    const base = sim(To, Ts, tau, Pmax, null);
+    let start = null, note = "";
+    if (mode === "fixed") start = 5;
+    if (mode === "opt") {
+      // Latest start that reaches comfort minus 0.3 K by occupancy.
+      start = 0;
+      for (let s = 7.9; s >= 0; s -= 0.1) {
+        const r = sim(To, Ts, tau, Pmax, s);
+        const at = r.out.find(([t]) => t >= OCC0 - 1e-6);
+        if (at && at[1] >= TC - 0.3) { start = s; break; }
+      }
+    }
+    const res = mode === "none" ? base : sim(To, Ts, tau, Pmax, start);
+    const at8 = res.out.find(([t]) => t >= OCC0 - 1e-6)[1];
+    const minT = Math.min(...res.out.filter(([t]) => t < OCC0).map(([, T]) => T));
+    const X = (t) => 50 + (t / 24) * 530, YT = (T) => 210 - ((T - 8) / 15) * 180, YP = (P) => 210 - (P / (DESIGN * 2.5)) * 180;
+    let g = "";
+    for (let T = 8; T <= 23; T += 3) g += `<line class="grid" x1="50" y1="${YT(T)}" x2="580" y2="${YT(T)}"/><text class="small" x="44" y="${YT(T) + 4}" text-anchor="end">${T}°</text>`;
+    for (let h = 0; h <= 24; h += 4) g += `<text class="small" x="${X(h)}" y="228" text-anchor="middle">${String(h).padStart(2, "0")}:00</text>`;
+    g += `<rect x="${X(OCC0)}" y="30" width="${X(OCC1) - X(OCC0)}" height="180" class="fill-accent-soft" opacity=".6"/><text class="small" x="${X(13)}" y="44" text-anchor="middle">occupied</text>`;
+    let pd = `M${X(0)},210`;
+    res.out.forEach(([t, , P]) => { pd += ` L${X(t).toFixed(1)},${YP(P).toFixed(1)}`; });
+    pd += ` L${X(24)},210 Z`;
+    g += `<path d="${pd}" style="fill:var(--example)" opacity=".28"/>`;
+    g += `<path d="${res.out.map(([t, T], i) => (i ? "L" : "M") + X(t).toFixed(1) + "," + YT(T).toFixed(1)).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+    if (start !== null) g += `<line x1="${X(start)}" y1="30" x2="${X(start)}" y2="210" stroke="var(--example)" stroke-dasharray="4 3" stroke-width="2"/><text x="${X(start) + 4}" y="62" style="fill:var(--example);font-size:12px">start ${String(Math.floor(start)).padStart(2, "0")}:${String(Math.round((start % 1) * 60)).padStart(2, "0")}</text>`;
+    g += `<text class="small" x="50" y="248">shaded: heating power (scale to ${Math.round(DESIGN * 2.5)} kW)</text>`;
+    svg.innerHTML = g;
+    const saved = (base.E - res.E) / base.E;
+    const late = at8 < TC - 0.5;
+    $("sbKpis").innerHTML = [
+      ["Heat today", Math.round(res.E), "kWh", ""],
+      ["vs no setback", (saved * 100).toFixed(1) + " %", "saved", saved > 0.005 ? "good" : ""],
+      ["Coldest at night", minT.toFixed(1) + " °C", "indoor", ""],
+      ["At 08:00", at8.toFixed(1) + " °C", late ? "too cold: start earlier or more plant" : "comfort met", late ? "bad" : "good"],
+    ].map(([k, v, u, c]) => `<div class="kpi ${c}"><div class="k">${k}</div><div class="v">${v}</div><div class="u">${u}</div></div>`).join("");
+    fig.querySelectorAll("[data-m]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === mode));
+  };
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { mode = b.dataset.m; draw(); }));
+  ["sbOut", "sbSet", "sbTauR", "sbPow"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 24.4 Occupancy-based room control, minute resolution.
+(() => {
+  // Presence intervals in hours; "still" gaps are minutes with no PIR motion although people are present.
+  const DAYS = {
+    busy: { pres: [[8.5, 10], [10.5, 12], [13, 15.5], [16, 17.5]], still: [[9.1, 9.35], [13.6, 13.75], [14.4, 14.6], [16.5, 16.62]] },
+    quiet: { pres: [[9, 10], [14, 15]], still: [[9.3, 9.45], [14.2, 14.5]] },
+    empty: { pres: [], still: [] },
+  };
+  const S0 = 7, S1 = 19;
+  const fig = document.getElementById("occ"), svg = fig.querySelector("svg");
+  const r = document.getElementById("occTimer");
+  let mode = "occ", day = "busy";
+  const inAny = (arr, h) => arr.some(([a, b]) => h >= a && h < b);
+  const draw = () => {
+    const tmo = Number(r.value);
+    document.getElementById("occT").textContent = tmo + " min";
+    const D = DAYS[day];
+    const rows = [];
+    let last = -1e9, falseOffs = 0, E = 0, prevOn = false;
+    for (let m = 0; m < 24 * 60; m++) {
+      const h = m / 60, sched = h >= S0 && h < S1, pres = inAny(D.pres, h);
+      // Motion every 3 minutes when present and not sitting still.
+      const pir = pres && !inAny(D.still, h) && m % 3 === 0;
+      if (pir) last = m;
+      let st;
+      if (mode === "sched") st = sched ? "comfort" : "eco";
+      else st = !sched ? "eco" : m - last <= tmo ? "comfort" : "standby";
+      const lights = mode === "sched" ? sched : st === "comfort";
+      if (mode === "occ" && prevOn && st !== "comfort" && pres) falseOffs++;
+      prevOn = st === "comfort";
+      const p = (st === "comfort" ? 1.2 + 0.4 : st === "standby" ? 0.6 + 0.1 : 0) + (lights ? 0.5 : 0);
+      E += p / 60;
+      rows.push({ m, pres, pir, st, lights });
+    }
+    const X = (m) => 90 + (m / 1440) * 495;
+    let g = "";
+    [["Present", 40], ["PIR", 80], ["Room mode", 120], ["Lights", 160]].forEach(([n, y]) => { g += `<text x="6" y="${y + 4}" style="font-size:12px">${n}</text>`; });
+    for (let h = 0; h <= 24; h += 3) g += `<line class="grid" x1="${X(h * 60)}" y1="24" x2="${X(h * 60)}" y2="178"/><text class="small" x="${X(h * 60)}" y="196" text-anchor="middle">${String(h).padStart(2, "0")}</text>`;
+    const spans = (pred, y, hgt, cls) => {
+      let s = "", a = null;
+      rows.forEach((row, i) => {
+        const on = pred(row);
+        if (on && a === null) a = i;
+        if ((!on || i === rows.length - 1) && a !== null) { s += `<rect x="${X(a)}" y="${y}" width="${Math.max(1, X(i) - X(a))}" height="${hgt}" rx="2" ${cls}/>`; a = null; }
+      });
+      return s;
+    };
+    g += spans((x) => x.pres, 30, 20, 'class="fill-muted" opacity=".55"');
+    g += rows.filter((x) => x.pir).map((x) => `<line x1="${X(x.m)}" y1="72" x2="${X(x.m)}" y2="90" stroke="var(--accent)" stroke-width="1"/>`).join("");
+    g += spans((x) => x.st === "comfort", 110, 20, 'class="fill-bad" opacity=".8"');
+    g += spans((x) => x.st === "standby", 110, 20, 'class="fill-example-soft" stroke="var(--example)"');
+    g += spans((x) => x.lights, 150, 20, 'style="fill:var(--example)" opacity=".8"');
+    g += `<text class="small" x="90" y="214">red = comfort · pale = standby · blank = economy</text>`;
+    svg.innerHTML = g;
+    // Reference: schedule-only energy for the same day.
+    const ref = (S1 - S0) * (1.2 + 0.4 + 0.5);
+    const comfortH = rows.filter((x) => x.st === "comfort").length / 60;
+    document.getElementById("occKpis").innerHTML = [
+      ["Energy", E.toFixed(1), "kWh/day", ""],
+      ["vs schedule only", (((ref - E) / ref) * 100).toFixed(0) + " %", "saved", mode === "occ" ? "good" : ""],
+      ["Comfort hours", comfortH.toFixed(1), "h", ""],
+      ["False offs", mode === "occ" ? String(falseOffs) : "–", falseOffs ? "people present, room dropped" : "none", mode === "occ" && falseOffs ? "bad" : ""],
+    ].map(([k, v, u, c]) => `<div class="kpi ${c}"><div class="k">${k}</div><div class="v">${v}</div><div class="u">${u}</div></div>`).join("");
+    fig.querySelectorAll("[data-m]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === mode));
+    fig.querySelectorAll("[data-d]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.d === day));
+  };
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { mode = b.dataset.m; draw(); }));
+  fig.querySelectorAll("[data-d]").forEach((b) => b.addEventListener("click", () => { day = b.dataset.d; draw(); }));
+  r.addEventListener("input", draw); draw();
+})();
+
+// 24.5 KPI dashboard.
+(() => {
+  const fig = document.getElementById("kpi"), svg = fig.querySelector("svg");
+  const v = (id) => Math.max(0, Number(document.getElementById(id).value) || 0);
+  const X = (e) => 20 + (Math.min(e, 350) / 350) * 560;
+  const draw = () => {
+    const area = Math.max(1, v("kArea")), el = v("kEl") * 1000, gas = v("kGas") * 1000, ooh = v("kOoh") * 1000;
+    const hdd = Math.max(1, v("kHdd")), hddRef = Math.max(1, v("kHddRef"));
+    const eui = (el + gas) / area;
+    const heatNorm = (gas / area / hdd) * 1000;
+    const gasAdj = gas * (hddRef / hdd);
+    const euiNorm = (el + gasAdj) / area;
+    const co2 = (el * 0.3 + gas * 0.2) / area;
+    const oohR = el ? (ooh / el) * 100 : 0;
+    let g = `<rect x="${X(0)}" y="20" width="${X(120) - X(0)}" height="22" class="fill-ok" opacity=".35"/>` +
+      `<rect x="${X(120)}" y="20" width="${X(220) - X(120)}" height="22" style="fill:var(--example)" opacity=".35"/>` +
+      `<rect x="${X(220)}" y="20" width="${X(350) - X(220)}" height="22" class="fill-bad" opacity=".35"/>`;
+    [0, 120, 220, 350].forEach((e) => { g += `<text class="small" x="${X(e)}" y="58" text-anchor="middle">${e}${e === 350 ? "+" : ""}</text>`; });
+    g += `<text class="small" x="${(X(0) + X(120)) / 2}" y="35" text-anchor="middle">good</text><text class="small" x="${(X(120) + X(220)) / 2}" y="35" text-anchor="middle">typical</text><text class="small" x="${(X(220) + X(350)) / 2}" y="35" text-anchor="middle">poor</text>`;
+    g += `<path d="M${X(eui)},16 l-7,-12 h14 z" class="fill-accent"/><line x1="${X(eui)}" y1="16" x2="${X(eui)}" y2="46" stroke="var(--accent)" stroke-width="3"/>`;
+    g += `<path d="M${X(euiNorm)},46 l-6,10 h12 z" class="fill-muted"/>`;
+    g += `<text class="small" x="300" y="82" text-anchor="middle">▼ actual EUI · ▲ weather-normalised EUI (kWh/m²·a)</text>`;
+    svg.innerHTML = g;
+    const band = eui < 120 ? "good" : eui > 220 ? "bad" : "";
+    document.getElementById("kOut").innerHTML = [
+      ["EUI", eui.toFixed(0), "kWh/m²·a", band],
+      ["EUI, normalised", euiNorm.toFixed(0), "kWh/m²·a at ref. HDD", ""],
+      ["Heating", heatNorm.toFixed(1), "Wh/m²·HDD", ""],
+      ["Carbon", co2.toFixed(1), "kg CO₂e/m²·a", ""],
+      ["Out-of-hours el.", oohR.toFixed(0) + " %", oohR > 30 ? "high: check schedules" : "of electricity", oohR > 30 ? "bad" : "good"],
+    ].map(([k, val, u, c]) => `<div class="kpi ${c}"><div class="k">${k}</div><div class="v">${val}</div><div class="u">${u}</div></div>`).join("");
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 24.6 FDD rule tester.
+(() => {
+  // Hourly AHU trend: [OAT, SAT, SATsp, heating valve %, cooling valve %, OA damper %, fan on].
+  const D = [];
+  for (let h = 0; h < 24; h++) {
+    const oat = 8 + 7 * Math.sin(((h - 9) / 24) * 2 * Math.PI);
+    const occ = h >= 7 && h < 19;
+    // Fan left on 21:00-23:00 by an override.
+    const fan = occ || h === 21 || h === 22 ? 1 : 0;
+    const sp = 18;
+    let htg = fan ? Math.max(0, Math.min(100, (sp - oat - 4) * 9)) : 0;
+    let clg = 0;
+    // Leaking cooling valve 10:00-14:00 forces heating to fight it.
+    if (fan && h >= 10 && h <= 14) { clg = 18 + (h % 2) * 4; htg = Math.max(htg, 22 + (h % 3) * 5); }
+    // Start-up transient at 07:00.
+    if (h === 7) clg = 12;
+    // Damper stuck at minimum all day.
+    const dmp = fan ? 20 : 0;
+    // Afternoon cooling call with cool outdoor air: free cooling missed.
+    if (fan && h >= 15 && h <= 17) { clg = 35 + (h - 15) * 8; htg = 0; }
+    // Heating saturated but SAT low 08:00-09:00 (plant slow to deliver).
+    let sat = fan ? sp + (h === 8 || h === 9 ? -3.2 : 0.3 * Math.sin(h)) : oat + 2;
+    if (h === 8 || h === 9) htg = 100;
+    D.push([oat, sat, sp, Math.round(htg), Math.round(clg), dmp, fan]);
+  }
+  const RULES = {
+    shc: { th: true, test: (r, t) => r[6] && r[3] > t && r[4] > t, txt: "Heating valve > T and cooling valve > T while fan on", lines: [[3, "var(--bad)", "heating valve %"], [4, "var(--accent)", "cooling valve %"]] },
+    eco: { th: true, test: (r, t) => r[6] && r[4] > t && r[0] < r[1] - 2 && r[5] < 90, txt: "Cooling valve > T while outdoor air is ≥ 2 K below supply and damper < 90 %", lines: [[4, "var(--accent)", "cooling valve %"], [5, "var(--ok)", "OA damper %"]] },
+    sat: { th: false, test: (r, t) => r[6] && Math.abs(r[1] - r[2]) > t / 10 + 1 && (r[3] >= 95 || r[4] >= 95), txt: "|SAT − setpoint| > 1 K + T/10 while a valve is saturated (≥ 95 %)", lines: [[3, "var(--bad)", "heating valve %"], [4, "var(--accent)", "cooling valve %"]] },
+    sched: { th: false, test: (r, t, h) => r[6] && (h < 7 || h >= 19), txt: "Fan on outside schedule 07:00–19:00", lines: [[5, "var(--ok)", "OA damper %"]] },
+  };
+  const fig = document.getElementById("fdd"), svg = fig.querySelector("svg");
+  const rTh = document.getElementById("fTh"), rPer = document.getElementById("fPer");
+  let rule = "shc";
+  const X = (h) => 50 + (h / 24) * 530, Y = (p) => 200 - (p / 100) * 160, YT = (T) => 200 - ((T + 0) / 30) * 160;
+  const draw = () => {
+    const t = Number(rTh.value), per = Number(rPer.value), R = RULES[rule];
+    document.getElementById("fThO").textContent = rule === "sat" ? (1 + t / 10).toFixed(1) + " K" : rule === "sched" ? "n/a" : t + " %";
+    document.getElementById("fPerO").textContent = per + " h";
+    const raw = D.map((r, h) => !!R.test(r, t, h));
+    // Persistence: flag hour h when the condition held for per consecutive hours ending at h.
+    const flag = raw.map((_, h) => { for (let k = 0; k < per; k++) if (!raw[h - k]) return false; return true; });
+    let g = "";
+    flag.forEach((f, h) => { if (f) g += `<rect x="${X(h)}" y="40" width="${X(1) - X(0)}" height="160" class="fill-bad" opacity=".18"/>`; });
+    raw.forEach((f, h) => { if (f && !flag[h]) g += `<rect x="${X(h)}" y="196" width="${X(1) - X(0)}" height="4" class="fill-bad" opacity=".6"/>`; });
+    for (let p = 0; p <= 100; p += 25) g += `<line class="grid" x1="50" y1="${Y(p)}" x2="580" y2="${Y(p)}"/><text class="small" x="44" y="${Y(p) + 4}" text-anchor="end">${p}%</text>`;
+    for (let h = 0; h <= 24; h += 3) g += `<text class="small" x="${X(h)}" y="216" text-anchor="middle">${String(h).padStart(2, "0")}</text>`;
+    g += `<rect x="${X(7)}" y="28" width="${X(19) - X(7)}" height="6" class="fill-accent-soft"/><text class="small" x="${X(13)}" y="24" text-anchor="middle">schedule</text>`;
+    R.lines.forEach(([c, col]) => {
+      g += `<path d="${D.map((r, h) => (h ? "L" : "M") + X(h + 0.5).toFixed(1) + "," + Y(r[c]).toFixed(1)).join(" ")}" fill="none" stroke="${col}" stroke-width="2.5"/>`;
+    });
+    g += `<path d="${D.map((r, h) => (h ? "L" : "M") + X(h + 0.5).toFixed(1) + "," + YT(r[0]).toFixed(1)).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    g += `<path d="${D.map((r, h) => (h ? "L" : "M") + X(h + 0.5).toFixed(1) + "," + YT(r[1]).toFixed(1)).join(" ")}" fill="none" stroke="var(--text)" stroke-width="1.5"/>`;
+    g += `<text class="small" x="50" y="240">dashed: outdoor °C · thin: supply °C (right scale 0–30 °C) · red tick below axis: condition true but not yet persistent</text>`;
+    g += [0, 10, 20, 30].map((T) => `<text class="small" x="586" y="${YT(T) + 4}">${T}°</text>`).join("");
+    svg.innerHTML = g;
+    document.getElementById("fLegend").innerHTML = R.lines.map(([, col, n]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
+    // Group flagged hours into episodes.
+    const eps = []; let a = null;
+    flag.forEach((f, h) => { if (f && a === null) a = h; if ((!f || h === 23) && a !== null) { eps.push([a - per + 1, f && h === 23 ? 24 : h]); a = null; } });
+    const hh = (h) => String(h).padStart(2, "0") + ":00";
+    document.getElementById("fOut").innerHTML = `<div>${R.txt}, for ≥ ${per} h</div>` + (eps.length
+      ? eps.map(([s, e]) => `<div class="bad">FAULT  ${hh(s)}–${hh(e)}</div>`).join("")
+      : `<div class="ok">No fault after persistence.</div>`);
+  };
+  fig.querySelectorAll("[data-r]").forEach((b) => b.addEventListener("click", () => {
+    rule = b.dataset.r;
+    fig.querySelectorAll("[data-r]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    draw();
+  }));
+  rTh.addEventListener("input", draw); rPer.addEventListener("input", draw); draw();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hydronic Heating Systems</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .hy-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .hy-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .hy-row input[type=range] { width: 100%; }
+  .hy-row output { font: 600 14px var(--mono); color: var(--text); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; margin-top: 10px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+  .stat span { display: block; font-size: 12px; color: var(--muted); }
+  .stat b { font: 600 18px var(--mono); overflow-wrap: anywhere; }
+  .stat.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .stat.good { border-color: var(--ok); background: var(--ok-soft); }
+  svg .pipe { fill: none; stroke-width: 6; stroke-linecap: round; }
+  svg .hot { stroke: var(--bad); }
+  svg .cold { stroke: var(--accent); }
+  svg .warm { stroke: var(--example); }
+  svg .flow { stroke-dasharray: 6 10; animation: hyflow 1s linear infinite; }
+  svg .curve { fill: none; stroke-width: 2.5; }
+  svg .grid-l { stroke: var(--border); stroke-width: 1; }
+  @keyframes hyflow { to { stroke-dashoffset: -16; } }
+  @media (prefers-reduced-motion: reduce) { svg .flow { animation: none; } }
+  .loops { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-top: 10px; }
+  .loop-btn { font: 600 13px var(--font); text-align: left; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+  .loop-btn[aria-pressed=true] { border-color: var(--ok); background: var(--ok-soft); }
+  .loop-btn small { display: block; font: 12px var(--mono); color: var(--muted); }
+  .bar-row.hi .fill { background: var(--bad); }
+  .bar-row.lo .fill { background: var(--example); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="10">
+<div class="content">
+  <div class="kicker">Chapter 10</div>
+  <h1>Hydronics</h1>
+  <p class="lead">Heat is made in one room and used in hundreds of others. Water carries it. This chapter covers the
+    physics of moving heat with water, the pumps and valves that do it, and the hydraulic tricks that keep every
+    room fed without noise, waste or fights between circuits.</p>
+
+  <!-- 10.1 -->
+  <section class="lesson" id="s1" data-num="10.1">
+    <h2>10.1 Flow, head, delta T, the hydraulic equation</h2>
+    <p>A hydronic system is a closed loop of water. A heat source warms it, a pump pushes it through pipes, emitters
+      give the heat to the rooms, and the cooler water returns. Three quantities describe what happens:</p>
+    <ul>
+      <li><strong>Flow (Q or V̇)</strong>: how much water moves, in m³/h, l/h or l/s.</li>
+      <li><strong>Temperature difference (ΔT)</strong>: supply minus return, in kelvin (K). One kelvin of difference equals one °C of difference.</li>
+      <li><strong>Head (H) or differential pressure (Δp)</strong>: how hard the pump pushes, in metres of water column (m) or kPa. 1 m ≈ 9.81 kPa ≈ 0.1 bar.</li>
+    </ul>
+
+    <h3>The hydraulic equation</h3>
+    <p>The heat carried by water is mass flow times specific heat times temperature difference:</p>
+    <p style="text-align:center"><code>P = ṁ · c · ΔT</code></p>
+    <p>For water, c ≈ 4.19 kJ/(kg·K) and 1 m³ weighs about 1000 kg (a bit less when hot). Combine the constants and you
+      get a rule every heating engineer knows by heart:</p>
+    <p style="text-align:center"><code>P [kW] ≈ 1.16 · Q [m³/h] · ΔT [K]</code></p>
+    <p>So 1 m³/h of water cooling by 20 K delivers about 23 kW. The same 23 kW at ΔT 5 K needs 4 m³/h, four times the
+      flow. That is the core trade-off of hydronics: <em>a small ΔT means big flow, big pipes and big pumps</em>.</p>
+
+    <figure class="viz" id="powerCalc">
+      <div class="hy-row">
+        <label>Flow <output data-o="q"></output><input type="range" min="0.1" max="10" step="0.1" value="1.5" data-k="q"></label>
+        <label>Supply temperature <output data-o="ts"></output><input type="range" min="25" max="85" step="1" value="70" data-k="ts"></label>
+        <label>Return temperature <output data-o="tr"></output><input type="range" min="20" max="80" step="1" value="50" data-k="tr"></label>
+        <label>Pipe inner diameter <output data-o="d"></output><input type="range" min="10" max="100" step="1" value="26" data-k="d"></label>
+      </div>
+      <svg viewBox="0 0 600 150" role="img" aria-label="Supply and return pipes between a heat source and an emitter">
+        <rect class="box" x="10" y="30" width="100" height="90" rx="8"/><text x="60" y="70" text-anchor="middle">Heat</text><text x="60" y="88" text-anchor="middle">source</text>
+        <rect class="box" x="490" y="30" width="100" height="90" rx="8"/><text x="540" y="80" text-anchor="middle">Emitter</text>
+        <path class="pipe hot flow" d="M110,50 L490,50"/>
+        <path class="pipe cold flow" d="M490,100 L110,100"/>
+        <text x="300" y="38" text-anchor="middle" data-t="sup"></text>
+        <text x="300" y="128" text-anchor="middle" data-t="ret"></text>
+        <text class="small" x="300" y="80" text-anchor="middle" data-t="mid"></text>
+      </svg>
+      <div class="stats">
+        <div class="stat"><span>ΔT</span><b data-s="dt"></b></div>
+        <div class="stat"><span>Heat delivered</span><b data-s="p"></b></div>
+        <div class="stat"><span>Water velocity</span><b data-s="v"></b></div>
+        <div class="stat"><span>Mass flow</span><b data-s="m"></b></div>
+      </div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Change flow or ΔT and watch the power. The velocity check flags pipes that would be noisy or erode fittings.</figcaption>
+    </figure>
+
+    <h3>Typical design temperatures</h3>
+    <div class="table-wrap"><table>
+      <tr><th>System</th><th>Supply / return</th><th>ΔT</th><th>Why</th></tr>
+      <tr><td>Old radiator system</td><td>90/70 °C or 80/60 °C</td><td>20 K</td><td>Small radiators, non-condensing boilers.</td></tr>
+      <tr><td>Modern radiator system</td><td>70/50 or 55/45 °C</td><td>10–20 K</td><td>Cool return lets a condensing boiler condense (below about 55 °C for natural gas).</td></tr>
+      <tr><td>Underfloor heating</td><td>35/30 to 45/35 °C</td><td>5–10 K</td><td>Floor surface must stay comfortable, typically ≤ 29 °C in living areas.</td></tr>
+      <tr><td>Heat pump circuit</td><td>35/30 °C</td><td>5 K</td><td>Low supply temperature keeps efficiency (COP) high.</td></tr>
+      <tr><td>Chilled water</td><td>6/12 °C or 10/16 °C</td><td>5–6 K</td><td>Small ΔT is hard to avoid when cooling.</td></tr>
+    </table></div>
+
+    <h3>Head and pressure drop</h3>
+    <p>Water flowing through a pipe loses pressure to friction. For turbulent flow the loss rises roughly with the
+      <em>square</em> of the flow: double the flow, about four times the pressure drop. Designers keep pipe friction
+      around 100–200 Pa per metre and velocities below about 0.5–1.0 m/s in pipes inside rooms. Higher speeds whistle
+      and erode valve seats. A pump must supply a head equal to the total pressure drop of the worst path: boiler,
+      pipes, valves, emitter and back.</p>
+    <p>Valves are described by their <strong>Kv</strong> value: the flow in m³/h that passes with 1 bar of pressure drop.
+      The relation is <code>Q = Kv · √Δp</code> with Δp in bar. A valve with Kv 2.5 passing 1 m³/h drops (1/2.5)² = 0.16 bar = 16 kPa.</p>
+
+    <div class="callout example">An office floor needs 60 kW of heating. With 70/50 °C radiators (ΔT 20 K) that is
+      60 / (1.16 × 20) ≈ 2.6 m³/h. A DN40 pipe (about 41 mm inner diameter) carries it at 0.55 m/s. Converted to a heat
+      pump at 45/40 °C (ΔT 5 K), the same load needs 10.3 m³/h. The old riser would run at about 2.2 m/s: noisy, with
+      roughly sixteen times the friction loss. This is one reason heat pump retrofits often need new pipework or bigger emitters.</div>
+
+    <div class="callout warn">A BMS trend showing ΔT of 2–3 K on a circuit designed for 20 K means flow is far too high.
+      Energy still reaches the rooms, but the pump wastes electricity and a condensing boiler gets hot return water and stops condensing.
+      "Low ΔT syndrome" is one of the most common findings in an energy audit.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A circuit carries 2 m³/h at 70/50 °C. Roughly how much heat does it deliver?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is 1.16 × 2 × 5, using the wrong ΔT.">About 12 kW</button>
+        <button class="opt" data-opt="b" data-why="1.16 × 2 × 20 ≈ 46 kW.">About 46 kW</button>
+        <button class="opt" data-opt="c" data-why="That would need ΔT 70 K. The ΔT is supply minus return, not the supply temperature.">About 160 kW</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>P [kW] ≈ 1.16 × Q [m³/h] × ΔT [K]. Memorise it.</li>
+      <li>Small ΔT means big flow. Low-temperature systems need more water, pipe and pump.</li>
+      <li>Pressure drop grows with flow squared. Kv links valve flow and pressure drop.</li>
+      <li>Trend ΔT in the BMS. It is the quickest health check of a circuit.</li>
+    </ul>
+  </section>
+
+  <!-- 10.2 -->
+  <section class="lesson" id="s2" data-num="10.2">
+    <h2>10.2 Pumps: fixed, variable, curves</h2>
+    <p>Almost every heating pump in a building is a <strong>centrifugal pump</strong>: an impeller spins and throws
+      water outward. Small ones with the motor sealed inside the water (wet rotor) are called <strong>circulators</strong>.
+      Examples are the Grundfos Alpha and Magna, Wilo Stratos and Yonos, and Taco or DAB equivalents. Large plant uses
+      dry-rotor inline pumps with a separate motor and a frequency inverter.</p>
+
+    <h3>The pump curve and the system curve</h3>
+    <p>A pump does not deliver a fixed flow. Its <strong>pump curve</strong> shows how much head it can produce at
+      each flow: maximum head at zero flow, falling as flow rises. The pipework has a <strong>system curve</strong>: the
+      head needed to push a given flow, roughly <code>H = k · Q²</code> in a closed loop. The system runs where the two
+      curves cross: the <strong>operating point</strong>.</p>
+    <p>When a control valve closes, k grows and the system curve gets steeper. With a fixed-speed pump the operating
+      point slides left and up: less flow, <em>more</em> head. The remaining open valves see a higher pressure, get
+      more flow than intended and may start to whistle.</p>
+
+    <figure class="viz" id="pumpCurve">
+      <div class="controls seg" role="group" aria-label="Pump control mode">
+        <button data-m="fixed" aria-pressed="true">Fixed speed</button>
+        <button data-m="dpc">Δp constant</button>
+        <button data-m="dpv">Δp variable</button>
+      </div>
+      <div class="hy-row">
+        <label>Pump speed (fixed mode) <output data-o="s"></output><input type="range" min="40" max="100" value="100" data-k="s"></label>
+        <label>Valves open (load) <output data-o="v"></output><input type="range" min="20" max="100" value="100" data-k="v"></label>
+      </div>
+      <svg viewBox="0 0 600 300" role="img" aria-label="Pump curve and system curve with their intersection"></svg>
+      <div class="stats">
+        <div class="stat"><span>Flow</span><b data-s="q"></b></div>
+        <div class="stat"><span>Head</span><b data-s="h"></b></div>
+        <div class="stat"><span>Hydraulic power</span><b data-s="ph"></b></div>
+        <div class="stat"><span>Electric power (est.)</span><b data-s="pe"></b></div>
+      </div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Simplified model. Design point 2 m³/h at 4 m. Close the valves in fixed mode and watch the head climb. In Δp modes the pump slows down instead.</figcaption>
+    </figure>
+
+    <h3>The affinity laws</h3>
+    <p>For a centrifugal pump changing speed n, with the same system:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Quantity</th><th>Scales with</th><th>At 80 % speed</th><th>At 50 % speed</th></tr>
+      <tr><td>Flow Q</td><td>n</td><td>80 %</td><td>50 %</td></tr>
+      <tr><td>Head H</td><td>n²</td><td>64 %</td><td>25 %</td></tr>
+      <tr><td>Power P</td><td>n³</td><td>51 %</td><td>12.5 %</td></tr>
+    </table></div>
+    <p>The cube law is why variable speed pays. A heating system sits at part load most of the year, so a pump that
+      slows to 70 % of speed uses about a third of full power. In practice the saving is smaller, because motor and drive
+      efficiency fall at low speed and a real system curve has a minimum head. It is still large.</p>
+
+    <h3>Control modes of modern circulators</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Mode</th><th>What the pump holds</th><th>Use it for</th></tr>
+      <tr><td>Fixed speed (I/II/III)</td><td>A speed. Head rises when valves close.</td><td>Primary loops, boiler shunts, systems without control valves.</td></tr>
+      <tr><td>Constant pressure (Δp-c)</td><td>The same head at any flow.</td><td>Underfloor heating, systems where the pipe loss is small compared to the emitter loss.</td></tr>
+      <tr><td>Proportional pressure (Δp-v)</td><td>Head falls linearly as flow falls, often to half at zero flow.</td><td>Radiator systems with TRVs and long pipe runs.</td></tr>
+      <tr><td>External (0–10 V, PWM, Modbus, BACnet)</td><td>A setpoint from the BMS.</td><td>Index-circuit control with a remote Δp sensor, or speed tied to a supply strategy.</td></tr>
+    </table></div>
+    <p>Small circulators often take a PWM signal (profile A for heating: higher duty means lower speed, profile C for
+      solar: the opposite, but check the data sheet). Larger pumps expose Modbus RTU or BACnet with speed, power, head,
+      flow estimate and fault codes, which a BMS should read rather than only switching the pump on and off.</p>
+
+    <div class="callout example">Since 2015 the EU Ecodesign rules require stand-alone glandless circulators to have an
+      Energy Efficiency Index (EEI) of 0.23 or lower. In practice that means a permanent-magnet (ECM) motor and built-in
+      speed control. Swapping an old 3-speed 90 W circulator for a modern one in Δp-v mode often brings it down to 10–25 W average.</div>
+
+    <div class="callout warn">A pump running against closed valves heats the water inside it and can be damaged.
+      Systems where every emitter can close need a minimum-flow path: a bypass valve, one always-open circuit, or a pump
+      mode that drops to minimum speed. Pump "run-on" after a burner stops also needs somewhere to send the water.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A fixed-speed pump serves radiators with TRVs. Half the TRVs close. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Flow falls, but the open branches see more head, not less.">The open radiators get less flow</button>
+        <button class="opt" data-opt="b" data-why="A fixed-speed pump does not change its speed.">The pump slows down automatically</button>
+        <button class="opt" data-opt="c" data-why="The system curve steepens; the operating point moves to higher head. Open TRVs see more Δp and may whistle.">Total flow drops and the pump head rises</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The operating point is where the pump curve meets the system curve.</li>
+      <li>Flow ∝ speed, head ∝ speed², power ∝ speed³.</li>
+      <li>Δp-c suits underfloor heating, Δp-v suits radiators with TRVs.</li>
+      <li>Read pump data (power, flow, faults) over the bus, not just run status.</li>
+    </ul>
+  </section>
+
+  <!-- 10.3 -->
+  <section class="lesson" id="s3" data-num="10.3">
+    <h2>10.3 Hydraulic separators and buffers</h2>
+    <p>Bigger plants have several pumps: a boiler or heat pump pump on the <strong>primary</strong> side, and one pump per
+      consumer circuit on the <strong>secondary</strong> side. If they are piped in plain series, they fight. A strong
+      circuit pump can pull water backwards through a weak one, or force flow through a boiler that is off. The fix is
+      to make the pumps hydraulically independent.</p>
+
+    <h3>The low-loss header (hydraulic separator)</h3>
+    <p>A <strong>hydraulic separator</strong>, also called a low-loss header or "LLH", is a short, fat vertical tube that joins
+      primary and secondary. Because it is wide (sized for about 0.1–0.2 m/s), the pressure drop between its top and
+      bottom is nearly zero. Each pump only sees its own circuit. Most separators also slow the water enough for air to
+      rise to a vent at the top and dirt to settle into a drain at the bottom. Closely spaced tees on a common pipe do the same job.</p>
+    <p>What happens inside depends on which side moves more water:</p>
+
+    <figure class="viz" id="separator">
+      <div class="hy-row">
+        <label>Primary flow (boiler side) <output data-o="qp"></output><input type="range" min="0.5" max="6" step="0.1" value="3" data-k="qp"></label>
+        <label>Secondary flow (circuits) <output data-o="qs"></output><input type="range" min="0.5" max="6" step="0.1" value="2.5" data-k="qs"></label>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Hydraulic separator between primary and secondary circuits"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Boiler supplies 70 °C, the consumer circuit returns 50 °C. The flow inside the header goes down or up depending on the balance.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Case</th><th>Header flow</th><th>Effect</th></tr>
+      <tr><td>Primary &gt; secondary</td><td>Downwards</td><td>Circuits get full boiler temperature. Hot water short-circuits back to the boiler, raising its return. Bad for condensing.</td></tr>
+      <tr><td>Primary = secondary</td><td>Almost none</td><td>Ideal, rarely reached for long.</td></tr>
+      <tr><td>Primary &lt; secondary</td><td>Upwards</td><td>Return water mixes into the supply. Circuits get cooler water than the boiler makes. The boiler sees the true cold return.</td></tr>
+    </table></div>
+    <p>For condensing boilers and heat pumps, designers aim for primary flow slightly <em>lower</em> than secondary flow,
+      so that return temperature stays low. The BMS should then control the heat source on a sensor in the
+      <strong>secondary supply</strong> after the header, not on the boiler outlet, because that is the temperature the circuits really get.</p>
+
+    <h3>Buffer tanks</h3>
+    <p>A <strong>buffer tank</strong> is a separator with volume. It does three extra jobs:</p>
+    <ul>
+      <li><strong>Prevents short cycling.</strong> A heat pump or biomass boiler should run at least 10–20 minutes per start.
+        Without enough water, a small load makes it start and stop every few minutes.</li>
+      <li><strong>Covers defrost.</strong> Air-source heat pumps reverse briefly to defrost the outdoor coil and take heat from the water.</li>
+      <li><strong>Stores cheap or free heat.</strong> Solar thermal, off-peak tariffs, PV surplus.</li>
+    </ul>
+    <p>The energy stored is <code>E [kWh] = 1.16 × V [m³] × ΔT [K]</code>. A 500 l buffer charged by 10 K holds about
+      5.8 kWh: enough to run a 6 kW load for about an hour, or to give a 12 kW heat pump close to half an hour of runtime.
+      A common rule of thumb is 20–50 l of system volume per kW for heat pumps, but manufacturers' minimum volumes come first.</p>
+
+    <div class="callout warn">A 4-pipe buffer used as a separator stratifies: hot at top, cool at bottom. Sensor
+      position matters. A single sensor in the middle of a 1000 l tank can read 45 °C while the top is 60 °C and the
+      bottom 30 °C. Use two or three sensors (top, middle, bottom) and charge on the bottom one.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A condensing boiler pumps 4 m³/h into a separator; the circuits draw 2 m³/h. What does the boiler see?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="2 m³/h of supply water goes straight back down through the header and mixes into the return.">A return much hotter than the circuit return</button>
+        <button class="opt" data-opt="b" data-why="That happens when the secondary flow is higher.">A cooler supply at the circuits</button>
+        <button class="opt" data-opt="c" data-why="The separator decouples the pumps, so neither pump stalls.">Its pump stalls against the circuit pumps</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>A separator makes primary and secondary pumps independent.</li>
+      <li>Primary &gt; secondary heats the return. Primary &lt; secondary cools the supply.</li>
+      <li>Control the heat source on the secondary supply sensor.</li>
+      <li>Buffers add volume against short cycling and defrost; measure them at several heights.</li>
+    </ul>
+  </section>
+
+  <!-- 10.4 -->
+  <section class="lesson" id="s4" data-num="10.4">
+    <h2>10.4 Mixing circuits and 3-way valves</h2>
+    <p>One heat source often serves circuits that need different temperatures: radiators at 60 °C, floor heating at 35 °C,
+      an air handler at 70 °C. A <strong>mixing circuit</strong> lowers the temperature locally by blending hot supply with
+      cooler return water. It is the classic weather-compensated circuit you met in the control theory chapter: outdoor
+      temperature sets a supply setpoint, a PI loop moves the valve.</p>
+
+    <figure class="viz" id="mixer">
+      <div class="controls seg" role="group" aria-label="Circuit return temperature">
+        <button data-r="30" aria-pressed="true">Floor circuit (return 30 °C)</button>
+        <button data-r="45">Radiators (return 45 °C)</button>
+      </div>
+      <div class="hy-row">
+        <label>Valve position, port A open <output data-o="x"></output><input type="range" min="0" max="100" value="40" data-k="x"></label>
+        <label>Boiler supply temperature <output data-o="tb"></output><input type="range" min="50" max="80" value="70" data-k="tb"></label>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Three-way mixing valve with hot port A, bypass port B and mixed port AB"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>A is the hot inlet from the boiler, B the bypass from the circuit return, AB the mixed outlet to the circuit pump. The flow through AB stays constant; only the mix changes.</figcaption>
+    </figure>
+
+    <h3>Mixing versus diverting</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Arrangement</th><th>Ports</th><th>Flow in circuit</th><th>Flow at the source</th><th>Typical use</th></tr>
+      <tr><td>Mixing (in supply)</td><td>Two inlets, one outlet</td><td>Constant, temperature varies</td><td>Varies</td><td>Underfloor and radiator circuits.</td></tr>
+      <tr><td>Diverting (in return)</td><td>One inlet, two outlets</td><td>Varies through the coil</td><td>Constant</td><td>Air handler coils, constant-flow primaries.</td></tr>
+      <tr><td>Injection</td><td>2-way valve or small pump into a circuit</td><td>Constant</td><td>Small, varies</td><td>Large low-temperature circuits fed from a hot main.</td></tr>
+      <tr><td>2-way valve</td><td>One in, one out</td><td>Varies</td><td>Varies</td><td>Variable-flow systems with variable-speed pumps.</td></tr>
+    </table></div>
+
+    <h3>Actuators and signals</h3>
+    <p>Valve actuators come in three main styles:</p>
+    <ul>
+      <li><strong>3-point (floating)</strong>: two triacs, "open" and "close". The controller pulses them. Runtime is 60–240 s end to end.
+        No position feedback unless the actuator has one, so the controller estimates it.</li>
+      <li><strong>Modulating 0–10 V or 2–10 V</strong>: the signal sets a position. Many give a 2–10 V position feedback.</li>
+      <li><strong>Bus</strong>: Modbus, BACnet MS/TP or a vendor bus (Belimo MP-Bus, for example) with position, setpoint and diagnostics.</li>
+    </ul>
+    <p>A good valve has <strong>authority</strong>: its pressure drop when fully open should be a large share (often at least
+      half) of the pressure drop of the part of the circuit whose flow it changes. A valve that is too big does nothing for most of its stroke, then everything
+      in the last 10 %. The PI loop will hunt. Oversized valves are the most common reason a mixing circuit oscillates.</p>
+
+    <div class="callout example">A floor-heating circuit is fed from a boiler at 70 °C. On a mild day the curve asks for
+      32 °C. With a 30 °C return, the valve sits about 5 % open to port A. Any small movement causes a big swing.
+      Lowering boiler temperature to 50 °C moves the working point to 10 % and makes the loop far calmer. Matching the
+      source temperature to the hottest current demand helps both efficiency and control.</div>
+
+    <div class="callout warn">Underfloor circuits need a <strong>high-limit safety thermostat</strong> (for example 55 °C) wired
+      to stop the circuit pump. It must act directly, not through BMS software. A stuck mixing valve with 70 °C supply
+      can damage screed and floor finishes.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">A mixing circuit oscillates ±4 K around setpoint. Valve position swings between 3 % and 15 %. Most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A dead sensor gives a stuck value, not a periodic swing.">A failed supply sensor</button>
+        <button class="opt" data-opt="b" data-why="Pump speed affects flow, but the narrow valve range points to the valve itself.">Circuit pump too slow</button>
+        <button class="opt" data-opt="c" data-why="Too low a gain would give slow drift, not oscillation.">Too little controller gain</button>
+        <button class="opt" data-opt="d" data-why="Working at the bottom of the stroke, a little movement gives a big change. Oversize or too-hot source.">Valve oversized or source far too hot</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Mixing valves blend supply and return; circuit flow stays constant.</li>
+      <li>Diverting valves vary coil flow and keep source flow constant.</li>
+      <li>Valve authority matters: oversized valves make loops hunt.</li>
+      <li>Floor circuits need a hard-wired high-limit thermostat.</li>
+    </ul>
+  </section>
+
+  <!-- 10.5 -->
+  <section class="lesson" id="s5" data-num="10.5">
+    <h2>10.5 Underfloor heating: manifolds, actuators</h2>
+    <p>Underfloor heating (UFH) embeds pipe loops, usually 16–17 mm PE-X or PE-RT, in screed or in dry panels. The whole
+      floor becomes a low-temperature emitter. A typical output is 50–100 W/m², limited by floor surface temperature.
+      European standard EN 1264 sets the usual limits: about 29 °C in occupied zones, 33 °C in bathrooms and 35 °C at
+      perimeter zones.</p>
+
+    <h3>The manifold</h3>
+    <p>Each room has one or more loops, all starting and ending at a <strong>manifold</strong>, usually in a cabinet in a corridor.</p>
+    <ul>
+      <li><strong>Supply bar</strong> with flow meters (rotameters) and balancing valves per loop.</li>
+      <li><strong>Return bar</strong> with valve inserts that accept actuators.</li>
+      <li><strong>Air vents, drain/fill cocks</strong>, often a thermometer on each bar.</li>
+      <li>Often a <strong>mixing unit</strong> with its own pump and thermostatic or motorised valve.</li>
+    </ul>
+    <p>Loops are typically kept under about 100–120 m to limit pressure drop. Pipe spacing is 100–200 mm, tighter by
+      outside walls. A loop's design flow is often 1–3 l/min.</p>
+
+    <h3>Thermoelectric actuators</h3>
+    <p>The loop valves are usually driven by <strong>thermoelectric actuators</strong> ("heads"). A small heater warms a wax
+      or expansion element that pushes the valve pin. They are slow and simple:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Property</th><th>Typical value</th></tr>
+      <tr><td>Supply</td><td>230 V AC or 24 V AC/DC</td></tr>
+      <tr><td>Power</td><td>About 1–3 W holding, with an inrush current when cold (matters for 24 V transformer sizing)</td></tr>
+      <tr><td>Default</td><td>Normally closed (NC) is most common; normally open (NO) exists</td></tr>
+      <tr><td>Opening time</td><td>About 2–5 minutes</td></tr>
+      <tr><td>Control</td><td>On/off, or PWM with a few-minute period; some 0–10 V versions</td></tr>
+    </table></div>
+    <p>Because the floor responds over hours, on/off control of the loop valves works well. A room thermostat or a BMS
+      output switches the actuator of that room's loops. A wiring centre (Uponor, Danfoss, Rehau and many others) groups the
+      outputs and often switches the pump off when all loops are closed.</p>
+
+    <figure class="viz" id="manifold">
+      <div class="controls seg" role="group" aria-label="Pump control mode">
+        <button data-m="dpc" aria-pressed="true">Pump Δp constant</button>
+        <button data-m="fixed">Pump fixed speed</button>
+      </div>
+      <p style="margin:0;font-size:14px;color:var(--muted)">Tap a loop to open or close its actuator.</p>
+      <div class="loops"></div>
+      <div class="bars" style="margin-top:12px"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Dashed line = design flow per loop. With a fixed-speed pump, closing loops pushes more water through the rest.</figcaption>
+    </figure>
+
+    <div class="callout example">A 120 m² flat has nine loops on one manifold. On a mild day only the bathroom and one
+      bedroom call for heat. The circulator in Δp-c mode slows down and the two open loops keep their design flow of
+      about 2 l/min. With a fixed-speed pump, they would get roughly double and the bathroom loop would whistle at the valve insert.</div>
+
+    <div class="callout warn">Screed floors have large time constants: 4–12 hours. A night setback of 4 K usually
+      saves little and causes a cold morning. Most UFH systems run better with a small setback or none, and with
+      weather-compensated supply temperature doing most of the work.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A room thermostat calls for heat but the floor loop stays cold for the first few minutes. Why?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="NC means closed without power; it opens when powered.">The actuator is normally open</button>
+        <button class="opt" data-opt="b" data-why="Thermoelectric heads take minutes to heat and push the pin.">Thermoelectric actuators take 2–5 minutes to open</button>
+        <button class="opt" data-opt="c" data-why="The manifold valve is on the loop, not the pump.">The pump is starting</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>UFH is a low-temperature, high-mass emitter: 50–100 W/m², floor ≤ 29 °C in living areas.</li>
+      <li>A manifold balances and switches loops; thermoelectric heads open in minutes.</li>
+      <li>Use Δp-c pump mode so closing loops does not overflow the rest.</li>
+      <li>Slow floors need gentle setbacks and good weather compensation.</li>
+    </ul>
+  </section>
+
+  <!-- 10.6 -->
+  <section class="lesson" id="s6" data-num="10.6">
+    <h2>10.6 Radiators and TRVs</h2>
+    <p>"Radiator" is a misleading name. Panel radiators give most heat by <strong>convection</strong>: air warms, rises,
+      and pulls cool air in at the bottom. Only the front panel radiates much. Types include panel radiators (type 11,
+      21, 22, 33: number of panels and convector fins), column radiators, towel rails, fan convectors and trench heaters.</p>
+
+    <h3>Output depends on excess temperature</h3>
+    <p>Rated output is measured by EN 442 at 75/65 °C water and 20 °C room: an <strong>excess temperature</strong> ΔT of 50 K
+      (mean water minus room). At other conditions:</p>
+    <p style="text-align:center"><code>P = Pn · (ΔT / 50)ⁿ</code>, with n ≈ 1.3 for panel radiators</p>
+    <p>Output falls faster than the temperature drop. At ΔT 25 K (for example 50/40 °C water in a 20 °C room) a radiator
+      gives only about 40 % of its rated output. That is why heat pump conversions often need larger radiators or fan-assisted ones.</p>
+
+    <figure class="viz" id="radOut">
+      <div class="hy-row">
+        <label>Rated output at ΔT 50 <output data-o="pn"></output><input type="range" min="500" max="3000" step="50" value="1500" data-k="pn"></label>
+        <label>Supply temperature <output data-o="ts"></output><input type="range" min="35" max="80" value="55" data-k="ts"></label>
+        <label>Return temperature <output data-o="tr"></output><input type="range" min="25" max="75" value="45" data-k="tr"></label>
+        <label>Room temperature <output data-o="ti"></output><input type="range" min="16" max="24" value="20" data-k="ti"></label>
+      </div>
+      <svg viewBox="0 0 600 240" role="img" aria-label="Radiator output as a function of excess temperature"></svg>
+      <div class="stats">
+        <div class="stat"><span>Excess ΔT</span><b data-s="dt"></b></div>
+        <div class="stat"><span>Output</span><b data-s="p"></b></div>
+        <div class="stat"><span>Share of rated</span><b data-s="r"></b></div>
+        <div class="stat"><span>Required flow</span><b data-s="q"></b></div>
+      </div>
+      <figcaption>Arithmetic mean water temperature is used here. Standards use the logarithmic mean, which differs slightly when ΔT across the radiator is large.</figcaption>
+    </figure>
+
+    <h3>Thermostatic radiator valves</h3>
+    <p>A <strong>TRV</strong> is a self-acting proportional controller. A sensor head with wax or liquid expands as the room
+      warms and pushes the valve towards closed. Its <strong>proportional band</strong> is usually about 2 K: the valve
+      moves from its design opening to closed over a 2 K rise. No power, no wires, no communication.</p>
+    <ul>
+      <li><strong>Pre-setting</strong> on the valve body limits the maximum flow. This is how radiator systems are balanced.</li>
+      <li><strong>Electronic TRVs</strong> (battery heads using Zigbee, Z-Wave, Thread or proprietary radio, from Danfoss, Eurotronic, Tado, Homematic and others) replace the wax head with a motor and add schedules and remote setpoints.</li>
+      <li><strong>Lockshield valve</strong> on the return is the other end of the radiator, used for isolation and sometimes for balancing.</li>
+    </ul>
+
+    <div class="classify" data-cats="Radiator,TRV head,Valve body">
+      <div class="item" data-cat="Valve body" data-why="Pre-setting is a ring or insert in the body that limits maximum flow."><span class="label">Limits maximum flow with a numbered pre-setting ring</span></div>
+      <div class="item" data-cat="TRV head" data-why="The sensing element is in the head."><span class="label">Contains the wax element that senses room temperature</span></div>
+      <div class="item" data-cat="Radiator" data-why="Rated output is a property of the emitter at EN 442 conditions."><span class="label">Rated output at ΔT 50 K</span></div>
+      <div class="item" data-cat="TRV head" data-why="Electronic heads swap only the head and keep the body."><span class="label">Replaced when upgrading to a battery-powered smart controller</span></div>
+      <div class="item" data-cat="Radiator" data-why="Type 22 means two panels with two sets of convector fins."><span class="label">Type 22 with two panels and fins</span></div>
+    </div>
+
+    <div class="callout warn">Do not let a BMS fight a TRV. If a smart head and a central room controller both regulate the same
+      room, one will close while the other asks for heat. Pick one owner of the room setpoint. Also check where the sensor sits: a head behind
+      curtains or in a radiator niche reads high and starves the room.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A radiator rated 2000 W at ΔT 50 K runs with 50/40 °C water in a 20 °C room. Roughly what does it give?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Mean 45 °C, ΔT 25 K. 2000 × (25/50)^1.3 ≈ 810 W.">About 800 W</button>
+        <button class="opt" data-opt="b" data-why="Output is not linear in ΔT; the exponent makes it lower.">About 1000 W</button>
+        <button class="opt" data-opt="c" data-why="Only at ΔT 50 K.">About 2000 W</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Radiator output ∝ (excess ΔT)^1.3; rated at ΔT 50 K by EN 442.</li>
+      <li>Halving excess temperature leaves about 40 % of output.</li>
+      <li>A TRV is a local proportional controller with about 2 K band.</li>
+      <li>One owner of each room setpoint; balance via TRV pre-settings.</li>
+    </ul>
+  </section>
+
+  <!-- 10.7 -->
+  <section class="lesson" id="s7" data-num="10.7">
+    <h2>10.7 Hydronic balancing</h2>
+    <p>Water takes the easiest path. Emitters close to the pump have short pipes and little resistance. Emitters at the
+      end of a long run have a lot. Without balancing, near emitters get too much flow and far ones starve. People then
+      raise the boiler temperature or pump speed until the last room is warm, wasting energy everywhere else.</p>
+    <p><strong>Hydronic balancing</strong> adds resistance (or active control) so each emitter or branch gets its design
+      flow. Many countries require it for new installations or to qualify for subsidies, often citing EN 14336 or
+      national procedures (for example method A/B in Germany).</p>
+
+    <figure class="viz" id="balance">
+      <div class="controls seg" role="group" aria-label="Balancing state">
+        <button data-b="0" aria-pressed="true">Unbalanced</button>
+        <button data-b="1">Balanced</button>
+      </div>
+      <div class="bars"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Six radiators on one two-pipe circuit, R1 nearest the pump. Dashed line = design flow. Red = more than 130 %, amber = less than 70 %.</figcaption>
+    </figure>
+
+    <h3>Tools and valve types</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Method</th><th>How it works</th><th>Pros</th><th>Cons</th></tr>
+      <tr><td>Pre-set TRVs / lockshields</td><td>Set a fixed resistance per radiator from a calculation.</td><td>Cheap, no extra parts.</td><td>Static; needs a calculation and an honest pipe survey.</td></tr>
+      <tr><td>Static balancing valves</td><td>Calibrated valve with two test points. A meter reads Δp; the known Kv gives flow. Products: IMI TA STAD, Oventrop Hydrocontrol, Danfoss MSV and others.</td><td>Measurable, documented flows.</td><td>Correct only at design conditions; needs a commissioning visit.</td></tr>
+      <tr><td>Differential pressure controllers</td><td>Hold constant Δp across a branch or riser (Danfoss ASV, IMI STAP).</td><td>Branches stop affecting each other; TRVs work quietly.</td><td>Extra cost and pressure drop.</td></tr>
+      <tr><td>Pressure-independent control valves (PICV)</td><td>Control valve and Δp regulator in one body. Max flow is set directly.</td><td>Flow stays right as other loads change; full valve authority.</td><td>Needs a minimum Δp (often 15–30 kPa) to work; more expensive.</td></tr>
+    </table></div>
+
+    <h3>Commissioning procedure, in short</h3>
+    <ol>
+      <li>Calculate heat load per room and the design flow for each emitter or branch.</li>
+      <li>Flush and vent the system. Balancing a system full of air or dirt gives wrong readings.</li>
+      <li>Open all control valves fully (TRV heads off or in "max").</li>
+      <li>Set and measure branches from the far end back (proportional or compensated methods), or simply set PICVs to their flows.</li>
+      <li>Find the <strong>index circuit</strong>: the path with the highest resistance. Set the pump so that circuit just gets design flow, no more.</li>
+      <li>Record results. A BMS should store the commissioned flows and pump setpoint as reference values.</li>
+    </ol>
+
+    <div class="callout example">After balancing an 80-radiator school, the circulator setpoint dropped from 6 m to 3.5 m
+      and boiler supply from 75 °C to 62 °C, while the far classrooms finally reached 20 °C. Results like 5–15 % heating
+      energy savings are often reported, though they depend heavily on how bad the starting point was.</div>
+
+    <div class="callout warn">Turning the pump up is not balancing. It raises flow everywhere, near emitters get even more,
+      and the ratio between near and far stays roughly the same.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">What is the main advantage of a PICV over a static balancing valve plus a 2-way control valve?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="PICVs typically need more minimum Δp, not less.">It needs no pump head</button>
+        <button class="opt" data-opt="b" data-why="It still needs a controller signal to modulate.">It removes the need for a room controller</button>
+        <button class="opt" data-opt="c" data-why="Its built-in regulator holds flow regardless of pressure swings elsewhere.">Its flow stays correct as other branches open and close</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Without balancing, near emitters overflow and far ones starve.</li>
+      <li>Static valves are right only at design; Δp controllers and PICVs adapt.</li>
+      <li>Balance first, then set the pump for the index circuit.</li>
+      <li>A higher pump setpoint is never a fix for poor balancing.</li>
+    </ul>
+  </section>
+
+  <!-- 10.8 -->
+  <section class="lesson" id="s8" data-num="10.8">
+    <h2>10.8 Pressure, expansion, water quality</h2>
+    <p>A closed heating system is a sealed vessel of water that changes volume with temperature. Water heated from 10 °C
+      to 70 °C expands by about 2.3 %; to 90 °C, about 3.6 %. A 1000 l system grows by 23–36 l. Water does not compress, so
+      without somewhere to go, the pressure would rise until the safety valve opens.</p>
+
+    <h3>Pressures that matter</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Pressure</th><th>Meaning</th><th>Typical rule</th></tr>
+      <tr><td>Static pressure</td><td>Height of water above the vessel</td><td>0.1 bar per metre</td></tr>
+      <tr><td>Pre-charge p₀</td><td>Gas side of the expansion vessel, set when empty</td><td>Static + about 0.2–0.3 bar (and not below the minimum the pump or heat source needs)</td></tr>
+      <tr><td>Fill pressure pₐ</td><td>System pressure when cold</td><td>p₀ + about 0.3 bar</td></tr>
+      <tr><td>Final pressure pₑ</td><td>Maximum when hot</td><td>Safety valve setting minus about 0.5 bar</td></tr>
+      <tr><td>Safety valve</td><td>Lifts and dumps water</td><td>Often 3 bar on domestic boilers, 6 bar on many commercial systems</td></tr>
+    </table></div>
+    <p>The top of the system must stay above atmospheric pressure, or air is drawn in through vents and fittings. Pump
+      inlets also need enough pressure to avoid cavitation, especially with hot water.</p>
+
+    <h3>Membrane expansion vessels</h3>
+    <p>A steel vessel with a rubber membrane: nitrogen or air on one side, system water on the other. As the system heats,
+      water flows in and compresses the gas. Sizing follows Boyle's law. In the method used by EN 12828 and most vendor tools:</p>
+    <p style="text-align:center"><code>Vₙ = (Vₑ + V_wr) · (pₑ + 1) / (pₑ − p₀)</code></p>
+    <p>Vₑ is the expansion volume, V_wr a water reserve (often 0.5 % of system volume, at least 3 l), and pressures are
+      gauge values in bar (the "+1" converts to absolute).</p>
+
+    <figure class="viz" id="expCalc">
+      <div class="hy-row">
+        <label>System water volume <output data-o="vs"></output><input type="range" min="50" max="5000" step="50" value="400" data-k="vs"></label>
+        <label>Maximum water temperature <output data-o="t"></output><input type="range" min="40" max="90" step="10" value="70" data-k="t"></label>
+        <label>Static height above vessel <output data-o="h"></output><input type="range" min="1" max="30" step="1" value="8" data-k="h"></label>
+        <label>Safety valve setting <output data-o="sv"></output><input type="range" min="2.5" max="6" step="0.5" value="3" data-k="sv"></label>
+      </div>
+      <svg viewBox="0 0 600 200" role="img" aria-label="Expansion vessel with gas and water sides"></svg>
+      <div class="stats">
+        <div class="stat"><span>Expansion volume</span><b data-s="ve"></b></div>
+        <div class="stat"><span>Pre-charge p₀</span><b data-s="p0"></b></div>
+        <div class="stat"><span>Fill pressure</span><b data-s="pa"></b></div>
+        <div class="stat"><span>Final pressure</span><b data-s="pe"></b></div>
+        <div class="stat"><span>Nominal vessel size</span><b data-s="vn"></b></div>
+      </div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Simplified EN 12828-style estimate. Use the manufacturer's tool for a real selection.</figcaption>
+    </figure>
+
+    <h3>What a BMS should watch</h3>
+    <ul>
+      <li><strong>System pressure</strong> with a 4–20 mA or 0–10 V transmitter. Low pressure alarm (for example below fill pressure minus 0.3 bar) and high alarm close to the safety valve.</li>
+      <li><strong>Pressure trend</strong>: a slow daily fall means a leak or a vessel that lost its pre-charge. A large swing between cold and hot means the vessel is too small or flat.</li>
+      <li><strong>Make-up water meter</strong>: every litre of fresh water brings oxygen and minerals. Automatic fill units should be metered and limited.</li>
+    </ul>
+
+    <h3>Water quality</h3>
+    <p>Fresh water carries oxygen and hardness. Oxygen corrodes steel into black sludge (magnetite) that blocks valves and
+      wears pumps. Hardness forms limescale on the hottest surfaces: heat exchangers. Guidelines such as German VDI 2035,
+      British BS 7593 and manufacturers' rules set limits. Typical points:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Parameter</th><th>Typical guidance</th></tr>
+      <tr><td>pH</td><td>About 8.2–10 for steel/copper systems; usually ≤ 8.5 when aluminium heat exchangers are present</td></tr>
+      <tr><td>Hardness</td><td>Fill water softened or demineralised in larger systems; limits depend on power and volume</td></tr>
+      <tr><td>Conductivity</td><td>Low-salt operation (for example &lt; 100 µS/cm) reduces corrosion</td></tr>
+      <tr><td>Oxygen</td><td>Kept low by avoiding make-up water and air ingress</td></tr>
+    </table></div>
+    <p>Protection devices: magnetic dirt separators, microbubble deaerators, inhibitor dosing, and in cooling or
+      outdoor circuits glycol antifreeze. Glycol lowers specific heat (by roughly 10–15 % at 30–40 % concentration) and raises
+      viscosity, so flow and pump head must be recalculated.</p>
+
+    <div class="callout example">A plant room trend shows system pressure at 1.8 bar cold, 2.9 bar hot, and the safety valve set at
+      3 bar drips every afternoon. The vessel's pre-charge has leaked down to zero, so it holds almost no expansion. Recharging
+      the gas side to design pre-charge (with the vessel isolated and drained on the water side) fixes it.</div>
+
+    <div class="callout warn">Never check or adjust pre-charge with the vessel connected and pressurised. You will only
+      measure system pressure. Isolate, drain the water side, then measure.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">The pressure of a sealed system falls by about 0.1 bar every few days, and an auto-fill keeps topping it up. What is the main long-term risk?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Pressure is maintained by the fill unit.">The safety valve opening</button>
+        <button class="opt" data-opt="b" data-why="Each refill adds oxygen and hardness, causing corrosion, sludge and scale.">Corrosion and scale from repeated fresh water</button>
+        <button class="opt" data-opt="c" data-why="The membrane is not affected by the fill unit.">The expansion vessel membrane bursting</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Water expands 2–4 % when heated; the expansion vessel absorbs it.</li>
+      <li>Pre-charge ≈ static head + 0.2–0.3 bar; fill a little above pre-charge.</li>
+      <li>Trend system pressure and meter make-up water.</li>
+      <li>Treat fill water; oxygen and hardness destroy heat exchangers and pumps.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. A heat pump circuit must deliver 20 kW at ΔT 5 K. What flow does it need?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is the flow for ΔT 20 K.">About 0.9 m³/h</button>
+        <button class="opt" data-opt="b" data-why="Check the division: 20 / 5.8.">About 1.7 m³/h</button>
+        <button class="opt" data-opt="c" data-why="20 / (1.16 × 5) ≈ 3.4 m³/h.">About 3.4 m³/h</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">2. A pump runs at 60 % speed on the same system. Roughly what power does it use compared with full speed?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="0.6³ ≈ 0.22, before efficiency losses.">About 22 %</button>
+        <button class="opt" data-opt="b" data-why="That is the head ratio (0.6²).">About 36 %</button>
+        <button class="opt" data-opt="c" data-why="That is the flow ratio.">About 60 %</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">3. Behind a separator, which sensor should the BMS use to control the heat source for the circuits?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Boiler outlet can be hotter than what circuits receive when secondary flow is higher.">Boiler outlet temperature</button>
+        <button class="opt" data-opt="b" data-why="That is the temperature the circuits really get after any mixing in the header.">Secondary supply after the header</button>
+        <button class="opt" data-opt="c" data-why="Outdoor temperature sets the setpoint, it is not the controlled variable.">Outdoor temperature</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. Which pump mode best suits an underfloor manifold with on/off thermoelectric actuators?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Head would rise as loops close, overflowing the open ones.">Fixed maximum speed</button>
+        <button class="opt" data-opt="b" data-why="Manifold loops have similar resistance and little shared pipe; Δp-v lowers head too much.">Proportional pressure Δp-v</button>
+        <button class="opt" data-opt="c" data-why="On/off pumping would interrupt all loops.">Pump cycled on/off by the BMS every 10 minutes</button>
+        <button class="opt" data-opt="d" data-why="Each open loop keeps its design Δp and flow.">Constant pressure Δp-c</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">5. A system 12 m tall above the vessel. Which pre-charge is sensible?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Too low: the top of the system would drop below atmospheric and draw air.">0.5 bar</button>
+        <button class="opt" data-opt="b" data-why="Exactly static, with no margin at the top.">1.2 bar</button>
+        <button class="opt" data-opt="c" data-why="1.2 bar static + about 0.2–0.3 bar margin.">About 1.4–1.5 bar</button>
+        <button class="opt" data-opt="d" data-why="Leaves too little room before the safety valve and wastes vessel capacity.">2.8 bar</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="09-heat-generation.html">← Chapter 09</a>
+    <a class="btn" href="11-ventilation.html">Chapter 11 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 10 visualizations.
+const fmt = (x, d = 1) => Number(x).toFixed(d);
+const pressSeg = (fig, attr, val) => fig.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute("aria-pressed", b.getAttribute(attr) === val));
+const val = (fig, k) => +fig.querySelector(`[data-k="${k}"]`).value;
+const setO = (fig, k, s) => { const o = fig.querySelector(`[data-o="${k}"]`); if (o) o.textContent = s; };
+const setS = (fig, k, s, cls) => {
+  const b = fig.querySelector(`[data-s="${k}"]`);
+  b.textContent = s;
+  b.parentElement.className = "stat" + (cls ? " " + cls : "");
+};
+
+// 10.1 Power calculator.
+(() => {
+  const fig = document.getElementById("powerCalc");
+  const out = fig.querySelector(".readout");
+  const draw = () => {
+    const q = val(fig, "q"), ts = val(fig, "ts"), d = val(fig, "d");
+    let tr = val(fig, "tr");
+    if (tr > ts - 1) tr = ts - 1;
+    const dt = ts - tr, p = 1.163 * q * dt;
+    const v = (q / 3600) / (Math.PI * (d / 1000) ** 2 / 4);
+    setO(fig, "q", `${fmt(q)} m³/h`); setO(fig, "ts", `${ts} °C`); setO(fig, "tr", `${tr} °C`); setO(fig, "d", `${d} mm`);
+    setS(fig, "dt", `${dt} K`);
+    setS(fig, "p", p >= 100 ? `${fmt(p, 0)} kW` : `${fmt(p)} kW`);
+    setS(fig, "v", `${fmt(v, 2)} m/s`, v > 1.5 ? "bad" : v > 1.0 ? "bad" : v < 0.15 ? "" : "good");
+    setS(fig, "m", `${fmt(q * 1000 / 3600 * 0.98, 2)} kg/s`);
+    fig.querySelector('[data-t="sup"]').textContent = `supply ${ts} °C · ${fmt(q)} m³/h`;
+    fig.querySelector('[data-t="ret"]').textContent = `return ${tr} °C`;
+    fig.querySelector('[data-t="mid"]').textContent = `P = 1.16 × ${fmt(q)} × ${dt} = ${fmt(p)} kW`;
+    out.textContent = v > 1.0
+      ? `Velocity ${fmt(v, 2)} m/s is high for building pipework. Expect noise; use a bigger pipe or a larger ΔT.`
+      : v < 0.15 ? "Very low velocity. Air and dirt may settle; fine for a header, oversized for a branch."
+      : "Velocity is in a comfortable range for distribution pipework.";
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 10.2 Pump curve vs system curve.
+(() => {
+  const fig = document.getElementById("pumpCurve");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  const H0 = 6, A = 0.5, R = 1.0, HSET = 4, QMAX = 3.5, HMAX = 7;
+  let mode = "fixed";
+  const X = (q) => 50 + (q / QMAX) * 530, Y = (h) => 260 - (h / HMAX) * 240;
+  const path = (f, q0 = 0, q1 = QMAX) => {
+    let d = "";
+    for (let i = 0; i <= 60; i++) {
+      const q = q0 + (q1 - q0) * i / 60, h = f(q);
+      if (h < 0 || h > HMAX) continue;
+      d += (d ? " L" : "M") + fmt(X(q), 1) + "," + fmt(Y(h), 1);
+    }
+    return d;
+  };
+  const draw = () => {
+    const sp = val(fig, "s") / 100, vo = val(fig, "v") / 100;
+    const k = R / (vo * vo);
+    let q, h, s, pumpF, ctrlF = null;
+    if (mode === "fixed") {
+      s = sp;
+      q = Math.sqrt(H0 * s * s / (A + k)); h = k * q * q;
+    } else {
+      const a0 = mode === "dpc" ? HSET : HSET / 2, b = mode === "dpc" ? 0 : (HSET / 2) / 2;
+      ctrlF = (x) => a0 + b * x;
+      q = (b + Math.sqrt(b * b + 4 * k * a0)) / (2 * k); h = k * q * q;
+      s = Math.sqrt((h + A * q * q) / H0);
+    }
+    pumpF = (x) => H0 * s * s - A * x * x;
+    const ph = 1000 * 9.81 * (q / 3600) * h, pe = ph / 0.35 + 3;
+    let g = "";
+    for (let i = 0; i <= 7; i++) g += `<line class="grid-l" x1="50" x2="580" y1="${Y(i)}" y2="${Y(i)}"/><text class="small" x="42" y="${Y(i) + 4}" text-anchor="end">${i}</text>`;
+    for (let i = 0; i <= 3; i++) g += `<text class="small" x="${X(i)}" y="276" text-anchor="middle">${i}</text>`;
+    g += `<text class="small" x="315" y="294" text-anchor="middle">flow Q [m³/h]</text><text class="small" x="12" y="14">H [m]</text>`;
+    g += `<path class="curve" style="stroke:var(--border);stroke-dasharray:4 4" d="${path((x) => H0 - A * x * x)}"/>`;
+    g += `<path class="curve" style="stroke:var(--muted);stroke-dasharray:4 4" d="${path((x) => R * x * x)}"/>`;
+    g += `<path class="curve" style="stroke:var(--accent)" d="${path(pumpF)}"/>`;
+    g += `<path class="curve" style="stroke:var(--bad)" d="${path((x) => k * x * x)}"/>`;
+    if (ctrlF) g += `<path class="curve" style="stroke:var(--ok);stroke-dasharray:8 4" d="${path(ctrlF)}"/>`;
+    g += `<circle cx="${X(q)}" cy="${Y(h)}" r="7" class="fill-accent"/>`;
+    g += `<text class="small" x="575" y="20" text-anchor="end">blue: pump at ${fmt(s * 100, 0)} % · red: system now · grey dashed: design${ctrlF ? " · green: control line" : ""}</text>`;
+    svg.innerHTML = g;
+    setO(fig, "s", mode === "fixed" ? `${fmt(sp * 100, 0)} %` : "auto");
+    setO(fig, "v", `${fmt(vo * 100, 0)} %`);
+    fig.querySelector('[data-k="s"]').disabled = mode !== "fixed";
+    setS(fig, "q", `${fmt(q, 2)} m³/h`);
+    setS(fig, "h", `${fmt(h, 2)} m`, h > 4.6 ? "bad" : "");
+    setS(fig, "ph", `${fmt(ph, 0)} W`);
+    setS(fig, "pe", `≈ ${fmt(pe, 0)} W`);
+    out.textContent = mode === "fixed" && vo < 1 && sp > 0.9
+      ? `Valves closing: head rose to ${fmt(h, 1)} m. Open valves see extra pressure.`
+      : mode !== "fixed" ? `Pump slowed to ${fmt(s * 100, 0)} % to follow its control line.`
+      : `Operating point ${fmt(q, 2)} m³/h at ${fmt(h, 2)} m.`;
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { mode = b.dataset.m; pressSeg(fig, "data-m", mode); draw(); }));
+  draw();
+})();
+
+// 10.3 Hydraulic separator.
+(() => {
+  const fig = document.getElementById("separator");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  const TP = 70, TRS = 50;
+  const col = (t) => t >= 66 ? "hot" : t <= 54 ? "cold" : "warm";
+  const draw = () => {
+    const qp = val(fig, "qp"), qs = val(fig, "qs");
+    setO(fig, "qp", `${fmt(qp)} m³/h`); setO(fig, "qs", `${fmt(qs)} m³/h`);
+    let tsup, tret, mid, dir;
+    if (qp >= qs) { tsup = TP; tret = (qs * TRS + (qp - qs) * TP) / qp; mid = qp - qs; dir = "down"; }
+    else { tsup = (qp * TP + (qs - qp) * TRS) / qs; tret = TRS; mid = qs - qp; dir = "up"; }
+    if (mid < 0.15) dir = "none";
+    const w = (q) => 3 + q * 1.6;
+    const midT = dir === "down" ? TP : TRS;
+    let g = `<rect class="box" x="10" y="70" width="110" height="120" rx="8"/><text x="65" y="125" text-anchor="middle">Boiler</text><text class="small" x="65" y="143" text-anchor="middle">${TP} °C out</text>`;
+    g += `<rect class="box" x="480" y="70" width="110" height="120" rx="8"/><text x="535" y="125" text-anchor="middle">Circuits</text><text class="small" x="535" y="143" text-anchor="middle">${TRS} °C back</text>`;
+    g += `<rect x="265" y="30" width="70" height="200" rx="10" class="fill-surface" style="stroke:var(--text);stroke-width:1.5"/>`;
+    g += `<path class="pipe hot flow" style="stroke-width:${w(qp)}" d="M120,60 L265,60"/>`;
+    g += `<path class="pipe ${col(tret)} flow" style="stroke-width:${w(qp)}" d="M265,200 L120,200"/>`;
+    g += `<path class="pipe ${col(tsup)} flow" style="stroke-width:${w(qs)}" d="M335,60 L480,60"/>`;
+    g += `<path class="pipe cold flow" style="stroke-width:${w(qs)}" d="M480,200 L335,200"/>`;
+    if (dir !== "none") g += `<path class="pipe ${col(midT)} flow" style="stroke-width:${w(mid)}" d="${dir === "down" ? "M300,72 L300,188" : "M300,188 L300,72"}"/>`;
+    g += `<text x="192" y="50" text-anchor="middle">${TP} °C</text><text x="192" y="225" text-anchor="middle">${fmt(tret, 1)} °C</text>`;
+    g += `<text x="408" y="50" text-anchor="middle">${fmt(tsup, 1)} °C</text><text x="408" y="225" text-anchor="middle">${TRS} °C</text>`;
+    g += `<text class="small" x="300" y="20" text-anchor="middle">separator · ${dir === "none" ? "balanced" : fmt(mid, 1) + " m³/h " + dir}</text>`;
+    svg.innerHTML = g;
+    out.textContent = dir === "down"
+      ? `Primary > secondary: circuits get ${TP} °C, but the boiler return rises to ${fmt(tret, 1)} °C.`
+      : dir === "up" ? `Primary < secondary: return mixes in, circuits get only ${fmt(tsup, 1)} °C. Boiler return stays ${TRS} °C.`
+      : "Flows nearly equal: almost nothing moves through the header.";
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 10.4 Three-way mixing valve.
+(() => {
+  const fig = document.getElementById("mixer");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  let tr = 30;
+  const col = (t) => t >= 55 ? "hot" : t <= 38 ? "cold" : "warm";
+  const draw = () => {
+    const x = val(fig, "x") / 100, tb = val(fig, "tb");
+    const tm = x * tb + (1 - x) * tr;
+    setO(fig, "x", `${fmt(x * 100, 0)} %`); setO(fig, "tb", `${tb} °C`);
+    const wa = 2 + 8 * x, wb = 2 + 8 * (1 - x);
+    let g = `<rect class="box" x="10" y="20" width="110" height="200" rx="8"/><text x="65" y="115" text-anchor="middle">Boiler /</text><text x="65" y="133" text-anchor="middle">header</text>`;
+    g += `<rect class="box" x="470" y="20" width="120" height="200" rx="8"/><text x="530" y="115" text-anchor="middle">Floor or</text><text x="530" y="133" text-anchor="middle">radiators</text>`;
+    if (x > 0.01) g += `<path class="pipe hot flow" style="stroke-width:${wa}" d="M120,60 L240,60"/>`;
+    g += `<path class="pipe ${col(tm)} flow" style="stroke-width:10" d="M280,60 L470,60"/>`;
+    g += `<path class="pipe cold flow" style="stroke-width:10" d="M470,190 L300,190"/>`;
+    if (x < 0.99) g += `<path class="pipe cold flow" style="stroke-width:${wb}" d="M260,190 L260,82"/>`;
+    if (x > 0.01) g += `<path class="pipe cold flow" style="stroke-width:${wa}" d="M300,190 L120,190"/>`;
+    g += `<polygon points="240,40 280,60 240,80" class="fill-surface" style="stroke:var(--text);stroke-width:1.5"/>`;
+    g += `<polygon points="280,40 240,60 280,80" class="fill-surface" style="stroke:var(--text);stroke-width:1.5"/>`;
+    g += `<polygon points="245,100 260,62 275,100" class="fill-surface" style="stroke:var(--text);stroke-width:1.5"/>`;
+    g += `<text class="small" x="225" y="35">A</text><text class="small" x="285" y="35">AB</text><text class="small" x="278" y="115">B</text>`;
+    g += `<circle cx="380" cy="60" r="14" class="fill-surface" style="stroke:var(--text);stroke-width:1.5"/><path d="M372,52 L392,60 L372,68 z" class="fill-text"/>`;
+    g += `<text x="180" y="45" text-anchor="middle">${tb} °C</text><text x="430" y="45" text-anchor="middle">${fmt(tm, 1)} °C</text><text x="385" y="215" text-anchor="middle">${tr} °C return</text>`;
+    g += `<text class="small" x="300" y="248" text-anchor="middle">${fmt(x * 100, 0)} % from boiler · ${fmt((1 - x) * 100, 0)} % recirculated</text>`;
+    svg.innerHTML = g;
+    out.textContent = `Mixed supply ${fmt(tm, 1)} °C = ${fmt(x, 2)} × ${tb} + ${fmt(1 - x, 2)} × ${tr}.` + (tr === 30 && tm > 50 ? " Too hot for a floor: the high-limit thermostat should trip." : "");
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  fig.querySelectorAll("[data-r]").forEach((b) => b.addEventListener("click", () => { tr = +b.dataset.r; pressSeg(fig, "data-r", b.dataset.r); draw(); }));
+  draw();
+})();
+
+// 10.5 UFH manifold.
+(() => {
+  const fig = document.getElementById("manifold");
+  const loopsEl = fig.querySelector(".loops"), bars = fig.querySelector(".bars"), out = fig.querySelector(".readout");
+  // Design flow in l/min at a manifold Δp of 20 kPa.
+  const LOOPS = [["Living 1", 2.2], ["Living 2", 2.2], ["Kitchen", 1.8], ["Bed 1", 1.5], ["Bed 2", 1.4], ["Bath", 1.0]];
+  const open = LOOPS.map(() => true);
+  let mode = "dpc";
+  const HD = 20;
+  const qDesign = LOOPS.reduce((a, l) => a + l[1], 0);
+  // Fixed pump: H = H0 - a·Q², designed to give HD at full design flow.
+  const H0 = 32, A = (H0 - HD) / (qDesign * qDesign);
+  loopsEl.innerHTML = LOOPS.map((l, i) => `<button class="loop-btn" data-i="${i}" aria-pressed="true">${l[0]}<small>design ${fmt(l[1])} l/min</small></button>`).join("");
+  const draw = () => {
+    // Loop conductance g = q/√H.
+    const G = LOOPS.reduce((a, l, i) => a + (open[i] ? l[1] / Math.sqrt(HD) : 0), 0);
+    const H = G === 0 ? (mode === "dpc" ? HD : H0) : mode === "dpc" ? HD : H0 / (1 + A * G * G);
+    let total = 0;
+    bars.innerHTML = LOOPS.map((l, i) => {
+      const q = open[i] ? (l[1] / Math.sqrt(HD)) * Math.sqrt(H) : 0;
+      total += q;
+      const pct = (q / 4) * 100, ref = (l[1] / 4) * 100, r = q / l[1];
+      const cls = !open[i] ? "" : r > 1.3 ? "hi" : "on";
+      return `<div class="bar-row ${cls}"><b>${i + 1}</b><div class="track"><div class="fill" style="width:${Math.min(100, pct)}%"></div><div class="ref" style="left:${ref}%"></div></div><span class="v">${fmt(q)}</span></div>`;
+    }).join("");
+    const n = open.filter(Boolean).length;
+    out.textContent = n === 0
+      ? "All loops closed. The wiring centre should stop the pump."
+      : `${n} loop(s) open · total ${fmt(total)} l/min · pump head ${fmt(H, 1)} kPa` + (mode === "fixed" && H > HD * 1.2 ? " · open loops overflowing" : "");
+  };
+  loopsEl.addEventListener("click", (e) => {
+    const b = e.target.closest(".loop-btn");
+    if (!b) return;
+    const i = +b.dataset.i;
+    open[i] = !open[i];
+    b.setAttribute("aria-pressed", open[i]);
+    draw();
+  });
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { mode = b.dataset.m; pressSeg(fig, "data-m", mode); draw(); }));
+  draw();
+})();
+
+// 10.6 Radiator output curve.
+(() => {
+  const fig = document.getElementById("radOut");
+  const svg = fig.querySelector("svg");
+  const N = 1.3;
+  const X = (dt) => 50 + (dt / 70) * 530, Y = (r) => 210 - (r / 1.6) * 190;
+  const draw = () => {
+    const pn = val(fig, "pn"), ts = val(fig, "ts"), ti = val(fig, "ti");
+    let tr = val(fig, "tr");
+    if (tr > ts - 1) tr = ts - 1;
+    const dt = Math.max(0, (ts + tr) / 2 - ti), r = (dt / 50) ** N, p = pn * r;
+    const q = p / (1163 * (ts - tr)) * 1000;
+    setO(fig, "pn", `${pn} W`); setO(fig, "ts", `${ts} °C`); setO(fig, "tr", `${tr} °C`); setO(fig, "ti", `${ti} °C`);
+    setS(fig, "dt", `${fmt(dt)} K`);
+    setS(fig, "p", `${fmt(p, 0)} W`);
+    setS(fig, "r", `${fmt(r * 100, 0)} %`, r < 0.5 ? "bad" : "");
+    setS(fig, "q", `${fmt(q, 0)} l/h`);
+    let d = "";
+    for (let i = 0; i <= 70; i++) d += (i ? " L" : "M") + fmt(X(i)) + "," + fmt(Y((i / 50) ** N));
+    let g = "";
+    [0, 0.5, 1, 1.5].forEach((v) => { g += `<line class="grid-l" x1="50" x2="580" y1="${Y(v)}" y2="${Y(v)}"/><text class="small" x="44" y="${Y(v) + 4}" text-anchor="end">${v * 100}%</text>`; });
+    [0, 10, 20, 30, 40, 50, 60, 70].forEach((v) => { g += `<text class="small" x="${X(v)}" y="226" text-anchor="middle">${v}</text>`; });
+    g += `<text class="small" x="560" y="200" text-anchor="end">excess ΔT [K]</text>`;
+    g += `<line x1="${X(50)}" x2="${X(50)}" y1="20" y2="210" class="grid-l" style="stroke-dasharray:4 4"/><text class="small" x="${X(50) + 4}" y="30">EN 442 rating</text>`;
+    g += `<path class="curve" style="stroke:var(--accent)" d="${d}"/>`;
+    g += `<line x1="${X(dt)}" x2="${X(dt)}" y1="${Y(r)}" y2="210" style="stroke:var(--accent);stroke-dasharray:3 3"/>`;
+    g += `<circle cx="${X(dt)}" cy="${Y(Math.min(r, 1.6))}" r="7" class="fill-accent"/>`;
+    svg.innerHTML = g;
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 10.7 Balancing before and after.
+(() => {
+  const fig = document.getElementById("balance");
+  const bars = fig.querySelector(".bars"), out = fig.querySelector(".readout");
+  // Flows in % of design for six radiators, R1 nearest the pump.
+  const STATE = [
+    [185, 150, 115, 85, 60, 40],
+    [102, 99, 101, 98, 100, 97],
+  ];
+  const render = (b) => {
+    const f = STATE[b];
+    bars.innerHTML = f.map((v, i) => {
+      const cls = v > 130 ? "hi" : v < 70 ? "lo" : "on";
+      return `<div class="bar-row ${cls}"><b>R${i + 1}</b><div class="track"><div class="fill" style="width:${(v / 200) * 100}%"></div><div class="ref" style="left:50%"></div></div><span class="v">${v}%</span></div>`;
+    }).join("");
+    out.textContent = b
+      ? "Each radiator within a few % of design. The pump can now run at the head the index circuit needs."
+      : "Near radiators take almost double; R5 and R6 starve. Raising the pump would not fix the ratio.";
+  };
+  fig.querySelectorAll("[data-b]").forEach((b) => b.addEventListener("click", () => { pressSeg(fig, "data-b", b.dataset.b); render(+b.dataset.b); }));
+  render(0);
+})();
+
+// 10.8 Expansion vessel sizing.
+(() => {
+  const fig = document.getElementById("expCalc");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  // Expansion of water from 10 °C, in %.
+  const EXP = { 40: 0.75, 50: 1.18, 60: 1.68, 70: 2.25, 80: 2.89, 90: 3.58 };
+  const SIZES = [8, 12, 18, 25, 35, 50, 80, 100, 140, 200, 250, 300, 400, 500, 600, 800, 1000];
+  const draw = () => {
+    const vs = val(fig, "vs"), t = val(fig, "t"), h = val(fig, "h"), sv = val(fig, "sv");
+    setO(fig, "vs", `${vs} l`); setO(fig, "t", `${t} °C`); setO(fig, "h", `${h} m`); setO(fig, "sv", `${fmt(sv)} bar`);
+    const ve = vs * EXP[t] / 100;
+    const vwr = Math.max(3, vs * 0.005);
+    const p0 = Math.max(0.5, h / 10 + 0.3);
+    const pa = p0 + 0.3;
+    const pe = sv - 0.5;
+    const ok = pe - p0 > 0.3;
+    const vn = ok ? (ve + vwr) * (pe + 1) / (pe - p0) : NaN;
+    const pick = SIZES.find((s) => s >= vn);
+    setS(fig, "ve", `${fmt(ve)} l`);
+    setS(fig, "p0", `${fmt(p0)} bar`);
+    setS(fig, "pa", `${fmt(pa)} bar`);
+    setS(fig, "pe", `${fmt(pe)} bar`, ok ? "" : "bad");
+    setS(fig, "vn", ok ? `${fmt(vn, 0)} l → ${pick ? pick + " l" : "multiple vessels"}` : "not possible", ok ? "good" : "bad");
+    // Water share of the vessel when hot (absolute pressures).
+    const share = ok ? Math.min(0.95, 1 - (p0 + 1) / (pe + 1)) : 0;
+    const top = 30, H = 150, wy = top + H * (1 - share);
+    let g = `<rect x="230" y="${top}" width="140" height="${H}" rx="40" class="fill-surface" style="stroke:var(--text);stroke-width:1.5"/>`;
+    g += `<rect x="232" y="${wy}" width="136" height="${top + H - wy - 2}" rx="${share > 0.8 ? 38 : 6}" class="fill-accent-soft"/>`;
+    g += `<line x1="232" x2="368" y1="${wy}" y2="${wy}" style="stroke:var(--example);stroke-width:3"/>`;
+    g += `<text x="300" y="${top + 30}" text-anchor="middle">gas (N₂)</text>`;
+    g += `<text x="300" y="${Math.min(top + H - 12, wy + 22)}" text-anchor="middle">water</text>`;
+    g += `<path class="pipe cold" d="M300,${top + H} L300,195"/>`;
+    g += `<text class="small" x="390" y="${wy + 4}">membrane when hot</text>`;
+    g += `<text class="small" x="40" y="60">pre-charge ${fmt(p0)} bar</text><text class="small" x="40" y="80">hot ${fmt(pe)} bar</text><text class="small" x="40" y="100">water in vessel ${fmt(share * 100, 0)} %</text>`;
+    svg.innerHTML = g;
+    out.textContent = ok
+      ? `Expansion ${fmt(ve)} l + reserve ${fmt(vwr)} l. Vessel efficiency ${(fmt(share * 100, 0))} %: a higher static head eats into usable volume.`
+      : "The safety valve is too close to the pre-charge. Raise the valve setting (if the equipment allows) or use a pressurisation unit.";
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+</script>
+</body>
+</html>

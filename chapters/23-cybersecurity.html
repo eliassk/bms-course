@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OT Cybersecurity</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .cy-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 10px; margin: 10px 0; }
+  .cy-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .cy-sel, .cy-in { font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0; }
+  .verdict { font-weight: 700; padding: 8px 12px; border-radius: 8px; margin-top: 10px; display: inline-block; }
+  .verdict.ok { background: var(--ok-soft); color: var(--ok); }
+  .verdict.bad { background: var(--bad-soft); color: var(--bad); }
+  .rules { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; counter-reset: r; }
+  .rules li { font: 13px var(--mono); padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); overflow-wrap: anywhere; counter-increment: r; }
+  .rules li::before { content: counter(r) ". "; color: var(--muted); }
+  .rules li.hit { border-color: var(--accent); background: var(--accent-soft); }
+  .matrix td.y { color: var(--ok); font-weight: 700; text-align: center; }
+  .matrix td.n { color: var(--muted); text-align: center; }
+  .matrix tr.on td { background: var(--accent-soft); }
+  .dep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 8px; margin-top: 10px; }
+  .dep { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; font-size: 13px; min-width: 0; }
+  .dep b { display: block; }
+  .dep.down { border-color: var(--bad); background: var(--bad-soft); }
+  .dep.down b::after { content: " ✗"; color: var(--bad); }
+  .dep.up b::after { content: " ✓"; color: var(--ok); }
+  .explorer.zc { grid-template-columns: minmax(0, 1fr); }
+  .explorer.zc g.layer { cursor: pointer; }
+  .explorer.zc g.layer[aria-pressed="true"] rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; }
+  .cy-check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; margin: 0 12px 6px 0; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="23">
+<div class="content">
+  <div class="kicker">Chapter 23</div>
+  <h1>OT cybersecurity</h1>
+  <p class="lead">Building systems were designed for closed networks and trusted technicians. Today they sit on IP,
+    talk to clouds and are reachable by vendors from anywhere. This chapter shows how attacks really reach a boiler
+    or an air handler, and the engineering habits that stop them: zones, conduits, least privilege, patching and
+    honest thinking about dependencies.</p>
+
+  <!-- 23.1 -->
+  <section class="lesson" id="s1" data-num="23.1">
+    <h2>23.1 Threats to building systems</h2>
+    <p><strong>OT (operational technology)</strong> is hardware and software that changes the physical world:
+      controllers, actuators, drives, meters. IT protects <em>data</em>; OT protects <em>processes</em>. The
+      classic CIA triad (confidentiality, integrity, availability) is still used, but the order flips. In a building,
+      availability and integrity come first: a leaked temperature log is embarrassing, a frozen coil or a disabled
+      smoke damper is dangerous.</p>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Office IT</th><th>Building OT</th></tr>
+      <tr><td>Lifetime</td><td>3–5 years</td><td>15–25 years for controllers</td></tr>
+      <tr><td>Patching</td><td>monthly, automated</td><td>rare, manual, may need a site visit and a plant stop</td></tr>
+      <tr><td>Protocols</td><td>TLS almost everywhere</td><td>BACnet/IP, Modbus TCP, KNXnet/IP: classic forms have no authentication</td></tr>
+      <tr><td>Reboot cost</td><td>a user waits a minute</td><td>a chiller restarts its sequence, a zone loses heat</td></tr>
+      <tr><td>Owners</td><td>IT department</td><td>facility team, several integrators, vendors</td></tr>
+    </table></div>
+
+    <h3>Who attacks buildings, and why</h3>
+    <ul>
+      <li><strong>Opportunistic scanners.</strong> Bots sweep the whole IPv4 space in under an hour. Search engines
+        such as Shodan and Censys index devices that answer on 47808/udp (BACnet), 502/tcp (Modbus) or a vendor web
+        UI. Researchers have repeatedly counted thousands to tens of thousands of BMS devices reachable this way.</li>
+      <li><strong>Ransomware crews.</strong> Usually after IT, but a flat network lets them encrypt the BMS server
+        too. The building then runs "blind" on local controller logic, if it was designed to.</li>
+      <li><strong>Stepping stone.</strong> The well-known 2013 Target breach is widely reported to have started
+        with credentials stolen from an HVAC contractor. The BMS was not the goal; it was the door.</li>
+      <li><strong>Insiders and mistakes.</strong> A technician's laptop with malware, a shared password, an
+        accidental write to the wrong Modbus register. Most incidents are not movie hackers.</li>
+    </ul>
+
+    <h3>Attack path: from internet to field device</h3>
+    <p>Pick an entry point. The diagram highlights the hops an attacker takes and the control that should stop each
+      one.</p>
+    <figure class="viz" id="path">
+      <div class="controls seg" role="group" aria-label="Entry point">
+        <button data-p="expose" aria-pressed="true">Exposed web UI</button>
+        <button data-p="vpn">Vendor remote access</button>
+        <button data-p="phish">Phished office PC</button>
+        <button data-p="usb">Technician laptop</button>
+      </div>
+      <svg viewBox="0 0 640 250" role="img" aria-label="Attack path from internet through IT network and BMS server to controllers and field devices">
+        <defs><marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="n-inet" x="10" y="20" width="110" height="50" rx="8"/><text x="65" y="50" text-anchor="middle">Internet</text>
+        <rect class="box" id="n-fw" x="160" y="20" width="110" height="50" rx="8"/><text x="215" y="44" text-anchor="middle">Edge firewall</text><text class="small" x="215" y="60" text-anchor="middle">port forward?</text>
+        <rect class="box" id="n-it" x="160" y="110" width="110" height="50" rx="8"/><text x="215" y="134" text-anchor="middle">Office IT</text><text class="small" x="215" y="150" text-anchor="middle">PCs, email</text>
+        <rect class="box" id="n-lap" x="10" y="180" width="110" height="50" rx="8"/><text x="65" y="204" text-anchor="middle">Laptop</text><text class="small" x="65" y="220" text-anchor="middle">on site</text>
+        <rect class="box" id="n-bms" x="320" y="65" width="130" height="50" rx="8"/><text x="385" y="89" text-anchor="middle">BMS server</text><text class="small" x="385" y="105" text-anchor="middle">supervisory</text>
+        <rect class="box" id="n-ctl" x="500" y="65" width="130" height="50" rx="8"/><text x="565" y="89" text-anchor="middle">Controllers</text><text class="small" x="565" y="105" text-anchor="middle">BACnet / Modbus</text>
+        <rect class="box" id="n-fld" x="500" y="180" width="130" height="50" rx="8"/><text x="565" y="204" text-anchor="middle">Field devices</text><text class="small" x="565" y="220" text-anchor="middle">valves, fans, dampers</text>
+        <path class="arrow" id="e-inet-fw" d="M120,45 L160,45" marker-end="url(#ap)"/>
+        <path class="arrow" id="e-fw-bms" d="M270,45 L320,80" marker-end="url(#ap)"/>
+        <path class="arrow" id="e-fw-it" d="M215,70 L215,110" marker-end="url(#ap)"/>
+        <path class="arrow" id="e-it-bms" d="M270,135 L320,105" marker-end="url(#ap)"/>
+        <path class="arrow" id="e-lap-ctl" d="M120,205 C300,240 420,160 500,100" marker-end="url(#ap)"/>
+        <path class="arrow" id="e-bms-ctl" d="M450,90 L500,90" marker-end="url(#ap)"/>
+        <path class="arrow" id="e-ctl-fld" d="M565,115 L565,180" marker-end="url(#ap)"/>
+      </svg>
+      <div class="readout" id="pathText" aria-live="polite"></div>
+      <figcaption>Every path ends at the same place: a write to a controller. Defence means breaking the chain at more than one hop.</figcaption>
+    </figure>
+
+    <div class="callout example">A common finding in audits: a BMS web interface published on the internet with a
+      port forward "so the service company can check alarms". It runs a 2015 firmware with a known authentication
+      bypass. No exploit skill is needed; a public script works.</div>
+    <div class="callout warn">"Nobody wants to hack our heating" is not a threat model. Scanners do not care what
+      you are. And an attacker who gets into the BMS often gets a foothold on a network that also carries the access
+      control system and the cameras.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Why is classic BACnet/IP or Modbus TCP dangerous when reachable from an untrusted network?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Speed is not the issue.">They are too slow for modern networks</button>
+        <button class="opt" data-opt="b" data-why="Encryption alone would not fix the lack of authentication, and the problem is about who may write.">They only use encryption that is outdated</button>
+        <button class="opt" data-opt="c" data-why="Anyone who can send a packet can read and often write points. Secure variants (BACnet/SC, Modbus/TCP Security) exist but are not yet the norm.">They do not authenticate the sender, so any host that can reach them can write</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>In OT, availability and integrity matter more than confidentiality.</li>
+      <li>Most attacks are opportunistic or use the BMS as a stepping stone.</li>
+      <li>Typical entries: exposed services, vendor access, compromised IT, infected laptops.</li>
+    </ul>
+  </section>
+
+  <!-- 23.2 -->
+  <section class="lesson" id="s2" data-num="23.2">
+    <h2>23.2 IEC 62443 basics</h2>
+    <p><strong>IEC 62443</strong> is the international series of standards for industrial automation and control
+      system (IACS) security. It was written for factories, but building automation fits it well, and it is
+      increasingly referenced in tenders and in EU regulation discussions. It is split into four groups:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Group</th><th>Audience</th><th>Key parts</th></tr>
+      <tr><td>1 General</td><td>everyone</td><td>concepts, terms, models</td></tr>
+      <tr><td>2 Policies and procedures</td><td>asset owner</td><td>2-1 security programme, 2-3 patch management, 2-4 service provider requirements</td></tr>
+      <tr><td>3 System</td><td>system integrator</td><td>3-2 risk assessment, zones and conduits; 3-3 system security requirements and SLs</td></tr>
+      <tr><td>4 Component</td><td>product vendor</td><td>4-1 secure development lifecycle; 4-2 component requirements</td></tr>
+    </table></div>
+    <p>The split makes responsibility explicit. A vendor can certify a controller to 4-2, but the integrator still has
+      to design zones (3-2), and the owner still has to run a patch process (2-3). A certified product in a flat network
+      is not a secure system.</p>
+
+    <h3>Zones and conduits</h3>
+    <p>A <strong>zone</strong> is a group of assets with the same security needs. A <strong>conduit</strong> is the
+      controlled path between zones: every allowed flow must go through one, and the conduit defines what is
+      allowed. Click a zone or conduit.</p>
+    <figure class="viz">
+      <div class="explorer zc">
+        <svg viewBox="0 0 640 240" role="img" aria-label="Zones: enterprise, DMZ, supervisory, field and safety, connected by conduits">
+          <g class="layer" data-target="z-ent" role="button" tabindex="0" aria-label="Enterprise zone"><rect class="box" x="10" y="20" width="130" height="80" rx="10"/><text class="big" x="75" y="55" text-anchor="middle">Enterprise</text><text class="small" x="75" y="75" text-anchor="middle">SL-T 1</text></g>
+          <g class="layer" data-target="z-dmz" role="button" tabindex="0" aria-label="DMZ zone"><rect class="box" x="180" y="20" width="130" height="80" rx="10"/><text class="big" x="245" y="55" text-anchor="middle">OT DMZ</text><text class="small" x="245" y="75" text-anchor="middle">SL-T 2</text></g>
+          <g class="layer" data-target="z-sup" role="button" tabindex="0" aria-label="Supervisory zone"><rect class="box" x="350" y="20" width="130" height="80" rx="10"/><text class="big" x="415" y="55" text-anchor="middle">Supervisory</text><text class="small" x="415" y="75" text-anchor="middle">SL-T 2</text></g>
+          <g class="layer" data-target="z-fld" role="button" tabindex="0" aria-label="Field zone"><rect class="box" x="350" y="150" width="130" height="80" rx="10"/><text class="big" x="415" y="185" text-anchor="middle">HVAC field</text><text class="small" x="415" y="205" text-anchor="middle">SL-T 2</text></g>
+          <g class="layer" data-target="z-saf" role="button" tabindex="0" aria-label="Life safety zone"><rect class="box" x="510" y="20" width="120" height="80" rx="10"/><text class="big" x="570" y="55" text-anchor="middle">Life safety</text><text class="small" x="570" y="75" text-anchor="middle">SL-T 3</text></g>
+          <g class="layer" data-target="c-1" role="button" tabindex="0" aria-label="Conduit enterprise to DMZ"><rect class="fill-accent-soft" x="142" y="50" width="36" height="20" rx="4"/><text class="small" x="160" y="64" text-anchor="middle">C1</text></g>
+          <g class="layer" data-target="c-2" role="button" tabindex="0" aria-label="Conduit DMZ to supervisory"><rect class="fill-accent-soft" x="312" y="50" width="36" height="20" rx="4"/><text class="small" x="330" y="64" text-anchor="middle">C2</text></g>
+          <g class="layer" data-target="c-3" role="button" tabindex="0" aria-label="Conduit supervisory to field"><rect class="fill-accent-soft" x="397" y="110" width="36" height="30" rx="4"/><text class="small" x="415" y="129" text-anchor="middle">C3</text></g>
+          <g class="layer" data-target="c-4" role="button" tabindex="0" aria-label="Conduit supervisory to life safety"><rect class="fill-accent-soft" x="482" y="50" width="26" height="20" rx="4"/><text class="small" x="495" y="64" text-anchor="middle">C4</text></g>
+          <text class="small" x="10" y="140">Click a zone or conduit (C1–C4)</text>
+        </svg>
+        <div class="panel">
+          <template id="z-ent"><h4>Enterprise zone</h4><ul><li>Office PCs, email, ERP, facility helpdesk.</li><li>Highest exposure: users browse, open attachments.</li><li>MUST NOT reach controllers directly.</li></ul></template>
+          <template id="z-dmz"><h4>OT DMZ</h4><ul><li>Jump host, historian replica, reverse proxy for the operator web UI, patch staging server.</li><li>Nothing initiates from the enterprise straight into OT; it stops here.</li></ul></template>
+          <template id="z-sup"><h4>Supervisory zone</h4><ul><li>BMS server, MQTT broker, engineering workstation.</li><li>Talks down to controllers, up to the DMZ.</li></ul></template>
+          <template id="z-fld"><h4>HVAC field zone</h4><ul><li>DDC controllers, gateways, Modbus meters.</li><li>Legacy protocols without authentication live here, so the zone border does the protecting.</li></ul></template>
+          <template id="z-saf"><h4>Life safety zone</h4><ul><li>Fire alarm panel, smoke control interface.</li><li>Higher target level. Usually read-only to the BMS; fire control logic stays in its own certified system.</li></ul></template>
+          <template id="c-1"><h4>Conduit C1: enterprise → DMZ</h4><ul><li>HTTPS 443 to the reverse proxy only.</li><li>RDP/SSH to the jump host only with MFA.</li></ul></template>
+          <template id="c-2"><h4>Conduit C2: DMZ → supervisory</h4><ul><li>Proxy → BMS web port; jump host → engineering ports.</li><li>Historian replication initiated from inside, outbound.</li></ul></template>
+          <template id="c-3"><h4>Conduit C3: supervisory → field</h4><ul><li>BMS server → controllers on 47808/udp and 502/tcp.</li><li>No other source may reach the field VLAN.</li></ul></template>
+          <template id="c-4"><h4>Conduit C4: supervisory ↔ life safety</h4><ul><li>One-way or read-only: alarms flow up through a gateway.</li><li>Writes are blocked or limited to a documented few points.</li></ul></template>
+        </div>
+      </div>
+    </figure>
+
+    <h3>Security levels</h3>
+    <p>A <strong>security level (SL)</strong> describes which attacker a zone must resist. 3-2 sets a target
+      (SL-T) per zone from risk assessment. 3-3 and 4-2 describe what a system or component can achieve (SL-C). The
+      gap between SL-T and what is achieved (SL-A) is closed with compensating controls such as a firewall in front of
+      a weak device.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Level</th><th>Protects against</th><th>Building example</th></tr>
+      <tr><td><strong>SL 0</strong></td><td>no specific requirement</td><td>isolated test bench</td></tr>
+      <tr><td><strong>SL 1</strong></td><td>casual or accidental misuse</td><td>a technician writing to the wrong point</td></tr>
+      <tr><td><strong>SL 2</strong></td><td>intentional attack with simple means, low resources, generic skills</td><td>script kiddie with a public exploit, opportunistic ransomware</td></tr>
+      <tr><td><strong>SL 3</strong></td><td>sophisticated means, moderate resources, IACS-specific skills</td><td>criminal group that studies BACnet and targets a hospital</td></tr>
+      <tr><td><strong>SL 4</strong></td><td>sophisticated means, extended resources (state level)</td><td>critical infrastructure; rare for commercial buildings</td></tr>
+    </table></div>
+    <p>The standard defines seven <strong>foundational requirements (FR)</strong>: identification and
+      authentication, use control, system integrity, data confidentiality, restricted data flow, timely response to
+      events, and resource availability. An SL is really a vector of seven values, one per FR, though people often
+      quote a single number.</p>
+
+    <h3>Try it: pick a target level</h3>
+    <figure class="viz" id="slpick">
+      <div class="cy-row">
+        <label>Consequence of compromise<select class="cy-sel" id="slCons"><option value="1">Discomfort only</option><option value="2" selected>Damage or business stop</option><option value="3">Risk to life or safety</option></select></label>
+        <label>Exposure<select class="cy-sel" id="slExp"><option value="0">Isolated, no remote access</option><option value="1" selected>Remote access via DMZ</option><option value="2">Cloud or internet connected</option></select></label>
+        <label>Attractiveness<select class="cy-sel" id="slAtt"><option value="0" selected>Ordinary building</option><option value="1">Hospital, data centre, government</option></select></label>
+      </div>
+      <div class="readout" id="slOut" aria-live="polite"></div>
+      <figcaption>A teaching heuristic, not the formal 3-2 method, which uses a full risk assessment.</figcaption>
+    </figure>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A legacy controller can only reach SL-C 1, but its zone needs SL-T 2. What does IEC 62443 suggest?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Not acceptable; the gap must be handled.">Accept SL 1 for the zone</button>
+        <button class="opt" data-opt="b" data-why="Compensating controls at zone or conduit level close the gap.">Add compensating controls, e.g. a conduit firewall and monitoring</button>
+        <button class="opt" data-opt="c" data-why="SLs are not averaged across zones.">Average it with a neighbouring zone</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>IEC 62443 splits duty: owner (part 2), integrator (part 3), vendor (part 4).</li>
+      <li>Zones group assets with the same needs; conduits are the only allowed paths.</li>
+      <li>SL 1–4 rise from accidents to state-level attackers; most buildings target SL 2, safety zones higher.</li>
+    </ul>
+  </section>
+
+  <!-- 23.3 -->
+  <section class="lesson" id="s3" data-num="23.3">
+    <h2>23.3 Segmentation and firewalls</h2>
+    <p>Segmentation turns the zone model into network reality. VLANs (Chapter 03) separate broadcast domains, but a
+      VLAN alone is not a security boundary: if the router between VLANs allows everything, the attacker just routes.
+      The boundary is the <strong>firewall policy</strong> on the inter-VLAN router or a dedicated firewall.</p>
+    <h3>Rules that work</h3>
+    <ul>
+      <li><strong>Default deny.</strong> The last rule drops everything. Each allow rule has an owner and a reason.</li>
+      <li><strong>Specific source, destination and port.</strong> "BMS server → field VLAN, 47808/udp" not "OT → OT any".</li>
+      <li><strong>Direction matters.</strong> Stateful firewalls allow replies automatically. Allow the side that
+        initiates, not both ways.</li>
+      <li><strong>Prefer outbound from OT.</strong> A gateway that publishes to a broker in the DMZ needs no inbound hole.</li>
+      <li><strong>Log denies.</strong> A controller suddenly trying to reach the internet is a strong alarm signal.</li>
+    </ul>
+    <div class="table-wrap"><table>
+      <tr><th>Protocol</th><th>Port</th><th>Note</th></tr>
+      <tr><td>BACnet/IP</td><td>47808/udp</td><td>uses broadcasts; across subnets needs a BBMD. BACnet/SC runs over TLS WebSockets, typically 443/tcp.</td></tr>
+      <tr><td>Modbus TCP</td><td>502/tcp</td><td>no authentication; secure variant uses 802/tcp with TLS</td></tr>
+      <tr><td>KNXnet/IP</td><td>3671/udp</td><td>KNX IP Secure adds encryption and authentication</td></tr>
+      <tr><td>MQTT</td><td>1883 / 8883 tcp</td><td>8883 = TLS; use it across zones</td></tr>
+      <tr><td>OPC UA</td><td>4840/tcp</td><td>has built-in security modes; "None" is common and should be avoided</td></tr>
+    </table></div>
+
+    <h3>Try it: rule tester</h3>
+    <p>A small policy, evaluated top to bottom, first match wins. Pick a flow and see which rule decides.</p>
+    <figure class="viz" id="fw">
+      <div class="cy-row">
+        <label>Source<select class="cy-sel" id="fwSrc"><option>office</option><option>dmz-jump</option><option>dmz-proxy</option><option selected>bms-server</option><option>field</option><option>internet</option></select></label>
+        <label>Destination<select class="cy-sel" id="fwDst"><option>bms-server</option><option selected>field</option><option>dmz-proxy</option><option>dmz-broker</option><option>internet</option></select></label>
+        <label>Port / protocol<select class="cy-sel" id="fwPort"><option selected>47808/udp</option><option>502/tcp</option><option>443/tcp</option><option>8883/tcp</option><option>22/tcp</option><option>3389/tcp</option></select></label>
+      </div>
+      <ol class="rules" id="fwRules"></ol>
+      <div id="fwOut" aria-live="polite"></div>
+      <figcaption>Try office → field on 502/tcp, or field → internet on 443/tcp.</figcaption>
+    </figure>
+
+    <div class="callout example">A typical mid-size layout: VLAN 10 office, VLAN 20 OT DMZ, VLAN 30 BMS servers, VLAN
+      40 HVAC controllers, VLAN 50 lighting gateways, VLAN 60 cameras. The firewall has about 15–30 allow rules in
+      total. Anything above 100 usually means rules nobody understands any more.</div>
+    <div class="callout warn">Watch for dual-homed devices: a BMS server with one NIC in the office VLAN and one in
+      the field VLAN bypasses the firewall completely. The same goes for a cheap 4G router a vendor left in the
+      control cabinet.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">With a stateful firewall, to let the BMS server poll controllers, you should allow…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Replies are allowed by connection tracking (for UDP, by a short-lived state entry).">BMS server → field only; replies are tracked automatically</button>
+        <button class="opt" data-opt="b" data-why="This opens new connections from field to server, which is not needed.">Both directions explicitly</button>
+        <button class="opt" data-opt="c" data-why="The VLAN boundary alone is not a policy.">Nothing; same building means same trust</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>A VLAN separates; the firewall policy protects.</li>
+      <li>Default deny, specific rules, allow the initiator only, log the drops.</li>
+      <li>Dual-homed hosts and stray modems silently defeat segmentation.</li>
+    </ul>
+  </section>
+
+  <!-- 23.4 -->
+  <section class="lesson" id="s4" data-num="23.4">
+    <h2>23.4 Secrets, accounts, least privilege</h2>
+    <p>Buildings are full of default and shared credentials: <code>admin/admin</code> on gateways, one
+      "service" account used by five companies, an API token pasted into a wiki page. Each one is a skeleton key that
+      outlives the people who know it.</p>
+    <h3>Accounts</h3>
+    <ul>
+      <li><strong>Personal accounts</strong> for every human. Shared accounts make audit logs useless.</li>
+      <li><strong>Service accounts</strong> for machines, each with only the rights its job needs, and no interactive login.</li>
+      <li><strong>MFA</strong> on everything reachable from outside the OT zones, especially remote access.</li>
+      <li><strong>Joiner / mover / leaver.</strong> When a contractor's contract ends, accounts end the same day.</li>
+      <li><strong>Break-glass account</strong>: one sealed emergency login, stored offline, with an alarm when used.</li>
+    </ul>
+    <h3>Secrets</h3>
+    <p>Secrets are passwords, API tokens, TLS private keys, MQTT credentials. Rules:</p>
+    <ul>
+      <li>MUST NOT live in source control or images. Use a secret store or environment injected at deploy time.</li>
+      <li>One secret per consumer, so you can revoke one integration without breaking all.</li>
+      <li>Rotate on staff change and after any suspected leak. Know in advance how long a rotation takes.</li>
+      <li>Change every factory default at commissioning. Record it in the handover checklist.</li>
+    </ul>
+
+    <h3>Least privilege: role matrix</h3>
+    <p>Pick a role. A good matrix has few ticks per row, and only the engineer row can change logic.</p>
+    <figure class="viz" id="roles">
+      <div class="controls seg" role="group" aria-label="Role">
+        <button data-r="0" aria-pressed="true">Viewer</button><button data-r="1">Operator</button><button data-r="2">Technician</button><button data-r="3">Engineer</button><button data-r="4">Integration</button>
+      </div>
+      <div class="table-wrap"><table class="matrix" id="rolesTbl"></table></div>
+      <div class="readout" id="rolesText" aria-live="polite"></div>
+    </figure>
+
+    <h3>Try it: how strong is that password?</h3>
+    <p>Entropy is length × log₂(alphabet), assuming random choice. Human-chosen passwords are far weaker than this
+      number suggests.</p>
+    <figure class="viz" id="ent">
+      <label for="entLen"><strong>Length: <output id="entLenOut">12</output></strong></label>
+      <input type="range" id="entLen" min="4" max="32" value="12" style="width:100%">
+      <div style="margin-top:8px">
+        <label class="cy-check"><input type="checkbox" id="eLow" checked> a–z</label>
+        <label class="cy-check"><input type="checkbox" id="eUp" checked> A–Z</label>
+        <label class="cy-check"><input type="checkbox" id="eDig" checked> 0–9</label>
+        <label class="cy-check"><input type="checkbox" id="eSym"> symbols (32)</label>
+      </div>
+      <div class="readout" id="entOut" aria-live="polite"></div>
+      <figcaption>Offline guess rate assumed 10¹⁰/s (a fast GPU rig against a weak hash). Online attacks are much slower but still beat short passwords.</figcaption>
+    </figure>
+
+    <div class="callout example">An MQTT broker in a building can give each gateway its own user and an ACL: the
+      lighting gateway may publish only to <code>lighting/#</code> and subscribe only to <code>lighting/+/set</code>.
+      A compromised gateway can then not spoof boiler states.</div>
+    <div class="callout warn">Removing a technician's account on the BMS is not enough if the same password is also
+      on the gateways, the router and the vendor portal. Shared secrets multiply the leaver problem.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Five service companies share one "service" login. What is the main problem?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Length is a separate issue.">The password is probably too short</button>
+        <button class="opt" data-opt="b" data-why="Licences are not the issue.">It wastes licences</button>
+        <button class="opt" data-opt="c" data-why="Logs show &quot;service&quot;, not who, and revoking one company locks out all.">No accountability, and you cannot revoke one company without the others</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Personal accounts for people, scoped service accounts for machines.</li>
+      <li>Secrets out of code, one per consumer, rotated on change.</li>
+      <li>Least privilege: most users read, few command, very few change logic.</li>
+    </ul>
+  </section>
+
+  <!-- 23.5 -->
+  <section class="lesson" id="s5" data-num="23.5">
+    <h2>23.5 Patching and updates</h2>
+    <p>In IT, "patch fast" is the default. In OT, a patch can stop a plant, change control behaviour or brick a
+      controller whose vendor only tested one firmware path. Still, unpatched systems are where most real compromises
+      start. The answer is a <strong>risk-based patch process</strong> (IEC 62443-2-3 describes one).</p>
+    <h3>The process</h3>
+    <ol>
+      <li><strong>Inventory.</strong> You cannot patch what you do not know: model, firmware, location, owner.</li>
+      <li><strong>Monitor advisories.</strong> Vendor PSIRT pages, national CERTs, the CISA ICS advisories and the
+        CISA KEV (Known Exploited Vulnerabilities) catalogue.</li>
+      <li><strong>Assess.</strong> CVSS score is a start, not the answer. Ask: is it exploited in the wild? Is the
+        device reachable from where attackers can be?</li>
+      <li><strong>Test.</strong> On a spare controller or a staging VM. Check the control sequence still runs.</li>
+      <li><strong>Deploy in a window.</strong> Summer for heating plant, winter for chillers. Have a rollback image.</li>
+      <li><strong>Or mitigate.</strong> If you cannot patch, tighten the conduit, disable the service, watch it.</li>
+    </ol>
+
+    <h3>Patch risk vs downtime</h3>
+    <p>Cumulative risk of compromise grows with each day a known-exploited flaw stays open. Patching costs a fixed
+      planned outage. Move the sliders.</p>
+    <figure class="viz" id="patch">
+      <div class="cy-row">
+        <label>Exposure: <output id="pExpOut"></output><input type="range" id="pExp" min="0" max="2" value="1"></label>
+        <label>Exploited in the wild: <output id="pKevOut"></output><input type="range" id="pKev" min="0" max="1" value="1"></label>
+        <label>Mitigation applied: <output id="pMitOut"></output><input type="range" id="pMit" min="0" max="1" value="0"></label>
+      </div>
+      <svg viewBox="0 0 600 240" role="img" aria-label="Cumulative compromise probability over 180 days compared with the fixed cost of patching">
+        <line x1="60" y1="200" x2="580" y2="200" class="arrow"/><line x1="60" y1="20" x2="60" y2="200" class="arrow"/>
+        <text class="small" x="320" y="232" text-anchor="middle">days unpatched (0–180)</text>
+        <text class="small" x="54" y="204" text-anchor="end">0 %</text><text class="small" x="54" y="114" text-anchor="end">50 %</text><text class="small" x="54" y="24" text-anchor="end">100 %</text>
+        <line id="pLine" x1="60" x2="580" stroke="var(--ok)" stroke-width="2" stroke-dasharray="6 4"/>
+        <text id="pLineT" class="small" x="575" text-anchor="end">patch outage cost (risk-equivalent)</text>
+        <path id="pCurve" class="wire" stroke="var(--bad)"/>
+        <circle id="pDot" r="5" class="fill-accent"/>
+      </svg>
+      <div class="readout" id="pOut" aria-live="polite"></div>
+      <figcaption>Illustrative model: P(t) = 1 − e<sup>−λt</sup>. The rates are made-up teaching values, not statistics.</figcaption>
+    </figure>
+
+    <div class="callout example">A vendor publishes an advisory for a building controller web server: unauthenticated
+      remote code execution, CVSS 9.8. The controllers sit in a field VLAN reachable only from the BMS server. The
+      owner blocks the web port at the conduit the same day (mitigation), then flashes the fix during a planned
+      maintenance night three weeks later.</div>
+    <div class="callout warn">Auto-update on OT devices is a double-edged tool. A cloud-pushed firmware that changes
+      a default or reboots a gateway at 09:00 on a Monday is an outage you did not schedule. Prefer staged rollouts
+      you control.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Two flaws: A is CVSS 9.8 on an isolated controller; B is CVSS 7.5, listed in CISA KEV, on an internet-facing VPN appliance. Patch first?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Score alone ignores exposure and real exploitation.">A, higher score</button>
+        <button class="opt" data-opt="b" data-why="Known exploitation plus internet exposure outweigh a higher score on an unreachable device.">B, exploited and exposed</button>
+        <button class="opt" data-opt="c" data-why="B is urgent.">Neither, wait for the yearly window</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Inventory first; watch vendor and CERT advisories and the KEV list.</li>
+      <li>Prioritise by exploitation and reachability, not by CVSS alone.</li>
+      <li>When you cannot patch now, mitigate at the conduit and plan a window.</li>
+    </ul>
+  </section>
+
+  <!-- 23.6 -->
+  <section class="lesson" id="s6" data-num="23.6">
+    <h2>23.6 Vendor and cloud dependency risk</h2>
+    <p>Modern buildings depend on parties you do not control: the vendor's remote access service, a cloud
+      dashboard, a licence server, a mobile app backend. Each one is both a security risk (a door into your network)
+      and an availability risk (a function that disappears when they do).</p>
+    <h3>Remote access done properly</h3>
+    <ul>
+      <li>Access ends at a jump host in the DMZ, never directly on a controller.</li>
+      <li>Personal accounts with MFA per technician, not per company.</li>
+      <li>Off by default; enabled per session by the owner, time-limited, ideally recorded.</li>
+      <li>No vendor-installed always-on tunnels or 4G routers in panels.</li>
+      <li>Contract clauses: notification of breaches, patch support period, return of credentials at contract end.</li>
+    </ul>
+    <h3>Supply chain</h3>
+    <p>Firmware, libraries and engineering tools come from vendors. Ask for a <strong>SBOM</strong> (software bill
+      of materials) so you know when a library flaw affects you. The EU Cyber Resilience Act will require
+      manufacturers of connected products to handle vulnerabilities and provide security updates; its main
+      obligations phase in over the coming years, so check the current dates.</p>
+
+    <h3>Dependency map: what fails when?</h3>
+    <p>Switch off external services and see which building functions still work. A sound design keeps core control
+      local.</p>
+    <figure class="viz" id="dep">
+      <div>
+        <label class="cy-check"><input type="checkbox" id="dNet"> Internet down</label>
+        <label class="cy-check"><input type="checkbox" id="dCloud"> Vendor cloud shut down</label>
+        <label class="cy-check"><input type="checkbox" id="dLic"> Licence server unreachable</label>
+        <label class="cy-check"><input type="checkbox" id="dSrv"> BMS server down</label>
+      </div>
+      <div class="dep-grid" id="depGrid"></div>
+      <div class="readout" id="depText" aria-live="polite"></div>
+    </figure>
+
+    <div class="callout example">Several consumer and prosumer device makers have ended cloud services for older
+      products over the years, leaving devices that only worked through that cloud unusable or limited. In a building
+      that means a heating zone or a door lock that silently stops being controllable.</div>
+    <div class="callout warn">"Cloud-managed" firewalls and switches are convenient, but check what happens when the
+      management cloud is unreachable or the subscription lapses. Some keep forwarding with the last config, some
+      restrict features.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Which design best limits vendor dependency risk?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Local control keeps running; cloud adds value but is not required.">Local control and local APIs; cloud only for optional extras</button>
+        <button class="opt" data-opt="b" data-why="A permanent tunnel is a permanent door.">An always-on vendor VPN so they can fix things fast</button>
+        <button class="opt" data-opt="c" data-why="If the cloud goes, so does control.">All logic in the vendor's cloud for easy updates</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Every external service is both a door and a single point of failure.</li>
+      <li>Remote access: through a jump host, personal MFA accounts, off by default.</li>
+      <li>Keep core control local; ask vendors for SBOMs and support periods.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+    <div class="quiz" data-answer="b">
+      <p class="q">1. Which CIA property usually comes first in a building's OT?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Confidentiality matters most in IT.">Confidentiality</button>
+        <button class="opt" data-opt="b" data-why="Keeping the plant running correctly comes first.">Availability (with integrity)</button>
+        <button class="opt" data-opt="c" data-why="Not a CIA property.">Anonymity</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="c">
+      <p class="q">2. In IEC 62443, a conduit is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is a zone.">a group of assets with the same security needs</button>
+        <button class="opt" data-opt="b" data-why="Cables are physical; a conduit is a logical communication path with controls.">an electrical cable tray</button>
+        <button class="opt" data-opt="c" data-why="Correct.">the controlled communication path between zones</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Security level 2 is meant to resist…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Simple means, low resources, generic skills.">intentional attacks with simple means and generic skills</button>
+        <button class="opt" data-opt="b" data-why="That is SL 4.">state-level attackers</button>
+        <button class="opt" data-opt="c" data-why="That is SL 1.">only accidental misuse</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="d">
+      <p class="q">4. A BMS server has NICs in both the office VLAN and the field VLAN. The risk?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Throughput is not the concern.">Lower throughput</button>
+        <button class="opt" data-opt="b" data-why="Not related.">BACnet broadcasts stop working</button>
+        <button class="opt" data-opt="c" data-why="Licensing is unrelated.">Licence violation</button>
+        <button class="opt" data-opt="d" data-why="A compromised server bridges the zones, bypassing the firewall.">It bypasses the firewall between zones</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="b">
+      <p class="q">5. A controller cannot be patched for two months. Best interim action?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Hoping is not a control.">Do nothing until the window</button>
+        <button class="opt" data-opt="b" data-why="Mitigate: tighten the conduit, disable the service, monitor.">Block the vulnerable service at the conduit and monitor</button>
+        <button class="opt" data-opt="c" data-why="Exposing it further raises risk.">Move it to the office VLAN for easier access</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="22-infrastructure.html">← Chapter 22</a>
+    <a class="btn" href="24-energy.html">Chapter 24 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// 23.1 Attack path.
+(() => {
+  const P = {
+    expose: [["n-inet", "e-inet-fw", "n-fw", "e-fw-bms", "n-bms", "e-bms-ctl", "n-ctl", "e-ctl-fld", "n-fld"],
+      "A port forward publishes the BMS web UI. A known auth bypass gives admin. From the server, every controller is one write away. Stop it: no port forwards; remote users go through a VPN or proxy in a DMZ."],
+    vpn: [["n-inet", "e-inet-fw", "n-fw", "e-fw-bms", "n-bms", "e-bms-ctl", "n-ctl", "e-ctl-fld", "n-fld"],
+      "Stolen vendor credentials open the remote access tunnel. Stop it: personal accounts with MFA, access off by default, landing on a jump host, not the server."],
+    phish: [["n-inet", "e-inet-fw", "n-fw", "e-fw-it", "n-it", "e-it-bms", "n-bms", "e-bms-ctl", "n-ctl", "e-ctl-fld", "n-fld"],
+      "Malware on an office PC scans the flat network and finds the BMS server. Stop it: segmentation; the office zone must not route to OT."],
+    usb: [["n-lap", "e-lap-ctl", "n-ctl", "e-ctl-fld", "n-fld"],
+      "An infected technician laptop plugs straight into the controller VLAN. Stop it: managed engineering laptops, port security / 802.1X on switches, no open ports in plant rooms."],
+  };
+  const fig = document.getElementById("path"), txt = document.getElementById("pathText");
+  const draw = (k) => {
+    fig.querySelectorAll("rect.box, path.arrow").forEach((el) => el.classList.remove("lit", "lit-line"));
+    P[k][0].forEach((id) => { const el = document.getElementById(id); el.classList.add(id.startsWith("e-") ? "lit-line" : "lit"); });
+    txt.textContent = P[k][1];
+    fig.querySelectorAll("[data-p]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === k));
+  };
+  fig.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.p)));
+  draw("expose");
+})();
+
+// 23.2 SL heuristic.
+(() => {
+  const c = document.getElementById("slCons"), e = document.getElementById("slExp"), a = document.getElementById("slAtt"), out = document.getElementById("slOut");
+  const WHY = ["", "accidents and casual misuse", "simple, opportunistic attacks", "skilled, IACS-aware attackers", "state-level attackers"];
+  const draw = () => {
+    let sl = Number(c.value);
+    if (Number(e.value) === 2) sl += 1;
+    if (Number(e.value) === 0 && sl > 1) sl -= 1;
+    sl += Number(a.value);
+    sl = Math.max(1, Math.min(4, sl));
+    out.textContent = `Suggested SL-T ${sl}: design to resist ${WHY[sl]}.`;
+  };
+  [c, e, a].forEach((x) => x.addEventListener("change", draw)); draw();
+})();
+
+// 23.3 Firewall rule tester.
+(() => {
+  const RULES = [
+    ["dmz-proxy", "bms-server", "443/tcp", "allow", "operator web UI via reverse proxy"],
+    ["dmz-jump", "bms-server", "22/tcp", "allow", "engineering via jump host"],
+    ["dmz-jump", "bms-server", "3389/tcp", "allow", "engineering via jump host"],
+    ["bms-server", "field", "47808/udp", "allow", "BACnet polling"],
+    ["bms-server", "field", "502/tcp", "allow", "Modbus polling"],
+    ["field", "dmz-broker", "8883/tcp", "allow", "gateways publish over TLS"],
+    ["office", "dmz-proxy", "443/tcp", "allow", "staff open the panel"],
+    ["*", "*", "*", "deny", "default deny, logged"],
+  ];
+  const s = document.getElementById("fwSrc"), d = document.getElementById("fwDst"), p = document.getElementById("fwPort");
+  const list = document.getElementById("fwRules"), out = document.getElementById("fwOut");
+  list.innerHTML = RULES.map((r) => `<li>${r[3].toUpperCase()} ${r[0]} → ${r[1]} ${r[2]} <span style="color:var(--muted)">· ${r[4]}</span></li>`).join("");
+  const m = (rule, v) => rule === "*" || rule === v;
+  const draw = () => {
+    const i = RULES.findIndex((r) => m(r[0], s.value) && m(r[1], d.value) && m(r[2], p.value));
+    list.querySelectorAll("li").forEach((li, k) => li.classList.toggle("hit", k === i));
+    const r = RULES[i], ok = r[3] === "allow";
+    out.innerHTML = `<span class="verdict ${ok ? "ok" : "bad"}">${ok ? "ALLOWED" : "DROPPED"} by rule ${i + 1}</span>` +
+      (s.value === d.value ? ` <span class="small">Same zone: traffic does not cross this firewall at all.</span>` : "");
+  };
+  [s, d, p].forEach((x) => x.addEventListener("change", draw)); draw();
+})();
+
+// 23.4 Role matrix.
+(() => {
+  const PERMS = ["View values and alarms", "Acknowledge alarms", "Change setpoints and schedules", "Override outputs (hand mode)", "Edit control logic", "Manage users", "Publish/subscribe via API"];
+  const ROLES = [
+    ["Viewer", [1, 0, 0, 0, 0, 0, 0], "Reception, tenants. Read only."],
+    ["Operator", [1, 1, 1, 0, 0, 0, 0], "Facility staff. Daily comfort changes within limits."],
+    ["Technician", [1, 1, 1, 1, 0, 0, 0], "Service on site. Can force outputs for tests; overrides should be time-limited and logged."],
+    ["Engineer", [1, 1, 1, 1, 1, 1, 0], "Integrator. Logic changes go through review and a backup first."],
+    ["Integration", [0, 0, 0, 0, 0, 0, 1], "A service account for one gateway: API only, scoped topics, no UI login."],
+  ];
+  const fig = document.getElementById("roles"), tbl = document.getElementById("rolesTbl"), txt = document.getElementById("rolesText");
+  tbl.innerHTML = `<tr><th>Role</th>${PERMS.map((p) => `<th>${p}</th>`).join("")}</tr>` +
+    ROLES.map(([n, v]) => `<tr><td><strong>${n}</strong></td>${v.map((x) => `<td class="${x ? "y" : "n"}">${x ? "✓" : "–"}</td>`).join("")}</tr>`).join("");
+  const draw = (k) => {
+    tbl.querySelectorAll("tr").forEach((tr, i) => tr.classList.toggle("on", i === k + 1));
+    txt.textContent = `${ROLES[k][0]}: ${ROLES[k][2]}`;
+    fig.querySelectorAll("[data-r]").forEach((b) => b.setAttribute("aria-pressed", Number(b.dataset.r) === k));
+  };
+  fig.querySelectorAll("[data-r]").forEach((b) => b.addEventListener("click", () => draw(Number(b.dataset.r))));
+  draw(0);
+})();
+
+// 23.4 Entropy.
+(() => {
+  const len = document.getElementById("entLen"), lo = document.getElementById("entLenOut"), out = document.getElementById("entOut");
+  const sets = [["eLow", 26], ["eUp", 26], ["eDig", 10], ["eSym", 32]];
+  const fmt = (s) => {
+    const u = [[31557600, "years"], [86400, "days"], [3600, "hours"], [60, "minutes"], [1, "seconds"]];
+    for (const [k, n] of u) if (s >= k) { const v = s / k; return (v > 1e6 ? v.toExponential(1) : Math.round(v)) + " " + n; }
+    return "under a second";
+  };
+  const draw = () => {
+    const n = Number(len.value); lo.textContent = n;
+    const a = sets.reduce((t, [id, k]) => t + (document.getElementById(id).checked ? k : 0), 0);
+    if (!a) { out.textContent = "Pick at least one character set."; return; }
+    const bits = n * Math.log2(a);
+    const secs = Math.pow(2, bits - 1) / 1e10;
+    out.textContent = `${a}-symbol alphabet → ${bits.toFixed(0)} bits. Average offline crack time ≈ ${fmt(secs)}.`;
+  };
+  len.addEventListener("input", draw);
+  sets.forEach(([id]) => document.getElementById(id).addEventListener("change", draw));
+  draw();
+})();
+
+// 23.5 Patch risk curve.
+(() => {
+  const ex = document.getElementById("pExp"), kv = document.getElementById("pKev"), mi = document.getElementById("pMit");
+  const L = { exp: ["isolated", "internal", "internet"], kev: ["no", "yes"], mit: ["no", "yes"] };
+  const X = (d) => 60 + (d / 180) * 520, Y = (p) => 200 - p * 180;
+  const COST = 0.25;
+  const draw = () => {
+    document.getElementById("pExpOut").textContent = L.exp[ex.value];
+    document.getElementById("pKevOut").textContent = L.kev[kv.value];
+    document.getElementById("pMitOut").textContent = L.mit[mi.value];
+    // Daily compromise rate, illustrative only.
+    let lam = [0.0005, 0.003, 0.02][ex.value] * (Number(kv.value) ? 4 : 1) * (Number(mi.value) ? 0.15 : 1);
+    let d = "";
+    for (let t = 0; t <= 180; t += 3) d += (t ? " L" : "M") + X(t).toFixed(1) + "," + Y(1 - Math.exp(-lam * t)).toFixed(1);
+    document.getElementById("pCurve").setAttribute("d", d);
+    const yl = Y(COST);
+    const line = document.getElementById("pLine"); line.setAttribute("y1", yl); line.setAttribute("y2", yl);
+    document.getElementById("pLineT").setAttribute("y", yl - 6);
+    const tc = -Math.log(1 - COST) / lam, dot = document.getElementById("pDot"), out = document.getElementById("pOut");
+    if (tc <= 180) {
+      dot.setAttribute("cx", X(tc)); dot.setAttribute("cy", yl); dot.style.display = "";
+      out.textContent = `Risk passes the outage cost after ~${Math.round(tc)} days. Patch (or mitigate) before then.`;
+    } else {
+      dot.style.display = "none";
+      out.textContent = `Risk stays below the outage cost for 180 days: the next planned window is fine.`;
+    }
+  };
+  [ex, kv, mi].forEach((x) => x.addEventListener("input", draw)); draw();
+})();
+
+// 23.6 Dependency map.
+(() => {
+  // Each function lists the services it needs: net, cloud, lic, srv.
+  const F = [
+    ["Boiler and heating loops", [], "Runs in the plant controller."],
+    ["AHU control and frost protection", [], "Local controller logic."],
+    ["Room setpoints from the panel", ["srv"], "Local web UI on the BMS server."],
+    ["Alarm notifications by SMS/Telegram", ["net", "srv"], "Needs the server and an outbound path."],
+    ["Vendor cloud app for heat pump", ["net", "cloud"], "Only works through the vendor cloud."],
+    ["Smart thermostats (cloud-only API)", ["net", "cloud"], "No local API: no control without the cloud."],
+    ["BMS graphics (licensed per point)", ["srv", "lic"], "Some platforms degrade or stop after a licence grace period."],
+    ["Remote access for service", ["net"], "Expected to fail; on-site work still possible."],
+  ];
+  const ids = { net: "dNet", cloud: "dCloud", lic: "dLic", srv: "dSrv" };
+  const grid = document.getElementById("depGrid"), txt = document.getElementById("depText");
+  const draw = () => {
+    const off = Object.keys(ids).filter((k) => document.getElementById(ids[k]).checked);
+    // A cloud is unreachable when the internet is down.
+    if (off.includes("net")) off.push("cloud");
+    let down = 0;
+    grid.innerHTML = F.map(([n, need, why]) => {
+      const bad = need.some((x) => off.includes(x));
+      if (bad) down++;
+      return `<div class="dep ${bad ? "down" : "up"}"><b>${n}</b><span style="color:var(--muted)">${why}</span></div>`;
+    }).join("");
+    txt.textContent = `${F.length - down} of ${F.length} functions still work.` + (down ? " Heating and ventilation keep running because their logic is local." : "");
+  };
+  Object.values(ids).forEach((id) => document.getElementById(id).addEventListener("change", draw)); draw();
+})();
+</script>
+</body>
+</html>

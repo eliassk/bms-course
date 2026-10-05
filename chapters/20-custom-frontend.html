@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom BMS Front End</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .fe-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .fe-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .fe-row output { font: 600 13px var(--mono); color: var(--text); }
+  .fe-sel { font: 14px var(--font); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0; }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; }
+  .rbac { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 10px; font-size: 13px; }
+  .rbac > div { padding: 6px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); overflow-wrap: anywhere; text-align: center; }
+  .rbac > div.h { font-weight: 700; background: transparent; border: 0; }
+  .rbac > div.g { text-align: left; font-weight: 600; }
+  .rbac > div.y { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+  .rbac > div.n { color: var(--muted); }
+  .alog { font: 12px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; max-height: 240px; overflow: auto; margin-top: 10px; overflow-wrap: anywhere; }
+  .alog div { padding: 3px 0; border-bottom: 1px dashed var(--border); }
+  .alog .deny { color: var(--bad); }
+  .alog .mu { color: var(--muted); }
+  .bars2 { display: grid; gap: 6px; margin-top: 10px; }
+  .bars2 .r { display: grid; grid-template-columns: minmax(0, 7em) minmax(0, 1fr) minmax(0, 6em); gap: 8px; align-items: center; font-size: 13px; }
+  .bars2 .t { height: 18px; background: var(--surface); border-radius: 4px; overflow: hidden; }
+  .bars2 .f { height: 100%; background: var(--accent); transition: width .3s; }
+  .bars2 .f.alt { background: var(--muted); }
+  .bars2 .v { font-family: var(--mono); text-align: right; }
+  .hmi-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+  .hmi-pair h4 { margin: 0 0 6px; font-size: 14px; }
+  svg .hmi-grey { fill: var(--surface-2); stroke: var(--border); }
+  svg .hmi-bad { fill: var(--bad); }
+  svg .hmi-ok { fill: var(--ok); }
+  svg .hmi-ex { fill: var(--example); }
+  svg .hmi-acc { fill: var(--accent); }
+  svg .stale { opacity: .35; }
+  svg .dash { stroke-dasharray: 5 4; }
+  .panel-state { font-weight: 700; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="20">
+<div class="content">
+  <div class="kicker">Chapter 20</div>
+  <h1>Building a custom BMS front end</h1>
+  <p class="lead">Sometimes the vendor dashboard is not enough. This chapter shows how a purpose-built operator
+    interface is put together: the architecture, who may see and do what, how every action is recorded, how it runs
+    on a wall panel for years, and how to design screens that make problems obvious.</p>
+
+  <!-- 20.1 -->
+  <section class="lesson" id="s1" data-num="20.1">
+    <h2>20.1 Why build vs. use vendor dashboards</h2>
+    <p>Every BMS platform from Chapter 19 ships with a front end. Niagara has its Px pages and web profiles.
+      Desigo CC, EcoStruxure Building Operation and Metasys have their own workstations and web clients. Home
+      Assistant has Lovelace dashboards. For most buildings, these are the right answer. They are supported,
+      documented and maintained by someone else.</p>
+    <p>A custom front end is a separate web application. It sits on top of one or more platforms and talks to them
+      through their APIs. It owns no control logic. It is a <strong>presentation and workflow layer</strong>. You build
+      one when the vendor UI cannot express what the users need, not because you like writing code.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Reason to build</th><th>Example</th><th>Can the vendor UI do it?</th></tr>
+      <tr><td>Several platforms, one operator</td><td>HVAC in one BMS, lighting in a DALI server, AV in a control processor, meters in a historian.</td><td>Usually only via integration drivers, often at extra licence cost.</td></tr>
+      <tr><td>Task-focused screens for non-experts</td><td>A venue manager needs "Open the hall for an event" as one button, not 40 points.</td><td>Possible with scripting, but the page model fights you.</td></tr>
+      <tr><td>Fine-grained permissions</td><td>Stage crew may control stage lighting only, during booked hours.</td><td>Often limited to coarse roles or per-object categories.</td></tr>
+      <tr><td>Own branding and devices</td><td>Wall tablets in every room, phone access for staff.</td><td>Web clients exist but may not suit small touch screens.</td></tr>
+      <tr><td>Avoid lock-in</td><td>The UI survives a change of controller vendor.</td><td>No, by design.</td></tr>
+    </table></div>
+    <p>The costs are real and long-lived. You now own security patches, dependency upgrades, browser changes,
+      accessibility, documentation and on-call support. A rule of thumb from software practice: the first release is
+      perhaps 20–30 % of lifetime cost. The rest is maintenance. A front end in a building may live 10–15 years.</p>
+
+    <h3>Try it: rough cost comparison</h3>
+    <figure class="viz" id="tco">
+      <div class="fe-row">
+        <label>Years in service <output data-o="y"></output><input type="range" min="1" max="15" value="10" data-k="y"></label>
+        <label>Vendor licence per year (k€) <output data-o="lic"></output><input type="range" min="0" max="30" value="6" data-k="lic"></label>
+        <label>Custom build effort (person-weeks) <output data-o="pw"></output><input type="range" min="4" max="60" value="16" data-k="pw"></label>
+        <label>Custom upkeep (person-days / year) <output data-o="pd"></output><input type="range" min="2" max="60" value="15" data-k="pd"></label>
+      </div>
+      <div class="bars2"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Illustrative numbers. Assumes 4 k€ per person-week (800 € per day) and that vendor configuration work is similar to building a few custom screens. Your rates will differ.</figcaption>
+    </figure>
+
+    <div class="callout example">A 3000-seat concert venue runs HVAC on one BMS, house lights on a DALI-2 server, and
+      audio on a DSP platform. The vendor BMS could show the other two only through a costly integration and a page
+      designer. The team builds a small web app with six task screens ("Doors open", "Show", "Interval", "Load-out").
+      It reads and writes through each system's API and has no logic of its own. Interlocks stay in the controllers.</div>
+
+    <div class="callout warn">Do not move control logic into the front end "because it is easier there". A browser tab
+      can close at any time. If heating, ventilation or safety depends on a page being open, the design is wrong.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Which reason is the weakest for building a custom front end?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="One task-based UI over several platforms is the classic reason.">Operators must work across four separate platforms.</button>
+        <button class="opt" data-opt="b" data-why="Fine-grained permissions are a real gap in many vendor UIs.">Permissions must follow room bookings.</button>
+        <button class="opt" data-opt="c" data-why="Looks alone rarely justify a decade of maintenance. Vendor themes usually cover branding.">The vendor UI uses the wrong colour scheme.</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>A custom front end is a presentation and workflow layer. Control logic stays in controllers.</li>
+      <li>Build when users need tasks across systems, fine permissions or own devices.</li>
+      <li>Most lifetime cost is maintenance. Budget for it before writing code.</li>
+    </ul>
+  </section>
+
+  <!-- 20.2 -->
+  <section class="lesson" id="s2" data-num="20.2">
+    <h2>20.2 Architecture: SPA, backend proxy, live data</h2>
+    <p>The common shape has three tiers. A <strong>single-page application</strong> (SPA) runs in the browser. It is
+      built with a framework such as React, Vue, Svelte or Angular and served as static files. A
+      <strong>backend</strong> (often called a backend-for-frontend, BFF) runs on a server. The
+      <strong>building platforms</strong> sit behind it: a BMS REST API, a BACnet/IP gateway, an MQTT broker, a
+      historian.</p>
+    <p>The browser never talks to the building systems directly. That is the most important rule in this chapter.
+      Platform tokens, controller IPs and write paths stay on the server side. The backend checks every request
+      against the user's permissions, writes the audit record and only then forwards it.</p>
+
+    <h3>Follow one command</h3>
+    <figure class="viz" id="arch">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 640 270" role="img" aria-label="Browser, backend proxy and building platforms with data flow">
+        <defs><marker id="ah20" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="a0" x="10" y="90" width="130" height="90" rx="10"/>
+        <text x="75" y="118" text-anchor="middle">Browser SPA</text>
+        <text class="small" x="75" y="138" text-anchor="middle">state store</text>
+        <text class="small" x="75" y="154" text-anchor="middle">no secrets</text>
+        <rect class="box" id="a1" x="230" y="40" width="170" height="190" rx="10"/>
+        <text x="315" y="62" text-anchor="middle">Backend (BFF)</text>
+        <rect class="box" id="a2" x="245" y="74" width="140" height="30" rx="6"/><text class="small" x="315" y="94" text-anchor="middle">session check</text>
+        <rect class="box" id="a3" x="245" y="112" width="140" height="30" rx="6"/><text class="small" x="315" y="132" text-anchor="middle">RBAC policy</text>
+        <rect class="box" id="a4" x="245" y="150" width="140" height="30" rx="6"/><text class="small" x="315" y="170" text-anchor="middle">audit log</text>
+        <rect class="box" id="a5" x="245" y="188" width="140" height="30" rx="6"/><text class="small" x="315" y="208" text-anchor="middle">state cache + fan-out</text>
+        <rect class="box" id="a6" x="490" y="30" width="140" height="56" rx="8"/><text x="560" y="54" text-anchor="middle">BMS REST API</text><text class="small" x="560" y="72" text-anchor="middle">token on server</text>
+        <rect class="box" id="a7" x="490" y="106" width="140" height="56" rx="8"/><text x="560" y="130" text-anchor="middle">MQTT broker</text><text class="small" x="560" y="148" text-anchor="middle">events</text>
+        <rect class="box" id="a8" x="490" y="182" width="140" height="56" rx="8"/><text x="560" y="206" text-anchor="middle">Controller</text><text class="small" x="560" y="224" text-anchor="middle">BACnet / Modbus</text>
+        <path class="arrow" id="l0" d="M140,120 L228,90" marker-end="url(#ah20)"/>
+        <path class="arrow" id="l1" d="M228,200 L140,155" marker-end="url(#ah20)"/>
+        <path class="arrow" id="l2" d="M400,80 L488,60" marker-end="url(#ah20)"/>
+        <path class="arrow" id="l3" d="M560,86 L560,104 M560,162 L560,180" marker-end="url(#ah20)"/>
+        <path class="arrow" id="l4" d="M488,134 L402,200" marker-end="url(#ah20)"/>
+        <text class="small" x="150" y="96">HTTPS POST</text>
+        <text class="small" x="150" y="190">WebSocket push</text>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>Live data: polling, SSE or WebSocket</h3>
+    <p>Operators expect values to move without pressing reload. There are three ways to get there.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Method</th><th>How it works</th><th>Trade-offs</th></tr>
+      <tr><td>Polling</td><td>Browser asks every N seconds.</td><td>Simple. Latency up to N s. Load grows with clients × points even when nothing changes.</td></tr>
+      <tr><td>Server-Sent Events</td><td>One long HTTP response streams text events, server to browser.</td><td>One direction only. Auto-reconnect built in. Works well through proxies.</td></tr>
+      <tr><td>WebSocket (RFC 6455)</td><td>HTTP upgrade to a full-duplex frame channel.</td><td>Lowest latency, both directions. You handle reconnect, heartbeats and resync yourself.</td></tr>
+    </table></div>
+    <p>A robust live channel follows a pattern: on connect, the backend sends a <strong>snapshot</strong> of every
+      entity the user may see. After that it sends only <strong>deltas</strong>. Each delta carries a sequence number
+      or timestamp. If the browser sees a gap, or the socket drops, it reconnects with exponential backoff (for
+      example 1, 2, 4, 8 s, capped at 30 s, with random jitter) and asks for a fresh snapshot.</p>
+    <pre class="code">// delta message, server to browser
+{"type":"delta","seq":48213,"id":"ahu1.supply_temp",
+ "value":18.4,"unit":"°C","quality":"good","ts":"2026-03-02T09:14:07Z"}</pre>
+    <p>Note the <code>quality</code> field. A value from a device that went offline must not look like a fresh
+      value. The UI should grey it out or mark it stale (see 20.5).</p>
+
+    <figure class="viz" id="live">
+      <div class="fe-row">
+        <label>Browsers open <output data-o="c"></output><input type="range" min="1" max="50" value="10" data-k="c"></label>
+        <label>Points per screen <output data-o="p"></output><input type="range" min="10" max="500" step="10" value="120" data-k="p"></label>
+        <label>Changes per point per minute <output data-o="r"></output><input type="range" min="0.1" max="10" step="0.1" value="0.5" data-k="r"></label>
+        <label>Poll interval (s) <output data-o="i"></output><input type="range" min="1" max="30" value="5" data-k="i"></label>
+      </div>
+      <div class="bars2"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Polling reads every point each interval. Push sends only changes. Assumes a poll fetches each point individually, the worst case.</figcaption>
+    </figure>
+
+    <h3>Exercise: where does it belong?</h3>
+    <div class="classify" data-cats="Browser,Backend,Controller">
+      <div class="item" data-cat="Controller" data-why="Safety interlocks must work with every server off."><span class="label">Frost protection stops the supply fan.</span></div>
+      <div class="item" data-cat="Backend" data-why="The browser can be modified by the user. Only a server can enforce permissions."><span class="label">Check whether the user may change this setpoint.</span></div>
+      <div class="item" data-cat="Browser" data-why="Pure presentation. Losing it costs nothing."><span class="label">Format 18.437 as "18.4 °C".</span></div>
+      <div class="item" data-cat="Backend" data-why="Secrets never go to the browser."><span class="label">Hold the API token for the BMS.</span></div>
+      <div class="item" data-cat="Controller" data-why="Loops run on the controller scan, not over HTTP."><span class="label">PID loop for supply air temperature.</span></div>
+    </div>
+
+    <div class="callout example">A campus front end serves about 80 concurrent operator sessions. The backend holds
+      one subscription to the MQTT broker and one to the BMS change-of-value feed. It keeps an in-memory map of about
+      25 000 entity states and fans deltas out to WebSockets, filtered per user. Peak traffic is a few hundred deltas
+      per second. A single small virtual machine copes.</div>
+
+    <div class="callout warn">Do not let each browser open its own MQTT or BACnet connection "to save a hop". You lose
+      central permissions, audit and caching, and the broker's credentials end up in JavaScript any user can read.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A WebSocket reconnects after a 40 s network drop. What should happen first?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Deltas sent during the drop were lost. Continuing would leave stale values.">Keep applying new deltas as they arrive.</button>
+        <button class="opt" data-opt="b" data-why="A fresh snapshot replaces whatever was missed. Then deltas continue.">Request a full snapshot, then apply deltas.</button>
+        <button class="opt" data-opt="c" data-why="Reloading works but throws away UI state and hammers the server when many panels reconnect at once.">Reload the whole page.</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Browser → backend → platforms. The browser never holds platform credentials.</li>
+      <li>The backend enforces permissions, writes the audit record and caches state.</li>
+      <li>Live data: snapshot on connect, then deltas with sequence numbers. Resync on any gap.</li>
+    </ul>
+  </section>
+
+  <!-- 20.3 -->
+  <section class="lesson" id="s3" data-num="20.3">
+    <h2>20.3 Authentication and role-based access</h2>
+    <p><strong>Authentication</strong> answers "who are you?". <strong>Authorisation</strong> answers "what may you do?".
+      Keep them separate in code and in your head.</p>
+    <h3>Authentication options</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Approach</th><th>How</th><th>Fit</th></tr>
+      <tr><td>Single sign-on via OpenID Connect</td><td>Redirect to the organisation's identity provider (Entra ID, Okta, Keycloak, Authentik…). Authorization code flow with PKCE.</td><td>Best for staff. Leavers lose access when IT disables their account.</td></tr>
+      <tr><td>Reverse proxy authentication</td><td>A proxy in front (e.g. oauth2-proxy, an ingress with auth) logs the user in and passes a verified identity header.</td><td>Simple, but the app MUST only accept that header from the proxy.</td></tr>
+      <tr><td>Local accounts</td><td>Username + password stored as a slow hash (Argon2id, bcrypt). Add TOTP or WebAuthn.</td><td>Small sites without an identity provider.</td></tr>
+      <tr><td>Device accounts</td><td>A wall panel gets its own long-lived, revocable credential bound to one role.</td><td>Kiosks (20.5).</td></tr>
+    </table></div>
+    <p>After login, the backend keeps a <strong>server-side session</strong> and gives the browser a cookie with
+      <code>HttpOnly</code>, <code>Secure</code> and <code>SameSite=Lax</code> or <code>Strict</code>. JavaScript
+      cannot read an HttpOnly cookie, so a cross-site scripting bug cannot simply steal it. Storing access tokens in
+      <code>localStorage</code> is the common anti-pattern. Typical lifetimes: idle timeout 15–60 min for operator
+      sessions, absolute limit 8–12 h, so a shift ends with a fresh login.</p>
+
+    <h3>Login flow (OIDC, backend for frontend)</h3>
+    <figure class="viz" id="auth">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 600 250" role="img" aria-label="Sequence diagram of login between browser, backend and identity provider">
+        <defs><marker id="ah20b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="30" y="8" width="120" height="30" rx="6"/><text x="90" y="28" text-anchor="middle">Browser</text>
+        <rect class="box" x="240" y="8" width="120" height="30" rx="6"/><text x="300" y="28" text-anchor="middle">Backend</text>
+        <rect class="box" x="450" y="8" width="120" height="30" rx="6"/><text x="510" y="28" text-anchor="middle">Identity provider</text>
+        <path class="arrow dash" d="M90,38 V245 M300,38 V245 M510,38 V245" style="stroke-width:1"/>
+        <g id="m0"><path class="arrow" d="M90,60 H296" marker-end="url(#ah20b)"/><text class="small" x="195" y="55" text-anchor="middle">GET /app (no session)</text></g>
+        <g id="m1"><path class="arrow" d="M300,85 H94" marker-end="url(#ah20b)"/><text class="small" x="195" y="80" text-anchor="middle">302 → IdP + state, PKCE</text></g>
+        <g id="m2"><path class="arrow" d="M90,110 H506" marker-end="url(#ah20b)"/><text class="small" x="300" y="105" text-anchor="middle">user logs in, MFA</text></g>
+        <g id="m3"><path class="arrow" d="M510,135 H94" marker-end="url(#ah20b)"/><text class="small" x="300" y="130" text-anchor="middle">302 → /callback?code=…</text></g>
+        <g id="m4"><path class="arrow" d="M90,160 H296" marker-end="url(#ah20b)"/><text class="small" x="195" y="155" text-anchor="middle">GET /callback?code</text></g>
+        <g id="m5"><path class="arrow" d="M300,185 H506 M510,198 H304" marker-end="url(#ah20b)"/><text class="small" x="405" y="180" text-anchor="middle">code + verifier → tokens</text></g>
+        <g id="m6"><path class="arrow" d="M300,228 H94" marker-end="url(#ah20b)"/><text class="small" x="195" y="223" text-anchor="middle">Set-Cookie: sid (HttpOnly)</text></g>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>Role-based access control</h3>
+    <p>RBAC assigns <strong>permissions</strong> to <strong>roles</strong> and roles to users. In a building, a
+      permission is usually an action on a group of entities: <em>view</em>, <em>operate</em> (switch, change a
+      setpoint within limits) and <em>configure</em> (schedules, limits, alarm thresholds). Groups follow systems
+      and areas: "HVAC plant", "Stage lighting", "Meeting rooms floor 2".</p>
+    <p>Pure RBAC gets coarse fast. Add <strong>attributes</strong> where needed (this is ABAC): "operate meeting room
+      lights only while the room is booked by you", or "setpoint between 19 and 24 °C". Keep the policy in one place on
+      the server, as data, and test it like code. The UI should hide what a user cannot do, but hiding is only
+      comfort. The server MUST refuse it anyway.</p>
+
+    <figure class="viz" id="rbac">
+      <div class="controls seg" role="group" aria-label="Role">
+        <button data-r="viewer" aria-pressed="true">Viewer</button>
+        <button data-r="operator">Operator</button>
+        <button data-r="tech">HVAC tech</button>
+        <button data-r="stage">Stage crew</button>
+        <button data-r="admin">Admin</button>
+      </div>
+      <div class="rbac"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>One role, five entity groups, three actions. Green = allowed. Least privilege: start from nothing, add what the job needs.</figcaption>
+    </figure>
+
+    <div class="callout example">A university gives cleaning staff a "Night round" role. It can view all areas and
+      switch corridor lighting, nothing else. Security guards get view on everything plus operate on doors and
+      lighting. Facility engineers get configure on HVAC. When a contractor joins for a chiller replacement, they get
+      a time-limited HVAC-tech role that expires after four weeks.</div>
+
+    <div class="callout warn">The classic RBAC bug is checking the permission in the UI and forgetting it in one
+      backend endpoint. Anyone with the browser's developer tools can call that endpoint. Write a test that calls every
+      write endpoint as every role.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Where should the access token from the identity provider be kept in a BFF design?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The browser gets only an opaque HttpOnly session cookie.">On the server, linked to the session.</button>
+        <button class="opt" data-opt="b" data-why="Any script running on the page, including injected ones, can read localStorage.">In localStorage.</button>
+        <button class="opt" data-opt="c" data-why="URLs end up in logs, history and Referer headers.">In the URL query string.</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Prefer SSO via OIDC with PKCE. Keep tokens on the server; give the browser an HttpOnly cookie.</li>
+      <li>Permissions = action × entity group. Add attributes (time, booking, limits) when roles are too coarse.</li>
+      <li>Hide in the UI for comfort; enforce on the server for security.</li>
+    </ul>
+  </section>
+
+  <!-- 20.4 -->
+  <section class="lesson" id="s4" data-num="20.4">
+    <h2>20.4 Audit logging</h2>
+    <p>An audit log answers "who changed what, when, from where, and why?". It is different from a debug log. A debug
+      log helps developers and may be rotated after a week. An audit log is a record of human and system actions and
+      may need to be kept for a year or more. It answers questions like "why was the server room at 29 °C on Sunday?"
+      or "who disabled that alarm?".</p>
+    <div class="table-wrap"><table>
+      <tr><th>Field</th><th>Example</th><th>Why</th></tr>
+      <tr><td>Timestamp (UTC)</td><td><code>2026-03-02T09:14:07.312Z</code></td><td>Order events across systems. Show local time in the UI only.</td></tr>
+      <tr><td>Actor</td><td><code>user:j.nowak</code>, <code>panel:lobby-1</code>, <code>schedule:weekday</code></td><td>Humans, devices and automation all act.</td></tr>
+      <tr><td>Action + target</td><td><code>setpoint.write ahu1.sat_sp</code></td><td>What was done to what.</td></tr>
+      <tr><td>Old → new value</td><td><code>18.0 → 16.0</code></td><td>Lets you reverse a change.</td></tr>
+      <tr><td>Outcome</td><td><code>ok</code>, <code>denied</code>, <code>failed: timeout</code></td><td>Denied attempts are security signals.</td></tr>
+      <tr><td>Source</td><td>IP, session ID, client type</td><td>Tells a phone from a wall panel.</td></tr>
+      <tr><td>Reason (optional)</td><td>"Contractor request, ticket 4411"</td><td>Required for overrides in some sites.</td></tr>
+    </table></div>
+    <p>Rules that make the log trustworthy:</p>
+    <ul>
+      <li><strong>Append-only.</strong> The application account may insert, never update or delete. Retention jobs run
+        under a different account.</li>
+      <li><strong>Written before the effect is confirmed.</strong> Record the intent, then the outcome. A crash in
+        between still leaves a trace.</li>
+      <li><strong>Tamper evidence.</strong> Each record can include a hash of the previous one. Editing a row breaks the
+        chain. Shipping copies to a separate log server (syslog, a SIEM) is even stronger.</li>
+      <li><strong>No secrets, minimal personal data.</strong> Never log passwords or tokens. Under GDPR, user IDs in an
+        audit log are personal data. Define the purpose and retention period.</li>
+      <li><strong>Searchable.</strong> Index by time, actor and target. Nobody reads a million lines by eye.</li>
+    </ul>
+
+    <h3>Try it: act and watch the log</h3>
+    <figure class="viz" id="audit">
+      <div class="fe-row">
+        <label>Acting as <select class="fe-sel" data-k="who">
+          <option value="operator">j.nowak (operator)</option>
+          <option value="viewer">a.kim (viewer)</option>
+          <option value="panel">panel:lobby-1</option>
+        </select></label>
+        <label>Filter <select class="fe-sel" data-k="f">
+          <option value="all">All entries</option>
+          <option value="deny">Denied only</option>
+          <option value="human">Humans only</option>
+        </select></label>
+      </div>
+      <div class="controls">
+        <button class="btn" data-a="sp">Lower AHU-1 setpoint</button>
+        <button class="btn" data-a="light">Lobby lights off</button>
+        <button class="btn" data-a="alarm">Shelve alarm</button>
+        <button class="btn secondary" data-a="sched">Run schedule tick</button>
+        <button class="btn secondary" data-a="tamper">Tamper with row 2</button>
+      </div>
+      <div class="alog" aria-live="polite"></div>
+      <div class="readout"></div>
+      <figcaption>Each entry stores a short hash of the previous one. Tampering with any row breaks every link after it.</figcaption>
+    </figure>
+
+    <div class="callout example">A hospital wing reported a ward too cold overnight. The audit log showed a setpoint
+      change from 22 °C to 18 °C at 02:10 by a wall panel in the ward corridor, during a night-shift session that had
+      never timed out. The fix was twofold: a shorter idle timeout on corridor panels, and a "reason required" prompt
+      for setpoint changes larger than 2 K.</div>
+
+    <div class="callout warn">Log the <em>resolved</em> target, not just what the browser sent. If the request said
+      "room 2.14" but the backend mapped it to <code>vav_2_14b</code>, record both. Otherwise mapping bugs become
+      invisible.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Why should denied attempts be logged too?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="They do take space, but that is not the reason.">To make the log larger for compliance.</button>
+        <button class="opt" data-opt="b" data-why="A denied attempt changed nothing in the building.">Because they changed the building state.</button>
+        <button class="opt" data-opt="c" data-why="Repeated denials can show a misconfigured role or someone probing the API.">They reveal misconfigured roles and probing.</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Record actor, action, target, old/new value, outcome, source and time in UTC.</li>
+      <li>Append-only, tamper-evident, separate from debug logs.</li>
+      <li>Automation and devices are actors too. Log them.</li>
+    </ul>
+  </section>
+
+  <!-- 20.5 -->
+  <section class="lesson" id="s5" data-num="20.5">
+    <h2>20.5 Kiosk and wall panel deployments</h2>
+    <p>Many front ends end up on a wall: a 10-inch tablet beside a meeting room door, a 24-inch touch screen in a
+      control room, a TV in a plant room. These run 24/7 for years with nobody watching them. That changes the
+      engineering.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Concern</th><th>Typical answer</th></tr>
+      <tr><td>Locked-down browser</td><td>Chromium in kiosk mode (<code>--kiosk</code>) on a small Linux box; Android with a kiosk browser app or a device-owner lock task mode; iPadOS Guided Access or managed Single App Mode.</td></tr>
+      <tr><td>Identity</td><td>One device account per panel, bound to a narrow role. Revocable without touching other panels.</td></tr>
+      <tr><td>Power</td><td>PoE (802.3at gives up to about 25 W at the device) or a fixed supply. Avoid tablets sitting on a charger at 100 % for years: battery swelling is a known failure. Some devices offer a charge limit.</td></tr>
+      <tr><td>Burn-in and brightness</td><td>Dim at night, blank after inactivity, wake on touch or presence. OLED screens burn in static layouts.</td></tr>
+      <tr><td>Updates</td><td>Managed via MDM or configuration management. Test on one panel first.</td></tr>
+      <tr><td>Recovery</td><td>Watchdog reloads the page if the app stops responding; nightly reload clears memory leaks.</td></tr>
+      <tr><td>Physical</td><td>Recessed mounts, no exposed USB, wired network where possible.</td></tr>
+    </table></div>
+    <p>The hardest problem is <strong>honesty about state</strong>. A panel that lost its connection still shows the
+      last values. To a passer-by they look live. The UI MUST show connection status and age of data. A common
+      pattern: after 2 × the heartbeat interval with no message, grey all values and show "Connection lost, retrying".
+      Disable controls until the snapshot is back, so nobody presses a button that goes nowhere.</p>
+
+    <h3>Try it: what does the panel show?</h3>
+    <figure class="viz" id="kiosk">
+      <div class="controls seg" role="group" aria-label="Network state">
+        <button data-s="live" aria-pressed="true">Connected</button>
+        <button data-s="drop">Network lost 45 s</button>
+        <button data-s="device">Sensor offline</button>
+        <button data-s="night">Night mode</button>
+      </div>
+      <div class="controls seg" role="group" aria-label="Implementation">
+        <button data-q="naive">Naive UI</button>
+        <button data-q="good" aria-pressed="true">Stale-aware UI</button>
+      </div>
+      <svg viewBox="0 0 400 240" role="img" aria-label="Wall panel mock-up"></svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <div class="callout example">A conference centre mounts 42 PoE tablets beside room doors. Each runs a kiosk
+      browser pointed at <code>/panel/&lt;room-id&gt;</code> with a device token. The panel shows the booking, room
+      temperature and three buttons: Lights, Blinds, Presentation. The screen dims to 10 % after 2 min without
+      presence and blanks between 23:00 and 06:00. A central page lists every panel with its last heartbeat, so a dead
+      one is found before a guest complains.</div>
+
+    <div class="callout warn">Never put an admin session on a public panel "just for setup" and forget it. A wall
+      panel is physically accessible to anyone in the building. Treat its role as public.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A panel lost its connection a minute ago. What is the right behaviour?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The values look live but are not. This misleads.">Keep showing the last values unchanged.</button>
+        <button class="opt" data-opt="b" data-why="Honest state: users see that data is old and cannot send commands into the void.">Grey values, show "connection lost", disable controls.</button>
+        <button class="opt" data-opt="c" data-why="A blank screen gives no information and looks broken.">Show a blank screen until it reconnects.</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Kiosks need a locked browser, a device account with a narrow role, and remote management.</li>
+      <li>Show connection state and data age. Stale data MUST look stale.</li>
+      <li>Plan for power, burn-in, watchdog reloads and physical access.</li>
+    </ul>
+  </section>
+
+  <!-- 20.6 -->
+  <section class="lesson" id="s6" data-num="20.6">
+    <h2>20.6 HMI design principles (ISA-101)</h2>
+    <p><strong>ANSI/ISA-101.01-2015</strong>, "Human Machine Interfaces for Process Automation Systems", describes how
+      to design, build and maintain operator screens. It came from process industries, after incident reviews found
+      that cluttered, colourful screens hid the one value that mattered. The ideas, often called
+      <strong>high-performance HMI</strong>, transfer well to buildings.</p>
+    <h3>Core principles</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Principle</th><th>In practice</th></tr>
+      <tr><td>Grey normal, colour abnormal</td><td>Backgrounds and normal equipment are neutral grey. Saturated colour is reserved for alarms and abnormal states, so it pops out.</td></tr>
+      <tr><td>Consistent colour meaning</td><td>Red means one thing everywhere (e.g. high-priority alarm). Do not use red for "pump running" on one screen and "fault" on another.</td></tr>
+      <tr><td>Never colour alone</td><td>Add shape, text or an icon. About 1 in 12 men has some colour vision deficiency, mostly red-green.</td></tr>
+      <tr><td>Information, not data</td><td>Show 18.4 °C against its normal band, or a trend, not just a number.</td></tr>
+      <tr><td>Display hierarchy</td><td>Level 1 overview, level 2 unit (e.g. one AHU), level 3 detail, level 4 diagnostics.</td></tr>
+      <tr><td>Minimal decoration</td><td>No 3D pipes, gradients or spinning fans. Animation draws the eye, so save it for alarms.</td></tr>
+    </table></div>
+    <p>The colour-for-abnormal rule is not taste. It follows from how attention works: a single saturated element in
+      a grey field is found almost instantly, regardless of how many other items are on screen. In a screen where
+      everything is colourful, finding the odd one out takes a serial search that grows with the item count.</p>
+
+    <h3>Compare: find the problem</h3>
+    <figure class="viz" id="hmi">
+      <div class="controls">
+        <button class="btn" data-a="fault">Inject a fault</button>
+        <button class="btn secondary" data-a="clear">Clear</button>
+      </div>
+      <div class="hmi-pair">
+        <div><h4>Traditional "colourful" screen</h4><svg id="hmiBad" viewBox="0 0 300 200" role="img" aria-label="Busy colourful air handler screen"></svg></div>
+        <div><h4>High-performance screen</h4><svg id="hmiGood" viewBox="0 0 300 200" role="img" aria-label="Grey air handler screen with highlighted abnormal value"></svg></div>
+      </div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Same plant, same fault. On the left, the running fans are already green and red is used for "hot water". On the right, only the abnormal item has colour, and it also carries a shape and text.</figcaption>
+    </figure>
+
+    <h3>Display hierarchy</h3>
+    <div class="explorer">
+      <div class="layers">
+        <button class="layer" data-w="1" data-target="h1">Level 1 · Overview</button>
+        <button class="layer" data-w="2" data-target="h2">Level 2 · Unit</button>
+        <button class="layer" data-target="h3">Level 3 · Detail</button>
+        <button class="layer" data-target="h4">Level 4 · Diagnostics</button>
+      </div>
+      <div class="panel">
+        <template id="h1"><h4>Whole building at a glance</h4><p>Key indicators per system: comfort band per floor, plant status, active alarms by priority, energy today vs. expected. Mostly grey. An operator should see in 5 seconds whether anything needs attention.</p></template>
+        <template id="h2"><h4>One system or unit</h4><p>An AHU or a boiler plant: the main values with normal bands, mode, and the controls an operator normally uses. This is where most daily work happens.</p></template>
+        <template id="h3"><h4>Detailed equipment</h4><p>All points of one controller loop: PID output, damper positions, interlocks, override states. Used for troubleshooting.</p></template>
+        <template id="h4"><h4>Diagnostics</h4><p>Device health, communication statistics, raw points, firmware. For technicians, often a separate role.</p></template>
+      </div>
+    </div>
+
+    <div class="callout example">A plant room overview is redrawn from a vendor page with animated green fans and
+      blue water to a grey line drawing. Each temperature gets a small bar with its normal band. After the change, a
+      supply temperature drifting 3 K above band is visible from across the room, because it is the only orange item
+      on the screen.</div>
+
+    <div class="callout warn">Do not copy ISA-101 slavishly into a lobby panel for guests. The standard targets trained
+      operators. Public panels still benefit from calm, neutral design, but a guest needs plain words and big buttons,
+      not a P&amp;ID.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Why is "pump running = green" discouraged in high-performance HMI?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Normal states in colour compete with abnormal ones for attention.">Running is normal, and colour should flag the abnormal.</button>
+        <button class="opt" data-opt="b" data-why="Green is fine as a colour. The issue is using colour for a normal state.">Green is reserved for safety systems.</button>
+        <button class="opt" data-opt="c" data-why="Browsers render green fine.">Green renders badly on web browsers.</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Grey for normal, saturated colour only for abnormal. One meaning per colour.</li>
+      <li>Never rely on colour alone. Add shape and text.</li>
+      <li>Structure screens in levels from overview to diagnostics.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. A developer adds a "boost fan" timer that runs in the browser. What is wrong?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Timers in JavaScript are accurate enough for this.">Browser timers are too inaccurate.</button>
+        <button class="opt" data-opt="b" data-why="If the tab closes, the fan never stops. Logic belongs in the controller or backend.">The timer dies when the tab closes.</button>
+        <button class="opt" data-opt="c" data-why="Speed is not the issue.">It makes the page slow.</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. What does a backend-for-frontend add that a browser talking directly to the BMS API cannot?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Both can render values.">Faster rendering.</button>
+        <button class="opt" data-opt="b" data-why="TLS works in both cases.">TLS encryption.</button>
+        <button class="opt" data-opt="c" data-why="Only the server can keep secrets and enforce rules the user cannot bypass.">Hidden credentials, enforced permissions and audit.</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. A stage crew member edits the UI in dev tools to show the HVAC buttons and clicks one. What should happen?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The server checks every request and records the denial.">The backend refuses and logs a denied attempt.</button>
+        <button class="opt" data-opt="b" data-why="The UI is under the user's control. It cannot be the only check.">It works, because the button was visible.</button>
+        <button class="opt" data-opt="c" data-why="Logging out is a heavy reaction; the key point is refusal plus a log entry.">The browser logs them out.</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. Which audit record is most useful?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="No actor, no old value.">"Setpoint changed"</button>
+        <button class="opt" data-opt="b" data-why="No time, no target detail, no outcome.">"j.nowak changed something"</button>
+        <button class="opt" data-opt="c" data-why="Tokens must never be logged.">"token=eyJ… wrote ahu1"</button>
+        <button class="opt" data-opt="d" data-why="Who, what, old/new, outcome, when, from where.">"09:14Z j.nowak ahu1.sat_sp 18→16 ok from panel:lobby-1"</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. In an ISA-101 style overview, everything is grey except one orange bar. What does it tell the operator?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Colour is not decoration in this style.">That item is decorative.</button>
+        <button class="opt" data-opt="b" data-why="Colour is reserved for abnormal states, so it is the one thing to check.">That value is abnormal and needs attention.</button>
+        <button class="opt" data-opt="c" data-why="Running equipment stays grey.">That equipment is running.</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="19-bms-platforms.html">← Chapter 19</a>
+    <a class="btn" href="21-alarm-management.html">Chapter 21 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 20 visualizations.
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pressSeg = (fig, attr, val) => fig.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute("aria-pressed", b.getAttribute(attr) === val));
+const barRows = (rows, max) => rows.map(([n, v, txt, alt]) =>
+  `<div class="r"><span>${n}</span><div class="t"><div class="f${alt ? " alt" : ""}" style="width:${max ? Math.min(100, (v / max) * 100) : 0}%"></div></div><span class="v">${txt}</span></div>`).join("");
+
+// Generic stepper: steps are [ids to light, text].
+const stepper = (figId, steps) => {
+  const fig = document.getElementById(figId);
+  const out = fig.querySelector(".readout");
+  const all = [...new Set(steps.flatMap((s) => s[0]))];
+  let i = 0;
+  const draw = () => {
+    all.forEach((id) => {
+      const el = fig.querySelector("#" + id);
+      if (!el) return;
+      const on = steps[i][0].includes(id);
+      el.querySelectorAll("path").forEach((p) => p.classList.toggle("lit-line", on));
+      if (el.tagName === "path") el.classList.toggle("lit-line", on);
+      if (el.tagName === "rect") el.classList.toggle("lit", on);
+    });
+    out.textContent = steps[i][1];
+  };
+  fig.querySelector('[data-act="next"]').addEventListener("click", () => { i = Math.min(steps.length - 1, i + 1); draw(); });
+  fig.querySelector('[data-act="prev"]').addEventListener("click", () => { i = Math.max(0, i - 1); draw(); });
+  fig.querySelector('[data-act="reset"]').addEventListener("click", () => { i = 0; draw(); });
+  draw();
+};
+
+// 20.1 Cost comparison.
+(() => {
+  const fig = document.getElementById("tco");
+  const bars = fig.querySelector(".bars2"), out = fig.querySelector(".readout");
+  const v = (k) => +fig.querySelector(`[data-k="${k}"]`).value;
+  const draw = () => {
+    const y = v("y"), lic = v("lic"), pw = v("pw"), pd = v("pd");
+    ["y", "lic", "pw", "pd"].forEach((k) => (fig.querySelector(`[data-o="${k}"]`).textContent = v(k)));
+    const vendor = lic * y + 8; // 8 k€ one-off vendor page configuration
+    const custom = pw * 4 + pd * 0.8 * y;
+    const max = Math.max(vendor, custom);
+    bars.innerHTML = barRows([["Vendor UI", vendor, vendor.toFixed(0) + " k€", true], ["Custom", custom, custom.toFixed(0) + " k€"]], max);
+    const share = custom ? Math.round(((custom - pw * 4) / custom) * 100) : 0;
+    out.textContent = `Over ${y} years: ${custom < vendor ? "custom is cheaper" : "vendor is cheaper"} by ${Math.abs(vendor - custom).toFixed(0)} k€. Upkeep is ${share} % of the custom total.`;
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 20.2 Architecture stepper.
+stepper("arch", [
+  [["a0"], "1 · The operator taps \"AHU-1 setpoint 16 °C\". The SPA sends POST /api/entities/ahu1.sat_sp with the session cookie. No platform token in the browser."],
+  [["a0", "l0", "a2"], "2 · The backend looks up the session. Expired or missing → 401, and the SPA sends the user to login."],
+  [["a3"], "3 · RBAC: may this user operate HVAC plant? Is 16 °C inside the allowed band? If not → 403."],
+  [["a4"], "4 · The intent is written to the audit log: who, what, old and new value, from which client."],
+  [["l2", "a6", "l3", "a8"], "5 · The backend calls the BMS API with its own token. The BMS writes the controller over BACnet."],
+  [["a7", "l4", "a5"], "6 · The controller reports the new value. The change arrives as an event and updates the backend's state cache."],
+  [["a5", "l1", "a0"], "7 · The backend pushes a delta over WebSocket to every browser allowed to see AHU-1. The tapped control confirms from real feedback, not from the click."],
+]);
+
+// 20.2 Polling vs push load.
+(() => {
+  const fig = document.getElementById("live");
+  const bars = fig.querySelector(".bars2"), out = fig.querySelector(".readout");
+  const v = (k) => +fig.querySelector(`[data-k="${k}"]`).value;
+  const draw = () => {
+    const c = v("c"), p = v("p"), r = v("r"), i = v("i");
+    ["c", "p", "r", "i"].forEach((k) => (fig.querySelector(`[data-o="${k}"]`).textContent = v(k)));
+    const poll = (c * p) / i;
+    const push = (c * p * r) / 60;
+    bars.innerHTML = barRows([["Polling", poll, poll.toFixed(1) + "/s", true], ["Push", push, push.toFixed(1) + "/s"]], Math.max(poll, push));
+    out.textContent = `Polling: ${poll.toFixed(0)} reads/s, latency up to ${i} s. Push: ${push.toFixed(1)} msgs/s, latency ≈ network delay. Ratio ${(poll / Math.max(push, 0.001)).toFixed(0)}×.`;
+  };
+  fig.querySelectorAll("input").forEach((x) => x.addEventListener("input", draw));
+  draw();
+})();
+
+// 20.3 Login flow stepper.
+stepper("auth", [
+  [["m0"], "1 · The browser opens the app. No session cookie, so the backend must log the user in."],
+  [["m1"], "2 · The backend redirects to the identity provider with a random state and a PKCE code challenge. It keeps the verifier."],
+  [["m2"], "3 · The user signs in at the identity provider, with MFA. The front end never sees the password."],
+  [["m3"], "4 · The identity provider redirects back with a one-time authorization code."],
+  [["m4"], "5 · The browser follows the redirect. The backend checks that state matches."],
+  [["m5"], "6 · Server to server: the backend exchanges code + verifier for ID and access tokens and validates the ID token signature."],
+  [["m6"], "7 · The backend creates a session and sets an HttpOnly, Secure, SameSite cookie. Tokens stay on the server."],
+]);
+
+// 20.3 RBAC matrix.
+(() => {
+  const fig = document.getElementById("rbac");
+  const grid = fig.querySelector(".rbac"), out = fig.querySelector(".readout");
+  const GROUPS = ["HVAC plant", "Room climate", "Lighting", "Stage lighting", "Users & roles"];
+  const ACT = ["View", "Operate", "Configure"];
+  // Per role: string per group, letters v/o/c.
+  const ROLES = {
+    viewer: [["v", "v", "v", "v", ""], "Read-only. Good for managers and reception. Cannot change anything."],
+    operator: [["vo", "vo", "vo", "v", ""], "Daily operation: switch, change setpoints within limits. No schedules or thresholds."],
+    tech: [["voc", "voc", "v", "", ""], "Full control of HVAC including limits and schedules. Sees lighting but cannot touch it."],
+    stage: [["", "", "v", "vo", ""], "Only stage lighting, plus a view of house lighting. In a real system, also limited to booked hours (ABAC)."],
+    admin: [["voc", "voc", "voc", "voc", "voc"], "Everything, including roles. Keep this to two or three named people, with MFA."],
+  };
+  const draw = (r) => {
+    const [perm, txt] = ROLES[r];
+    let s = `<div class="h"></div>` + ACT.map((a) => `<div class="h">${a}</div>`).join("");
+    GROUPS.forEach((g, k) => {
+      s += `<div class="g">${g}</div>`;
+      "voc".split("").forEach((l) => {
+        const ok = perm[k].includes(l);
+        s += `<div class="${ok ? "y" : "n"}" aria-label="${ok ? "allowed" : "denied"}">${ok ? "✓" : "—"}</div>`;
+      });
+    });
+    grid.innerHTML = s;
+    const n = perm.join("").length;
+    out.textContent = `${n} of 15 permissions. ${txt}`;
+    pressSeg(fig, "data-r", r);
+  };
+  fig.querySelectorAll("[data-r]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.r)));
+  draw("viewer");
+})();
+
+// 20.4 Audit log with hash chain.
+(() => {
+  const fig = document.getElementById("audit");
+  const log = fig.querySelector(".alog"), out = fig.querySelector(".readout");
+  const who = fig.querySelector('[data-k="who"]'), filt = fig.querySelector('[data-k="f"]');
+  // Tiny non-cryptographic hash, for illustration only.
+  const h = (s) => { let x = 2166136261; for (const ch of s) { x ^= ch.charCodeAt(0); x = Math.imul(x, 16777619) >>> 0; } return x.toString(16).padStart(8, "0").slice(0, 6); };
+  const ACTORS = { operator: "user:j.nowak", viewer: "user:a.kim", panel: "panel:lobby-1" };
+  const MAY = { operator: ["sp", "light", "alarm"], viewer: [], panel: ["light"] };
+  const ACTIONS = { sp: ["setpoint.write ahu1.sat_sp", "18.0→16.0"], light: ["switch lobby.lights", "on→off"], alarm: ["alarm.shelve ahu1.filter_dp", "active→shelved 8h"] };
+  const rows = [];
+  let t = 9 * 3600 + 14 * 60;
+  const ts = () => { t += 7 + Math.floor(Math.random() * 50); const p = (n) => String(n).padStart(2, "0"); return `${p(Math.floor(t / 3600) % 24)}:${p(Math.floor(t / 60) % 60)}:${p(t % 60)}Z`; };
+  const add = (actor, act, val, outcome, human) => {
+    const prev = rows.length ? rows[rows.length - 1].hash : "000000";
+    const body = `${ts()} ${actor} ${act} ${val} ${outcome}`;
+    rows.push({ body, prev, hash: h(prev + body), human, deny: outcome === "denied" });
+  };
+  const verify = () => {
+    let prev = "000000", bad = -1;
+    rows.forEach((r, k) => { if (bad < 0 && (r.prev !== prev || h(prev + r.body) !== r.hash)) bad = k; prev = r.hash; });
+    return bad;
+  };
+  const draw = () => {
+    const f = filt.value, bad = verify();
+    log.innerHTML = rows.map((r, k) => ({ r, k }))
+      .filter(({ r }) => f === "all" || (f === "deny" && r.deny) || (f === "human" && r.human))
+      .map(({ r, k }) => `<div class="${r.deny ? "deny" : ""}"><span class="mu">#${k + 1} prev=${r.prev}</span> ${esc(r.body)}${bad >= 0 && k >= bad ? " ⚠ chain broken" : ""}</div>`)
+      .join("") || `<div class="mu">No entries yet. Press a button.</div>`;
+    log.scrollTop = log.scrollHeight;
+    out.textContent = rows.length ? (bad < 0 ? `Chain intact: ${rows.length} entries verified.` : `Tampering detected at entry #${bad + 1}.`) : "";
+  };
+  fig.querySelectorAll("[data-a]").forEach((b) => b.addEventListener("click", () => {
+    const a = b.dataset.a, w = who.value;
+    if (a === "sched") add("schedule:weekday", "mode.write ahu1", "occupied→unoccupied", "ok", false);
+    else if (a === "tamper") {
+      if (rows.length >= 2) rows[1].body = rows[1].body.replace(/ (ok|denied)$/, " ok (edited)");
+    } else {
+      const [act, val] = ACTIONS[a];
+      add(ACTORS[w], act, val, MAY[w].includes(a) ? "ok" : "denied", w !== "panel");
+    }
+    draw();
+  }));
+  filt.addEventListener("change", draw);
+  draw();
+})();
+
+// 20.5 Wall panel states.
+(() => {
+  const fig = document.getElementById("kiosk");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  let s = "live", q = "good";
+  const draw = () => {
+    const night = s === "night", good = q === "good";
+    const staleAll = s === "drop" && good, staleTemp = s === "device" && good;
+    const tempTxt = s === "device" && !good ? "21.5 °C" : s === "device" ? "-- °C" : "21.5 °C";
+    let banner = "";
+    if (good && s === "drop") banner = "Connection lost · retrying (45 s)";
+    if (good && s === "device") banner = "Room sensor offline since 10:02";
+    let g = `<rect class="box" x="10" y="10" width="380" height="220" rx="16"/>`;
+    if (night) {
+      g += `<rect x="20" y="20" width="360" height="200" rx="10" class="fill-text" opacity=".85"/><text x="200" y="125" text-anchor="middle" class="small">Screen dimmed · touch to wake</text>`;
+    } else {
+      g += `<text x="30" y="42" class="big">Room 2.14 · Meeting</text>`;
+      g += `<text x="370" y="42" text-anchor="end" class="small">${good ? (s === "drop" ? "● offline" : "● live") : "10:47"}</text>`;
+      g += `<g class="${staleAll || staleTemp ? "stale" : ""}"><text x="30" y="100" style="font-size:40px;font-weight:650">${tempTxt}</text><text x="30" y="122" class="small">room temperature${good && s === "live" ? " · updated 4 s ago" : ""}</text></g>`;
+      ["Lights", "Blinds", "Present"].forEach((b, k) => {
+        const off = staleAll;
+        g += `<g class="${off ? "stale" : ""}"><rect class="box" x="${30 + k * 117}" y="146" width="105" height="44" rx="8"/><text x="${82 + k * 117}" y="173" text-anchor="middle">${b}</text></g>`;
+      });
+      if (banner) g += `<rect x="30" y="198" width="340" height="24" rx="6" class="fill-bad"/><text x="200" y="215" text-anchor="middle" style="fill:#fff;font-size:12px">${banner}</text>`;
+    }
+    svg.innerHTML = g;
+    const msg = {
+      live: "Normal. Values are fresh, controls are enabled.",
+      drop: good ? "Values greyed, controls disabled, banner explains. After reconnect the panel requests a snapshot." : "Looks perfectly normal, but every value is 45 s old and button presses go nowhere.",
+      device: good ? "Network is fine, but the sensor's quality is bad. Only that value is greyed." : "Shows the last good reading as if current. Nobody notices the dead sensor.",
+      night: "Dimmed to cut burn-in and light pollution. Wakes on touch or presence.",
+    }[s];
+    out.textContent = msg;
+  };
+  fig.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { s = b.dataset.s; pressSeg(fig, "data-s", s); draw(); }));
+  fig.querySelectorAll("[data-q]").forEach((b) => b.addEventListener("click", () => { q = b.dataset.q; pressSeg(fig, "data-q", q); draw(); }));
+  draw();
+})();
+
+// 20.6 HMI good vs bad.
+(() => {
+  const fig = document.getElementById("hmi");
+  const bad = document.getElementById("hmiBad"), good = document.getElementById("hmiGood");
+  const out = fig.querySelector(".readout");
+  const TAGS = [["OAT", "4.2"], ["MAT", "14.1"], ["SAT", "18.0"], ["RAT", "21.6"], ["SF", "62 %"], ["RF", "58 %"], ["HCV", "35 %"], ["DMP", "30 %"]];
+  let fault = false;
+  const draw = () => {
+    // Fault: SAT drifts high.
+    const sat = fault ? "21.3" : "18.0";
+    let b = `<rect x="0" y="0" width="300" height="200" rx="8" class="fill-accent-soft"/>`;
+    b += `<rect x="20" y="60" width="260" height="50" rx="6" class="hmi-acc" opacity=".55"/>`;
+    b += `<circle cx="70" cy="85" r="16" class="hmi-ok"/><circle cx="230" cy="85" r="16" class="hmi-ok"/>`;
+    b += `<rect x="130" y="66" width="40" height="38" class="hmi-bad"/><rect x="180" y="66" width="20" height="38" class="hmi-ex"/>`;
+    TAGS.forEach(([n, v], k) => {
+      const val = n === "SAT" ? sat : v;
+      const cls = ["hmi-bad", "hmi-ok", "hmi-ex", "hmi-acc"][k % 4];
+      b += `<rect x="${10 + (k % 4) * 72}" y="${122 + Math.floor(k / 4) * 36}" width="66" height="30" rx="4" class="${cls}"/><text x="${43 + (k % 4) * 72}" y="${142 + Math.floor(k / 4) * 36}" text-anchor="middle" style="fill:#fff;font-size:11px">${n} ${val}</text>`;
+    });
+    bad.innerHTML = b;
+
+    let g = `<rect x="0" y="0" width="300" height="200" rx="8" class="fill-surface"/>`;
+    g += `<rect x="20" y="60" width="260" height="50" rx="6" class="hmi-grey" style="stroke-width:1.5"/>`;
+    g += `<circle cx="70" cy="85" r="14" class="hmi-grey" style="stroke-width:2"/><circle cx="230" cy="85" r="14" class="hmi-grey" style="stroke-width:2"/>`;
+    g += `<text x="70" y="89" text-anchor="middle" class="small">SF</text><text x="230" y="89" text-anchor="middle" class="small">RF</text>`;
+    TAGS.forEach(([n, v], k) => {
+      const x = 10 + (k % 4) * 72, y = 122 + Math.floor(k / 4) * 36;
+      const abn = fault && n === "SAT";
+      const val = n === "SAT" ? sat : v;
+      g += `<text x="${x + 2}" y="${y + 12}" class="small">${n}</text><text x="${x + 2}" y="${y + 27}" style="font-size:12px">${val}</text>`;
+      // Normal band bar with the value marker.
+      g += `<rect x="${x + 36}" y="${y + 18}" width="28" height="6" class="hmi-grey"/>`;
+      const pos = abn ? 28 : 14;
+      g += `<rect x="${x + 36 + pos - 1}" y="${y + 15}" width="3" height="12" class="${abn ? "hmi-ex" : "fill-muted"}"/>`;
+      if (abn) g += `<polygon points="${x + 50},${y - 2} ${x + 58},${y + 10} ${x + 42},${y + 10}" class="hmi-ex"/><text x="${x + 50}" y="${y + 9}" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">!</text>`;
+    });
+    if (fault) g += `<text x="150" y="40" text-anchor="middle" style="font-size:12px;font-weight:650">⚠ SAT high · 21.3 °C (band 17–19)</text>`;
+    good.innerHTML = g;
+    out.textContent = fault
+      ? "Supply air is 3.3 K above band. Left: only the number changed inside an already red-orange-green field. Right: the only coloured item, with a triangle and a text line."
+      : "Normal operation. The right screen is almost entirely grey, which is the point.";
+  };
+  fig.querySelector('[data-a="fault"]').addEventListener("click", () => { fault = true; draw(); });
+  fig.querySelector('[data-a="clear"]').addEventListener("click", () => { fault = false; draw(); });
+  draw();
+})();
+</script>
+</body>
+</html>

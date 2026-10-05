@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Electrical Power and UPS</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .pw-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .pw-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .pw-row input[type=range] { width: 100%; }
+  .pw-row output { font: 600 14px var(--mono); color: var(--text); }
+  .pw-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; margin-top: 10px; }
+  .pw-stat { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; min-width: 0; }
+  .pw-stat span { display: block; font-size: 12px; color: var(--muted); }
+  .pw-stat b { font: 600 17px var(--mono); overflow-wrap: anywhere; }
+  .pw-stat.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .pw-stat.ok { border-color: var(--ok); background: var(--ok-soft); }
+  .pw-stat.warn { border-color: var(--example); background: var(--example-soft); }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  svg .flow { stroke: var(--accent); stroke-width: 3; fill: none; stroke-dasharray: 7 6; animation: pwdash .8s linear infinite; }
+  svg .flow.bat { stroke: var(--example); }
+  svg .flow.bad { stroke: var(--bad); }
+  svg .off { stroke: var(--border); stroke-width: 2; fill: none; stroke-dasharray: 3 5; }
+  svg .dim { opacity: .3; }
+  svg .wave { stroke: var(--accent); stroke-width: 2.2; fill: none; }
+  svg .ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; fill: none; }
+  svg .grid { stroke: var(--border); stroke-width: 1; }
+  svg .fill-example { fill: var(--example); }
+  svg .fill-bad-soft { fill: var(--bad-soft); }
+  svg .fill-ok-soft { fill: var(--ok-soft); }
+  svg .s-ok { stroke: var(--ok); } svg .s-bad { stroke: var(--bad); } svg .s-ex { stroke: var(--example); }
+  @keyframes pwdash { to { stroke-dashoffset: -13; } }
+  @media (prefers-reduced-motion: reduce) { svg .flow { animation: none; } }
+  .pw-log { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 4em; }
+  .pw-log .mu { color: var(--muted); } .pw-log .bad { color: var(--bad); } .pw-log .ok { color: var(--ok); } .pw-log .ex { color: var(--example); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="17">
+<div class="content">
+  <div class="kicker">Chapter 17</div>
+  <h1>Electrical power and UPS</h1>
+  <p class="lead">Every controller, switch and server in a building runs on electricity that someone else supplies,
+    and that supply fails, sags and gets dirty. This chapter covers the low-voltage side a BMS engineer must
+    understand: distribution boards and protection, UPS types and sizing, monitoring UPSs over the network,
+    shutting systems down in the right order, generators, solar with batteries, and power quality.</p>
+
+  <!-- 17.1 -->
+  <section class="lesson" id="s1" data-num="17.1">
+    <h2>17.1 Distribution boards and protection</h2>
+    <p>Power enters a building at the <strong>service entrance</strong>: the utility cable, a main fuse or breaker,
+      and the revenue meter. In Europe a typical supply is 3-phase 230/400 V at 50 Hz. In North America it is
+      120/240 V split phase for houses and 120/208 V or 277/480 V 3-phase for commercial buildings, at 60 Hz.
+      From the <strong>main distribution board</strong> (MDB, or main switchboard) cables run to
+      <strong>sub-distribution boards</strong> on each floor or for each plant room. Each board feeds final
+      circuits: sockets, lighting, an air handling unit, a server rack.</p>
+    <p>This tree is drawn as a <strong>single-line diagram</strong> (SLD). One line stands for all phases plus
+      neutral and earth. The SLD is the first document to ask for when you plan BMS power: it tells you which
+      board feeds what, which protective device sits where, and which circuits are on UPS or generator.</p>
+
+    <h3>Try it: a clickable single-line diagram</h3>
+    <figure class="viz" id="sld">
+      <svg viewBox="0 0 620 330" role="img" aria-label="Single-line diagram from utility to final circuits">
+        <defs><marker id="ah17" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <path class="arrow" d="M310,48 L310,70"/>
+        <path class="arrow" d="M310,108 L310,128"/>
+        <path class="arrow" d="M110,150 L510,150"/>
+        <path class="arrow" d="M110,150 L110,184"/><path class="arrow" d="M310,150 L310,184"/><path class="arrow" d="M510,150 L510,184"/>
+        <path class="arrow" d="M110,222 L110,250"/><path class="arrow" d="M310,222 L310,250"/><path class="arrow" d="M510,222 L510,250"/>
+        <path class="arrow" d="M60,250 L160,250"/><path class="arrow" d="M260,250 L360,250"/><path class="arrow" d="M460,250 L560,250"/>
+        <path class="arrow" d="M60,250 L60,272"/><path class="arrow" d="M160,250 L160,272"/>
+        <path class="arrow" d="M260,250 L260,272"/><path class="arrow" d="M360,250 L360,272"/>
+        <path class="arrow" d="M460,250 L460,272"/><path class="arrow" d="M560,250 L560,272"/>
+        <g role="button" tabindex="0" data-k="util"><rect class="box" x="250" y="10" width="120" height="38" rx="8"/><text x="310" y="34" text-anchor="middle">Utility + meter</text></g>
+        <g role="button" tabindex="0" data-k="main"><rect class="box" x="250" y="70" width="120" height="38" rx="8"/><text x="310" y="94" text-anchor="middle">Main breaker</text></g>
+        <g role="button" tabindex="0" data-k="spd"><rect class="box" x="400" y="70" width="90" height="38" rx="8"/><text x="445" y="94" text-anchor="middle">SPD T1+2</text></g>
+        <path class="arrow" d="M370,89 L400,89"/>
+        <g role="button" tabindex="0" data-k="bus"><rect class="box" x="250" y="128" width="120" height="22" rx="4"/><text class="small" x="310" y="143" text-anchor="middle">MDB busbar</text></g>
+        <g role="button" tabindex="0" data-k="sub"><rect class="box" x="50" y="184" width="120" height="38" rx="8"/><text x="110" y="208" text-anchor="middle">Sub-board L1</text></g>
+        <g role="button" tabindex="0" data-k="plant"><rect class="box" x="250" y="184" width="120" height="38" rx="8"/><text x="310" y="208" text-anchor="middle">Plant board</text></g>
+        <g role="button" tabindex="0" data-k="it"><rect class="box" x="450" y="184" width="120" height="38" rx="8"/><text x="510" y="208" text-anchor="middle">IT / BMS board</text></g>
+        <g role="button" tabindex="0" data-k="rcbo"><rect class="box" x="15" y="272" width="90" height="44" rx="8"/><text x="60" y="292" text-anchor="middle">Sockets</text><text class="small" x="60" y="307" text-anchor="middle">RCBO B16 30 mA</text></g>
+        <g role="button" tabindex="0" data-k="light"><rect class="box" x="115" y="272" width="90" height="44" rx="8"/><text x="160" y="292" text-anchor="middle">Lighting</text><text class="small" x="160" y="307" text-anchor="middle">MCB B10</text></g>
+        <g role="button" tabindex="0" data-k="motor"><rect class="box" x="215" y="272" width="90" height="44" rx="8"/><text x="260" y="292" text-anchor="middle">AHU fan VFD</text><text class="small" x="260" y="307" text-anchor="middle">MCB C32 + RCD B</text></g>
+        <g role="button" tabindex="0" data-k="pump"><rect class="box" x="315" y="272" width="90" height="44" rx="8"/><text x="360" y="292" text-anchor="middle">Pumps</text><text class="small" x="360" y="307" text-anchor="middle">MPCB 2.5–4 A</text></g>
+        <g role="button" tabindex="0" data-k="ups"><rect class="box" x="415" y="272" width="90" height="44" rx="8"/><text x="460" y="292" text-anchor="middle">UPS input</text><text class="small" x="460" y="307" text-anchor="middle">MCB C20</text></g>
+        <g role="button" tabindex="0" data-k="ctrl"><rect class="box" x="515" y="272" width="90" height="44" rx="8"/><text x="560" y="292" text-anchor="middle">24 V PSU</text><text class="small" x="560" y="307" text-anchor="middle">MCB B6 → fuses</text></g>
+      </svg>
+      <div class="readout" aria-live="polite">Click a block in the diagram.</div>
+      <figcaption>A simplified SLD. Real ones also show cable sizes, breaker ratings, earthing system (TN-S, TN-C-S, TT) and metering points.</figcaption>
+    </figure>
+
+    <h3>Protective devices</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Device</th><th>Protects against</th><th>How it trips</th><th>Typical values</th></tr>
+      <tr><td><strong>Fuse</strong></td><td>Overload, short circuit</td><td>Element melts. Very fast at high current, must be replaced.</td><td>gG 63–400 A at the service entrance</td></tr>
+      <tr><td><strong>MCB</strong> (miniature circuit breaker)</td><td>Overload, short circuit of the cable</td><td>Thermal (bimetal) for overload, magnetic for short circuit</td><td>6–63 A, curve B/C/D, 6 or 10 kA breaking capacity</td></tr>
+      <tr><td><strong>RCD</strong> / RCCB</td><td>Shock and earth-fault fire</td><td>Compares current out and back. Difference = leakage to earth.</td><td>30 mA for people, 100–300 mA for fire protection</td></tr>
+      <tr><td><strong>RCBO</strong></td><td>Both of the above in one module</td><td>MCB + RCD per circuit</td><td>B16 30 mA type A</td></tr>
+      <tr><td><strong>MCCB</strong> (moulded case)</td><td>Feeders, sub-boards</td><td>Adjustable thermal and magnetic, often electronic trip unit</td><td>100–1600 A</td></tr>
+      <tr><td><strong>Motor protection breaker</strong> (MPCB)</td><td>Motor overload, phase loss</td><td>Adjustable thermal setting to motor FLA</td><td>e.g. 2.5–4 A for a 1.1 kW pump</td></tr>
+      <tr><td><strong>SPD</strong> (surge protective device)</td><td>Lightning and switching surges</td><td>Clamps overvoltage to earth (varistor, spark gap)</td><td>Type 1 at entrance, Type 2 at sub-boards, Type 3 at equipment</td></tr>
+    </table></div>
+    <p>MCB <strong>trip curves</strong> set how much inrush current is tolerated before the magnetic trip acts:
+      curve B at 3–5 × In, curve C at 5–10 × In, curve D at 10–20 × In. A UPS, a transformer or a large switch-mode
+      supply has a big inrush when switched on. A B16 feeding a 3 kVA UPS may trip at power-up where a C16 would not.</p>
+    <p>RCD <strong>types</strong> matter for electronics. Type AC detects only sinusoidal leakage. Type A adds
+      pulsating DC. Type F adds mixed frequencies, typical of single-phase variable speed drives. Type B also detects
+      smooth DC leakage, which 3-phase VFDs, EV chargers and some PV inverters can produce. A smooth DC leakage can
+      blind an upstream type A device. Follow the equipment manual and local rules on which type is required.</p>
+    <p><strong>Selectivity</strong> (discrimination) means that only the device closest to the fault trips. A short
+      in one socket circuit should open its B16, not the 63 A feeder to the whole floor. Selectivity is designed with
+      the manufacturers' tables. Also mind leakage: many PCs and PSUs on one 30 mA RCD add up their EMC filter
+      leakage. As a rule of thumb, keep the standing leakage under about a third of the rated residual current.</p>
+
+    <h3>What the BMS reads from a board</h3>
+    <p>Most breakers can have an <strong>auxiliary contact</strong> (on/off) and a <strong>fault/trip contact</strong>.
+      Wired to digital inputs they tell the BMS "the AHU breaker has tripped", which is far better than inferring it
+      from a missing temperature. Modern boards add energy meters on Modbus or M-Bus (Chapter 18), and some breakers
+      report current, temperature and trip cause directly over Modbus or a wireless gateway. A Type 2 SPD usually has
+      a remote signalling contact that says when its cartridge is worn out.</p>
+
+    <div class="callout example">A 6-storey office has a 400 A MDB, one 63 A sub-board per floor and a 125 A
+      mechanical board in the basement. The BMS reads trip contacts from 14 breakers that feed critical plant,
+      the SPD status contact, and three Modbus meters. The IT/BMS board is fed from its own breaker on the MDB, so
+      a tripped floor RCD never takes down the network core.</div>
+
+    <div class="callout warn">Never put BMS controllers, network switches and the fire alarm interface on a socket
+      circuit shared with kettles and cleaners' vacuums. A single tripped RCD then takes out building control.
+      Give control panels dedicated, labelled circuits, ideally behind a UPS.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A 3-phase VFD feeds a fan. Which RCD type is generally required to detect its possible smooth DC leakage?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Type AC only detects sinusoidal AC leakage.">Type AC</button>
+        <button class="opt" data-opt="b" data-why="Type A handles pulsating DC, not smooth DC.">Type A</button>
+        <button class="opt" data-opt="c" data-why="Type B detects smooth DC leakage typical of 3-phase rectifiers.">Type B</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The single-line diagram is the map: get it before you plan BMS power.</li>
+      <li>MCBs protect cables; RCDs protect people; SPDs protect equipment from surges.</li>
+      <li>Curve and RCD type must match the load (inrush, DC leakage).</li>
+      <li>Wire trip and SPD contacts into the BMS; give control panels dedicated circuits.</li>
+    </ul>
+  </section>
+
+  <!-- 17.2 -->
+  <section class="lesson" id="s2" data-num="17.2">
+    <h2>17.2 UPS topologies and sizing</h2>
+    <p>An <strong>uninterruptible power supply</strong> stores energy in a battery and delivers it when the mains
+      fails. It bridges short outages and gives systems time to shut down cleanly or for a generator to start.
+      UPSs differ in how the load is connected in normal operation. IEC 62040-3 classifies them by what the output
+      depends on: <strong>VFD</strong> (voltage and frequency dependent on input), <strong>VI</strong> (voltage
+      independent, frequency dependent) and <strong>VFI</strong> (voltage and frequency independent).</p>
+
+    <h3>Try it: follow the power</h3>
+    <figure class="viz" id="topo">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Topology">
+          <button data-t="off" aria-pressed="true">Offline / standby</button>
+          <button data-t="li">Line-interactive</button>
+          <button data-t="dc">Online double conversion</button>
+        </div>
+        <div class="seg" role="group" aria-label="Mains state">
+          <button data-m="ok" aria-pressed="true">Mains OK</button>
+          <button data-m="low">Mains low (195 V)</button>
+          <button data-m="fail">Mains fail</button>
+        </div>
+      </div>
+      <svg viewBox="0 0 620 250" role="img" aria-label="UPS internal power path">
+        <rect class="box" x="10" y="90" width="80" height="50" rx="8"/><text x="50" y="112" text-anchor="middle">Mains</text><text class="small" id="tpV" x="50" y="128" text-anchor="middle">230 V</text>
+        <rect class="box" id="tpBy" x="230" y="20" width="160" height="40" rx="8"/><text id="tpByT" x="310" y="45" text-anchor="middle">Bypass / direct path</text>
+        <rect class="box" id="tpRe" x="150" y="150" width="100" height="44" rx="8"/><text x="200" y="170" text-anchor="middle">Rectifier</text><text class="small" x="200" y="185" text-anchor="middle">AC → DC</text>
+        <rect class="box" id="tpBa" x="270" y="200" width="80" height="40" rx="8"/><text x="310" y="225" text-anchor="middle">Battery</text>
+        <rect class="box" id="tpIn" x="370" y="150" width="100" height="44" rx="8"/><text x="420" y="170" text-anchor="middle">Inverter</text><text class="small" x="420" y="185" text-anchor="middle">DC → AC</text>
+        <rect class="box" id="tpSw" x="480" y="90" width="40" height="50" rx="6"/><text class="small" x="500" y="120" text-anchor="middle">SW</text>
+        <rect class="box" x="540" y="90" width="70" height="50" rx="8"/><text x="575" y="112" text-anchor="middle">Load</text><text class="small" id="tpOut" x="575" y="128" text-anchor="middle">230 V</text>
+        <path id="pBy" d="M90,105 L120,105 L120,40 L230,40 M390,40 L500,40 L500,90"/>
+        <path id="pRe" d="M90,125 L120,125 L120,172 L150,172"/>
+        <path id="pDc" d="M250,172 L370,172"/>
+        <path id="pBa" d="M310,200 L310,172"/>
+        <path id="pIn" d="M470,172 L500,172 L500,140"/>
+        <path id="pOut" d="M520,115 L540,115"/>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Offline / standby (VFD)</th><th>Line-interactive (VI)</th><th>Online double conversion (VFI)</th></tr>
+      <tr><td>Normal path</td><td>Mains straight to load</td><td>Mains through an autotransformer that bucks/boosts</td><td>Rectifier → DC bus → inverter, always</td></tr>
+      <tr><td>Transfer on failure</td><td>Relay, roughly 5–12 ms</td><td>Relay, roughly 2–6 ms</td><td>None: zero transfer time</td></tr>
+      <tr><td>Output waveform on battery</td><td>Often stepped ("simulated sine") on cheap units</td><td>Sine on most mid-range units</td><td>Pure sine, regulated</td></tr>
+      <tr><td>Efficiency in normal mode</td><td>~98 %+</td><td>~95–98 %</td><td>~92–96 %; up to ~99 % in "eco" mode (on bypass)</td></tr>
+      <tr><td>Typical size</td><td>350–1500 VA, desktop</td><td>500 VA–3 kVA, rack/tower</td><td>1 kVA to MW, all serious IT and BMS rooms</td></tr>
+      <tr><td>Example products</td><td>APC Back-UPS, small Eaton units</td><td>APC Smart-UPS (line-interactive models), Eaton 5PX, CyberPower PR</td><td>Eaton 9SX/9PX, APC Smart-UPS SRT, Riello, Socomec</td></tr>
+    </table></div>
+    <p>Online units also have a <strong>static bypass</strong>: if the inverter fails or is overloaded, an
+      electronic switch connects the load to mains without a break. A separate <strong>maintenance bypass</strong>
+      switch lets you remove the UPS for service while the load stays powered.</p>
+
+    <h3>Sizing: VA, W and runtime</h3>
+    <p>UPSs are rated in <strong>VA</strong> (apparent power) and <strong>W</strong> (real power). Modern units have
+      an output power factor of 0.9 or 1.0, so a 3000 VA unit delivers 2700 or 3000 W. Size on watts. Add up the
+      measured or nameplate input power of each device, add 20–30 % headroom, and stay under about 80 % load so
+      there is room for growth and inrush.</p>
+    <p><strong>Runtime</strong> depends on the battery energy and the load. A rough first estimate:
+      runtime ≈ battery Wh × inverter efficiency ÷ load W. Real runtime is shorter at high load, because a lead-acid
+      battery delivers fewer usable Wh when discharged fast (the Peukert effect). Manufacturers publish runtime
+      tables; use those for the final number.</p>
+
+    <h3>Try it: runtime calculator</h3>
+    <figure class="viz" id="runtime">
+      <div class="pw-row">
+        <label>UPS rating (VA, PF 0.9) <input type="range" min="1000" max="10000" step="500" value="3000" data-k="va"><output></output></label>
+        <label>Load (W) <input type="range" min="100" max="9000" step="50" value="900" data-k="w"><output></output></label>
+        <label>Battery energy (Wh) <input type="range" min="200" max="10000" step="100" value="1200" data-k="wh"><output></output></label>
+        <label>Battery age / health (%) <input type="range" min="50" max="100" step="5" value="100" data-k="soh"><output></output></label>
+      </div>
+      <div class="pw-stats"></div>
+      <svg viewBox="0 0 600 150" role="img" aria-label="Runtime versus load curve"></svg>
+      <figcaption>Teaching model: 92 % inverter efficiency and a simple rate derating for lead-acid. Use the vendor's runtime table for design.</figcaption>
+    </figure>
+
+    <h3>Batteries</h3>
+    <p>Most UPSs use <strong>VRLA</strong> (valve regulated lead-acid, AGM) batteries. Their design life is often
+      quoted as 3–5 years for standard blocks and up to 10–12 years for long-life types, but heat shortens it
+      dramatically: a common rule of thumb is half the life for every 8–10 K above 20–25 °C. Lithium-ion
+      (often LFP) UPS batteries cost more but last longer, weigh less and tolerate heat better. Battery packs are
+      added as <strong>external battery modules</strong> (EBMs) to extend runtime.</p>
+
+    <div class="callout example">A BMS rack holds a server (180 W), two PoE switches (2 × 120 W), a firewall
+      (30 W), and a controller power supply (60 W): 510 W. With 25 % headroom that is 640 W. A 1500 VA / 1350 W
+      online UPS runs at about 38 %. With internal batteries of roughly 9 Ah × 4 × 12 V (≈430 Wh nominal) it gives
+      perhaps 25–35 minutes, enough to ride through short outages and shut down cleanly on longer ones.</div>
+
+    <div class="callout warn">Runtime tables assume new batteries at 25 °C. After four summers in a hot plant
+      room, a "30 minute" UPS may deliver 8. Schedule a self-test and a real runtime calibration at least yearly,
+      and track battery replacement dates.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Which topology has zero transfer time because the inverter always feeds the load?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="It regulates with an autotransformer but still switches a relay on failure.">Line-interactive</button>
+        <button class="opt" data-opt="b" data-why="Rectifier and inverter are always in the path; the battery just sits on the DC bus.">Online double conversion</button>
+        <button class="opt" data-opt="c" data-why="It switches from mains to inverter on failure.">Offline / standby</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Offline (VFD) &lt; line-interactive (VI) &lt; online double conversion (VFI) in protection.</li>
+      <li>Size on watts with headroom; aim for under ~80 % load.</li>
+      <li>Runtime ≈ Wh × efficiency ÷ W, shorter at high load and with aged batteries.</li>
+      <li>Heat kills lead-acid batteries; test and replace on schedule.</li>
+    </ul>
+  </section>
+
+  <!-- 17.3 -->
+  <section class="lesson" id="s3" data-num="17.3">
+    <h2>17.3 UPS monitoring: NUT, SNMP</h2>
+    <p>A UPS that nobody watches is a UPS that silently has dead batteries. Monitoring answers three questions:
+      is the UPS on mains or battery, how long can it last, and is it healthy (battery test result, alarms,
+      temperature). There are three common ways to get this data.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Interface</th><th>How it works</th><th>Good for</th></tr>
+      <tr><td><strong>USB / serial</strong></td><td>USB HID Power Device class, or a vendor protocol on RS-232. One host reads it.</td><td>A single server or a small edge box next to the UPS</td></tr>
+      <tr><td><strong>Network management card</strong> (SNMP, HTTP, often Modbus TCP)</td><td>A card in the UPS with its own IP. Speaks SNMP (RFC 1628 UPS-MIB and vendor MIBs), web UI, email, sometimes Modbus TCP and BACnet.</td><td>Racks with many servers, BMS integration, data centres</td></tr>
+      <tr><td><strong>Dry contacts</strong></td><td>Relay outputs: "on battery", "low battery", "fault".</td><td>Hard-wiring to a PLC or BMS digital input; simple and robust</td></tr>
+    </table></div>
+
+    <h3>Network UPS Tools (NUT)</h3>
+    <p><strong>NUT</strong> is the open-source standard on Linux and BSD, also used inside many NAS products and
+      Home Assistant. It has three parts:</p>
+    <ul>
+      <li><strong>Drivers</strong> talk to the hardware: <code>usbhid-ups</code> for most USB UPSs,
+        <code>snmp-ups</code> for network cards, <code>nutdrv_qx</code> for many generic units.</li>
+      <li><strong>upsd</strong> is the data server. It exposes every UPS on TCP port <strong>3493</strong>.</li>
+      <li><strong>upsmon</strong> runs on each protected host. It watches the status and shuts the host down.
+        One upsmon is the <em>primary</em> (formerly "master", the host with the UPS attached); others are
+        <em>secondary</em> ("slave").</li>
+    </ul>
+    <p>Clients like <code>upsc</code> read variables with standard names. The key one is <code>ups.status</code>,
+      a set of flags: <code>OL</code> (on line), <code>OB</code> (on battery), <code>LB</code> (low battery),
+      <code>CHRG</code>, <code>RB</code> (replace battery), <code>BYPASS</code>, <code>OVER</code> (overload) and
+      <code>FSD</code> (forced shutdown). Standard names make NUT a neat integration layer: the BMS asks for
+      <code>battery.runtime</code> without caring about the brand.</p>
+
+    <h3>Try it: watch <code>upsc</code> during an outage</h3>
+    <figure class="viz" id="nut">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Mains">
+          <button data-m="1" aria-pressed="true">Mains on</button>
+          <button data-m="0">Mains off</button>
+        </div>
+        <button class="btn secondary" data-act="test">Run battery test</button>
+        <button class="btn secondary" data-act="reset" aria-label="Reset">↺</button>
+      </div>
+      <pre class="code" aria-live="polite"></pre>
+      <div class="pw-log" aria-live="polite"></div>
+      <figcaption>Simulated <code>upsc rack1@nas</code> output, one tick per second (time is sped up 30×). Load 540 W on a 1500 VA unit.</figcaption>
+    </figure>
+
+    <h3>SNMP</h3>
+    <p>The standard UPS-MIB (RFC 1628) lives under <code>1.3.6.1.2.1.33</code>. Vendors add richer private MIBs
+      (APC PowerNet, Eaton XUPS). A few useful standard objects:</p>
+    <div class="table-wrap"><table>
+      <tr><th>OID (UPS-MIB)</th><th>Name</th><th>Meaning</th></tr>
+      <tr><td><code>.33.1.2.1.0</code></td><td>upsBatteryStatus</td><td>1 unknown, 2 normal, 3 low, 4 depleted</td></tr>
+      <tr><td><code>.33.1.2.3.0</code></td><td>upsEstimatedMinutesRemaining</td><td>Runtime in minutes</td></tr>
+      <tr><td><code>.33.1.2.4.0</code></td><td>upsEstimatedChargeRemaining</td><td>Charge in %</td></tr>
+      <tr><td><code>.33.1.4.1.0</code></td><td>upsOutputSource</td><td>3 normal, 4 bypass, 5 battery, …</td></tr>
+      <tr><td><code>.33.1.4.4.1.5.1</code></td><td>upsOutputPercentLoad</td><td>Load per output line in %</td></tr>
+    </table></div>
+    <pre class="code">snmpget -v2c -c public 10.0.20.15 1.3.6.1.2.1.33.1.2.3.0
+SNMPv2-SMI::mib-2.33.1.2.3.0 = INTEGER: 34</pre>
+    <p>Polling every 10–30 s is enough for trends. For fast reaction, configure SNMP <strong>traps</strong>
+      (onBattery, lowBattery) to the BMS or NUT host, but keep polling as a backstop, since traps are UDP and can be
+      lost. Use SNMPv3 with authentication where the card supports it; v1/v2c community strings are plain text.</p>
+
+    <div class="callout example">A school has eight UPSs from two brands. Each has a network card. One small Linux
+      VM runs NUT with eight <code>snmp-ups</code> drivers. The BMS reads <code>ups.status</code>,
+      <code>battery.charge</code> and <code>battery.runtime</code> for all of them from upsd through one
+      integration and raises an alarm on <code>OB</code>, <code>LB</code> or <code>RB</code>.</div>
+
+    <div class="callout warn">The network card and the switch between it and the monitoring host must themselves be
+      on UPS power. Otherwise the first thing a power cut does is make the UPS invisible.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q"><code>ups.status</code> reads <code>OB LB</code>. What does upsmon on a typical host do?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="On battery and low battery is the default critical condition: upsmon starts shutdown.">Starts its shutdown sequence</button>
+        <button class="opt" data-opt="b" data-why="OB alone just warns; LB together with OB is critical.">Only logs a warning</button>
+        <button class="opt" data-opt="c" data-why="RB is the replace battery flag, not LB.">Requests a battery replacement</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Monitor via USB, a network card (SNMP/Modbus) or dry contacts.</li>
+      <li>NUT: drivers → upsd (port 3493) → upsmon on each host; standard variable names.</li>
+      <li><code>OB</code> + <code>LB</code> means shut down; <code>RB</code> means replace batteries.</li>
+      <li>Poll and use traps; keep the monitoring path itself on UPS.</li>
+    </ul>
+  </section>
+
+  <!-- 17.4 -->
+  <section class="lesson" id="s4" data-num="17.4">
+    <h2>17.4 Graceful shutdown chains</h2>
+    <p>When the battery is going to run out, it is better to stop systems cleanly than to let them crash. A
+      database killed mid-write may corrupt, a hypervisor with dirty caches may lose VMs, and a storage array that
+      loses power hard can take a long time to recover. A <strong>shutdown chain</strong> stops systems in
+      dependency order: consumers first, then services, then storage, then the hypervisor, and the network last.
+      On restore, the order reverses.</p>
+
+    <h3>Triggers</h3>
+    <ul>
+      <li><strong>Low battery</strong> (<code>LB</code>): the UPS says "about 2–5 minutes left". Simple but late.
+        Shutting down 15 VMs may take longer than what is left.</li>
+      <li><strong>Runtime threshold</strong>: start when <code>battery.runtime</code> drops below e.g. 600 s.</li>
+      <li><strong>Time on battery</strong>: start after e.g. 5 minutes on battery, no matter how much is left. Long
+        outages are rarely short: if the mains has not returned in 5 minutes it will probably be out for longer.</li>
+    </ul>
+    <p>When upsmon on the primary host decides to shut down, it sets <code>FSD</code> on upsd. Every secondary sees
+      FSD and shuts down. The primary waits for secondaries to disconnect (up to <code>HOSTSYNC</code>, 15 s by
+      default) and then shuts itself down. Finally it can tell the UPS to switch its output off after a delay
+      (<code>upsdrvctl shutdown</code> / the driver's "shutdown.return" command). That last step is important:
+      when the mains returns, the UPS restarts its output and the servers boot again thanks to "restore on AC
+      power" in the BIOS. Without it, a short outage that ends after the servers shut down but before the battery
+      ran out leaves everything off.</p>
+
+    <h3>Try it: an outage, minute by minute</h3>
+    <figure class="viz" id="chain">
+      <div class="pw-row">
+        <label>Minutes since mains failure <input type="range" min="0" max="40" step="0.5" value="0" data-k="t"><output></output></label>
+        <label>Shutdown starts after (min on battery) <input type="range" min="1" max="20" step="1" value="5" data-k="start"><output></output></label>
+      </div>
+      <svg viewBox="0 0 620 230" role="img" aria-label="Timeline of systems shutting down"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Battery runtime at this load is 28 min. Each bar is a system's shutdown duration in the chain. Drag past 28 minutes with a late start to see a hard crash.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Order</th><th>System</th><th>Why here</th><th>Typical time</th></tr>
+      <tr><td>1</td><td>Front ends, report jobs, non-critical VMs</td><td>Nothing depends on them</td><td>30–60 s</td></tr>
+      <tr><td>2</td><td>Application servers, BMS supervisor, historian</td><td>Flush data, close databases</td><td>1–3 min</td></tr>
+      <tr><td>3</td><td>Storage (NAS/SAN)</td><td>VMs must be off first</td><td>1–3 min</td></tr>
+      <tr><td>4</td><td>Hypervisor hosts</td><td>Last compute layer</td><td>1–2 min</td></tr>
+      <tr><td>5</td><td>UPS output off with return-on-power</td><td>Ensures automatic restart</td><td>after a delay, e.g. 120 s</td></tr>
+    </table></div>
+    <p>Tools differ by platform. VMware environments often use vendor software (Eaton IPM, APC PowerChute Network
+      Shutdown) or scripts that call the hypervisor API. Proxmox and plain Linux hosts usually run NUT upsmon with a
+      custom <code>SHUTDOWNCMD</code>. Synology and QNAP NAS units include NUT and can act as the upsd server for
+      other hosts.</p>
+
+    <div class="callout example">A small BMS server room: one online 3 kVA UPS, a Proxmox host with 6 VMs, a NAS
+      and two switches. The NAS has the UPS on USB and runs upsd. upsmon on the Proxmox host is a secondary with
+      <code>SHUTDOWNCMD</code> that shuts down VMs, then the host. Policy: start after 5 minutes on battery. At a
+      typical 900 W load the UPS gives 28 minutes, so the chain finishes with over 15 minutes of margin. The PLCs and
+      field controllers run on their own 24 V DC UPS modules and keep running.</div>
+
+    <div class="callout warn">Field controllers should <em>not</em> be in the IT shutdown chain. They are designed to
+      lose power and come back. What matters is that their outputs fail to a safe state, which is a design question
+      (Chapter 08), not a UPS question.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Why should the primary tell the UPS to cut its output (with automatic return) at the end of the chain?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Battery saving is a side effect, not the main reason.">To save battery energy</button>
+        <button class="opt" data-opt="b" data-why="Servers are already off; nothing more to protect there.">To protect servers from the low battery</button>
+        <button class="opt" data-opt="c" data-why="If mains returns before the battery is empty, servers would otherwise stay off. The power cycle makes them boot.">So the servers reboot when mains returns, even after a short outage</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Shut down in dependency order; restart in reverse.</li>
+      <li>Trigger on time on battery or runtime, not only on low battery.</li>
+      <li>FSD propagates the decision from primary to secondaries.</li>
+      <li>End with "UPS off, return on power" plus BIOS "restore on AC".</li>
+    </ul>
+  </section>
+
+  <!-- 17.5 -->
+  <section class="lesson" id="s5" data-num="17.5">
+    <h2>17.5 Generators and transfer switches</h2>
+    <p>A UPS covers minutes. A <strong>standby generator</strong> covers hours or days, limited by fuel. Diesel is
+      most common; gas-fired units are used where piped gas is available. Typical building sets range from 20 kVA
+      for a small site to several MVA for hospitals and data centres. A generator cannot take load instantly: it
+      must crank, reach speed and stabilise voltage and frequency. A healthy diesel set can do this in about 10 s.
+      Many codes for life-safety loads require restoration within 10 s (for example NFPA 110 "Type 10" in the US),
+      but check your local regulations.</p>
+    <p>The <strong>automatic transfer switch</strong> (ATS) chooses between utility and generator. Its controller
+      monitors utility voltage and frequency, starts the generator, waits until it is stable, and transfers. It is
+      mechanically or electrically interlocked so both sources can never be connected together.</p>
+
+    <h3>Try it: transfer sequence</h3>
+    <figure class="viz" id="ats">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 620 240" role="img" aria-label="Utility, generator, ATS, UPS and loads">
+        <rect class="box" id="aU" x="10" y="20" width="110" height="50" rx="8"/><text x="65" y="42" text-anchor="middle">Utility</text><text class="small" id="aUt" x="65" y="58" text-anchor="middle"></text>
+        <rect class="box" id="aG" x="10" y="160" width="110" height="50" rx="8"/><text x="65" y="182" text-anchor="middle">Generator</text><text class="small" id="aGt" x="65" y="198" text-anchor="middle"></text>
+        <rect class="box" id="aA" x="200" y="85" width="100" height="60" rx="8"/><text x="250" y="110" text-anchor="middle">ATS</text><text class="small" id="aAt" x="250" y="128" text-anchor="middle"></text>
+        <rect class="box" id="aP" x="370" y="20" width="110" height="50" rx="8"/><text x="425" y="42" text-anchor="middle">UPS</text><text class="small" id="aPt" x="425" y="58" text-anchor="middle"></text>
+        <rect class="box" id="aC" x="510" y="20" width="100" height="50" rx="8"/><text x="560" y="42" text-anchor="middle">IT / BMS</text><text class="small" id="aCt" x="560" y="58" text-anchor="middle"></text>
+        <rect class="box" id="aL" x="370" y="160" width="110" height="50" rx="8"/><text x="425" y="182" text-anchor="middle">Essential loads</text><text class="small" id="aLt" x="425" y="198" text-anchor="middle"></text>
+        <path id="wU" d="M120,45 L170,45 L170,100 L200,100"/>
+        <path id="wG" d="M120,185 L170,185 L170,130 L200,130"/>
+        <path id="wP" d="M300,105 L335,105 L335,45 L370,45"/>
+        <path id="wL" d="M300,125 L335,125 L335,185 L370,185"/>
+        <path id="wC" d="M480,45 L510,45"/>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>ATS timer</th><th>Purpose</th><th>Typical setting</th></tr>
+      <tr><td>Start delay (TDES)</td><td>Ignore brief dips; avoid starting for a 1 s blip</td><td>1–3 s</td></tr>
+      <tr><td>Transfer to emergency (TDNE)</td><td>Let generator voltage and frequency settle</td><td>0–5 s after "available"</td></tr>
+      <tr><td>Retransfer to normal (TDEN)</td><td>Confirm utility is stable before returning</td><td>5–30 min</td></tr>
+      <tr><td>Cooldown (TDEC)</td><td>Run unloaded to cool the engine</td><td>3–5 min</td></tr>
+      <tr><td>Exercise</td><td>Weekly or monthly test run, ideally with load</td><td>e.g. 30 min monthly</td></tr>
+    </table></div>
+    <p>An <strong>open transition</strong> ATS breaks before it makes: the load sees a short gap (typically
+      100 ms or more) on retransfer too. A <strong>closed transition</strong> ATS briefly parallels both sources
+      (under ~100 ms) when both are healthy and in sync, so retransfer is seamless. Closed transition usually needs
+      utility approval.</p>
+    <p>UPS and generator must be <strong>compatible</strong>. A UPS rectifier can draw harmonic current that
+      distorts a small generator's voltage, and some UPSs reject the generator's wandering frequency and stay on
+      battery. Rules of thumb call for a generator 1.5–2 × the UPS rating for older rectifiers; modern IGBT
+      rectifiers with low input THD need less. UPS settings such as a wider input frequency window and a slow
+      "walk-in" (ramping the rectifier load over seconds) help.</p>
+
+    <h3>What the BMS monitors</h3>
+    <p>Generator controllers (Deep Sea Electronics, ComAp, Woodward and others) expose Modbus RTU/TCP with engine
+      speed, oil pressure, coolant temperature, fuel level, battery voltage, kW, kVA, frequency and alarm lists. The
+      ATS gives position (normal/emergency) and "source available" contacts. Key BMS alarms: generator failed to
+      start, low fuel, not in auto, starter battery low, and ATS on emergency longer than expected.</p>
+
+    <div class="callout example">A hotel has a 250 kVA diesel set with a 1000 l day tank (about 20 h at 60 % load,
+      depending on the engine). The ATS feeds life-safety, lifts, kitchens' cold rooms, the IT room UPS and the
+      heating plant. Guest-room sockets are not on the generator. The BMS logs every monthly exercise, the fuel
+      level and the starter battery voltage, and sends an alarm if the controller is left in "manual" or "off".</div>
+
+    <div class="callout warn">The commonest generator failure is the generator not being in auto mode, followed by
+      a flat starter battery and stale fuel. All three are cheap to monitor. Monitor them.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Why does an ATS wait 5–30 minutes before switching back to a restored utility?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Cooldown happens after retransfer, unloaded.">To let the engine cool down while loaded</button>
+        <button class="opt" data-opt="b" data-why="Utility often flickers after restoration; waiting avoids repeated transfers.">To make sure the utility is stable before another transfer</button>
+        <button class="opt" data-opt="c" data-why="Fuel tank levels are not part of retransfer logic.">To refill the fuel tank</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>UPS covers seconds to minutes; generator covers hours; the UPS bridges the start gap.</li>
+      <li>The ATS senses, starts, waits, transfers and retransfers with timers.</li>
+      <li>Size the generator for UPS harmonics and frequency behaviour.</li>
+      <li>Monitor auto mode, fuel, starter battery and ATS position.</li>
+    </ul>
+  </section>
+
+  <!-- 17.6 -->
+  <section class="lesson" id="s6" data-num="17.6">
+    <h2>17.6 PV, inverters, batteries</h2>
+    <p>Rooftop <strong>photovoltaics</strong> (PV) turn many buildings into generators. PV modules produce DC.
+      A module is rated in Wp (watt-peak) at standard test conditions: 1000 W/m², 25 °C cell temperature. A
+      typical module today is 400–450 Wp. In central Europe, 1 kWp yields roughly 900–1100 kWh per year; in
+      southern Europe 1400–1700 kWh.</p>
+    <p>The <strong>inverter</strong> converts DC to grid-synchronous AC. Each input has an MPPT (maximum power point
+      tracker) that continuously adjusts the string voltage to the point of maximum power. Inverter types:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>Description</th><th>Examples</th></tr>
+      <tr><td>String inverter</td><td>One inverter for one or more strings of modules in series, e.g. 600–1000 V DC</td><td>SMA Sunny Tripower, Fronius Symo, Huawei SUN2000</td></tr>
+      <tr><td>Microinverter / optimiser</td><td>Per module conversion or MPPT; less shading loss, more parts</td><td>Enphase IQ, SolarEdge optimisers</td></tr>
+      <tr><td>Hybrid inverter</td><td>PV inverter plus battery charger in one; may provide backup</td><td>Fronius GEN24, Huawei with LUNA, Victron (modular)</td></tr>
+      <tr><td>Battery inverter (AC coupled)</td><td>Separate inverter for a battery on the AC side</td><td>SMA Sunny Island, Tesla Powerwall 2</td></tr>
+    </table></div>
+
+    <h3>Grid rules and islanding</h3>
+    <p>Grid-tied inverters must disconnect when the grid fails (<strong>anti-islanding</strong>), so line workers are
+      not electrocuted by a building feeding a "dead" line. This surprises owners: a standard grid-tied PV system
+      produces nothing during a power cut. Backup operation needs an inverter and a transfer device designed to form
+      an isolated island. Grid codes (for example EN 50549 in Europe, national rules such as VDE-AR-N 4105, IEEE 1547
+      in the US) also require frequency and voltage ride-through and reactive power behaviour. Some utilities cap
+      export, e.g. a <strong>zero export</strong> or 70 % limit, which the inverter enforces using a meter at the
+      grid connection point.</p>
+
+    <h3>Try it: a day of energy flow</h3>
+    <figure class="viz" id="pv">
+      <div class="pw-row">
+        <label>Hour of day <input type="range" min="0" max="23.5" step="0.5" value="12" data-k="h"><output></output></label>
+        <label>PV size (kWp) <input type="range" min="0" max="40" step="1" value="20" data-k="kwp"><output></output></label>
+        <label>Battery (kWh) <input type="range" min="0" max="60" step="5" value="20" data-k="kwh"><output></output></label>
+        <label>Sky <select data-k="sky"><option value="1">Clear</option><option value="0.45">Hazy</option><option value="0.15">Overcast</option></select></label>
+      </div>
+      <svg viewBox="0 0 620 360" role="img" aria-label="PV, battery, building and grid energy flows"></svg>
+      <div class="pw-stats"></div>
+      <figcaption>A small office (base load 3 kW, 10 kW in working hours) on a sunny spring day. Battery charges from surplus and discharges to cover load; grid covers the rest. Simplified, no losses.</figcaption>
+    </figure>
+
+    <h3>Batteries and control</h3>
+    <p>Stationary storage today is mostly lithium iron phosphate (LFP): often 6000+ cycles to 70–80 % capacity,
+      safer thermal behaviour than NMC, and 90–95 % round-trip efficiency. A battery management system (BMS here
+      means the battery's own controller, not the building's) protects cells and reports state of charge (SoC),
+      state of health (SoH), temperature and limits.</p>
+    <p>The building BMS usually does not control power flows second by second. The inverter does that. The BMS
+      reads values (PV power, battery SoC, grid import/export) over <strong>Modbus TCP</strong>, often via the
+      <strong>SunSpec</strong> register model that many inverters implement, and sets higher-level targets: a
+      charge limit, a peak shaving threshold, a time window to charge from cheap tariffs, or a request to run the heat
+      pump when PV is in surplus (Chapter 24).</p>
+
+    <div class="callout example">A 30-person office has 25 kWp on the roof and a 20 kWh battery. On a clear June
+      day PV produces about 150 kWh. The building uses 110 kWh. Without a battery, self-consumption is about 55 %;
+      with it, roughly 75 %. The BMS pre-cools the building at noon using PV surplus and reads the hybrid inverter
+      over Modbus TCP every 5 s.</div>
+
+    <div class="callout warn">PV strings carry DC at several hundred volts whenever light falls on them, even with
+      the inverter off. DC isolators, labelling and firefighter shutdown requirements (rapid shutdown in some
+      jurisdictions) are not optional.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">The grid fails at noon. What does a standard grid-tied PV inverter without backup function do?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Anti-islanding requires it to disconnect within a fraction of a second to a few seconds.">Stops feeding and disconnects</button>
+        <button class="opt" data-opt="b" data-why="That needs an island-capable inverter and a transfer device.">Keeps powering the building</button>
+        <button class="opt" data-opt="c" data-why="It disconnects; it does not hand over to a battery by itself.">Switches to battery automatically</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>PV gives DC; inverters with MPPT convert it to AC.</li>
+      <li>Grid-tied inverters disconnect in a grid failure unless built for backup.</li>
+      <li>Batteries shift PV surplus to the evening and shave peaks.</li>
+      <li>The BMS reads via Modbus/SunSpec and sets targets; the inverter controls the flows.</li>
+    </ul>
+  </section>
+
+  <!-- 17.7 -->
+  <section class="lesson" id="s7" data-num="17.7">
+    <h2>17.7 Power quality</h2>
+    <p>Power can be present yet bad. <strong>Power quality</strong> describes how close the supply is to an ideal
+      sine at nominal voltage and frequency. In Europe, EN 50160 describes what the public grid should deliver: for
+      low voltage, the 10-minute mean voltage stays within ±10 % of 230 V for 95 % of a week, and total harmonic
+      distortion (THD) of voltage stays at or below 8 %. Note these are characteristics, not a guarantee of perfection
+      at every instant.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Disturbance</th><th>Definition (approx.)</th><th>Typical cause</th><th>Effect</th></tr>
+      <tr><td><strong>Sag</strong> (dip)</td><td>RMS drops below 90 % for 10 ms to 1 min</td><td>Faults elsewhere on the grid, large motor start</td><td>Contactors drop out, drives trip, PCs reboot</td></tr>
+      <tr><td><strong>Swell</strong></td><td>RMS above 110 % briefly</td><td>Large load switched off, neutral problems</td><td>Stress on PSUs, SPDs</td></tr>
+      <tr><td><strong>Interruption</strong></td><td>Below ~5 % (short: up to 3 min)</td><td>Recloser operation, faults</td><td>Everything stops without UPS</td></tr>
+      <tr><td><strong>Harmonics</strong></td><td>Waveform distortion at multiples of 50/60 Hz</td><td>Rectifiers: PSUs, LED drivers, VFDs</td><td>Heating of neutrals and transformers, nuisance trips</td></tr>
+      <tr><td><strong>Transient</strong></td><td>µs spikes up to kV</td><td>Lightning, switching inductive loads</td><td>Damaged electronics; handled by SPDs</td></tr>
+      <tr><td><strong>Flicker</strong></td><td>Repeated small voltage changes</td><td>Welders, arc furnaces, heat pumps cycling</td><td>Visible light flicker</td></tr>
+    </table></div>
+
+    <h3>Try it: see the waveform</h3>
+    <figure class="viz" id="pq">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Disturbance">
+          <button data-d="clean" aria-pressed="true">Clean</button>
+          <button data-d="sag">Sag</button>
+          <button data-d="swell">Swell</button>
+          <button data-d="harm">Harmonics</button>
+          <button data-d="trans">Transient</button>
+          <button data-d="step">Stepped UPS output</button>
+        </div>
+      </div>
+      <div class="pw-row" id="pqH">
+        <label>3rd harmonic (%) <input type="range" min="0" max="30" value="10" data-k="h3"><output></output></label>
+        <label>5th harmonic (%) <input type="range" min="0" max="30" value="6" data-k="h5"><output></output></label>
+      </div>
+      <svg viewBox="0 0 600 220" role="img" aria-label="Voltage waveform over 6 cycles"></svg>
+      <div class="pw-stats"></div>
+      <figcaption>Six cycles at 50 Hz (120 ms). Dashed lines: nominal peak ±325 V. RMS is computed per cycle.</figcaption>
+    </figure>
+
+    <h3>Harmonics in buildings</h3>
+    <p>Switch-mode power supplies, LED drivers and drives draw current in pulses near the voltage peak. That current
+      contains strong 3rd, 5th and 7th harmonics. In a 3-phase 4-wire system, triplen harmonics (3rd, 9th…) from the
+      three phases do not cancel in the neutral: they add up. A neutral carrying more current than the phases is
+      possible in an office full of IT equipment. That is why such installations often use full-size or oversized
+      neutrals. VFDs are often fitted with DC chokes, line reactors or active front ends to reduce their current
+      THD.</p>
+
+    <h3>Measuring</h3>
+    <p>Many modern energy meters report voltage THD, current THD and sometimes individual harmonics. A dedicated
+      power quality analyser (IEC 61000-4-30 Class A instruments) records events with timestamps. For a BMS, useful
+      points are: per-phase voltage and its min/max, frequency, voltage and current THD, neutral current and an event
+      counter for sags. Correlating "the chiller tripped at 14:02" with "a 70 % sag at 14:02" ends many arguments.</p>
+
+    <div class="callout example">A lab building suffers unexplained PC reboots several times a month. A Class A
+      analyser left on the sub-board for two weeks records 9 sags to 60–75 % lasting 80–200 ms, matching the times of
+      the neighbouring factory's compressor starts. A line-interactive UPS per lab bench would bridge them; the owner
+      instead chose one online UPS for the lab sub-board.</div>
+
+    <div class="callout warn">A cheap offline UPS with stepped output can make some active-PFC power supplies and
+      motors misbehave on battery. For anything other than desktop PCs, choose pure sine output.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Why can the neutral in an IT-heavy office carry more current than any phase?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Imbalance makes neutral current up to phase current, not above it, for pure sines.">Phase imbalance alone</button>
+        <button class="opt" data-opt="b" data-why="Sags lower voltage; they do not add neutral current.">Voltage sags</button>
+        <button class="opt" data-opt="c" data-why="Triplen harmonics are in phase on all three phases and add in the neutral.">Triplen harmonics add up in the neutral</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Power quality covers sags, swells, interruptions, harmonics, transients and flicker.</li>
+      <li>EN 50160 sets the grid's expected characteristics, e.g. ±10 % and THD ≤ 8 %.</li>
+      <li>Electronics create harmonics; triplens load the neutral.</li>
+      <li>Log PQ data so trips can be correlated with events.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. A 3 kVA UPS trips its B16 supply breaker each time it is switched on. Most likely fix?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Breaking capacity is about short circuits, not inrush.">A breaker with higher kA breaking capacity</button>
+        <button class="opt" data-opt="b" data-why="Curve C tolerates 5–10 × In inrush before the magnetic trip.">A C-curve breaker of suitable rating</button>
+        <button class="opt" data-opt="c" data-why="A more sensitive RCD would make trips more likely, not less.">A 10 mA RCD</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">2. Load 800 W, battery 1000 Wh, inverter efficiency 92 %. First estimate of runtime?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="1000 × 0.92 ÷ 800 ≈ 1.15 h ≈ 69 min, before derating for rate and age.">About 69 minutes</button>
+        <button class="opt" data-opt="b" data-why="That ignores the load: it is the battery in hours at 1 kW.">About 60 minutes</button>
+        <button class="opt" data-opt="c" data-why="Check the division: 920 Wh ÷ 800 W is over an hour.">About 12 minutes</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">3. In NUT, which component runs on every protected host and actually shuts it down?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="upsd serves the data; it does not shut hosts down.">upsd</button>
+        <button class="opt" data-opt="b" data-why="Drivers talk to the hardware.">usbhid-ups</button>
+        <button class="opt" data-opt="c" data-why="upsmon watches status and runs SHUTDOWNCMD.">upsmon</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">4. During a power cut the generator starts in 10 s. What keeps the BMS servers running during those 10 s?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Grid-tied PV disconnects in a grid failure.">The PV inverter</button>
+        <button class="opt" data-opt="b" data-why="The UPS bridges the gap until the ATS transfers to the generator.">The UPS</button>
+        <button class="opt" data-opt="c" data-why="The ATS only switches; it stores no energy.">The ATS</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">5. Which BMS point helps most to explain random drive trips blamed on "the grid"?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Energy totals do not show short events.">Daily kWh</button>
+        <button class="opt" data-opt="b" data-why="Useful for the UPS, but it does not record grid events.">UPS battery charge</button>
+        <button class="opt" data-opt="c" data-why="Frequency is very stable on large grids and rarely the cause.">Grid frequency average</button>
+        <button class="opt" data-opt="d" data-why="Timestamped sag events can be correlated with the trips.">Timestamped voltage sag events per phase</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="16-fire-safety.html">← Chapter 16</a>
+    <a class="btn" href="18-sensors-metering.html">Chapter 18 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 17 visualizations.
+const NS17 = "http://www.w3.org/2000/svg";
+
+// 17.1 Clickable single-line diagram.
+(() => {
+  const fig = document.getElementById("sld");
+  const out = fig.querySelector(".readout");
+  const T = {
+    util: "Utility supply and revenue meter. The DNO/utility owns everything up to here. Typical commercial supply: 3-phase 400 V, 100–1000 A.",
+    main: "Main breaker or fuse switch. Isolates the whole building. Usually an MCCB or ACB with adjustable trips, selective with downstream devices.",
+    spd: "Type 1+2 surge protective device at the entrance. Diverts lightning current to earth. Its status contact goes to the BMS.",
+    bus: "Main distribution board busbar. Every outgoing feeder has its own breaker. Meters here give per-feeder energy.",
+    sub: "Floor sub-board with 30 mA RCD protection for sockets. Fed by e.g. a 63 A feeder.",
+    plant: "Mechanical plant board: boilers, pumps, AHUs. Breaker trip contacts are wired to BMS digital inputs.",
+    it: "Dedicated IT/BMS board. Often on generator, feeding the UPS. A floor RCD trip never reaches it.",
+    rcbo: "Socket circuit: RCBO B16 type A, 30 mA. One fault trips only this circuit.",
+    light: "Lighting circuit: MCB B10. LED drivers have inrush; many drivers per circuit may need a C curve or inrush limiter.",
+    motor: "VFD feeding a fan: C-curve MCB for inrush, and if an RCD is required, typically type B for 3-phase drives.",
+    pump: "Motor protection circuit breaker set to the pump's full-load current, with phase-loss protection.",
+    ups: "UPS input breaker: C curve to tolerate the charger and inrush. Output feeds the rack and BMS panels.",
+    ctrl: "24 V DC power supply for controllers, fed from the UPS output, with fused or electronically protected outputs per controller.",
+  };
+  const items = fig.querySelectorAll("[data-k]");
+  const pick = (g) => {
+    items.forEach((x) => { x.querySelector("rect").classList.toggle("lit", x === g); x.setAttribute("aria-pressed", x === g); });
+    out.textContent = T[g.dataset.k];
+  };
+  items.forEach((g) => {
+    g.addEventListener("click", () => pick(g));
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(g); } });
+  });
+})();
+
+// 17.2 UPS topology power paths.
+(() => {
+  const fig = document.getElementById("topo");
+  const $ = (id) => fig.querySelector("#" + id);
+  let t = "off", m = "ok";
+  const set = (id, cls) => $(id).setAttribute("class", cls);
+  const draw = () => {
+    fig.querySelectorAll("[data-t]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.t === t));
+    fig.querySelectorAll("[data-m]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === m));
+    ["pBy", "pRe", "pDc", "pBa", "pIn"].forEach((p) => set(p, "off"));
+    set("pOut", "flow");
+    $("tpByT").textContent = t === "li" ? "Autotransformer (AVR)" : t === "dc" ? "Static bypass (idle)" : "Direct path";
+    $("tpV").textContent = m === "ok" ? "230 V" : m === "low" ? "195 V" : "0 V";
+    let out = "230 V", txt;
+    const charge = () => { set("pRe", "flow"); set("pBa", "flow bat"); };
+    if (t === "dc") {
+      if (m === "fail") { set("pBa", "flow bat"); set("pDc", "flow bat"); set("pIn", "flow bat"); set("pOut", "flow bat");
+        txt = "Rectifier has no input. The battery is already on the DC bus, so the inverter carries on. No transfer at all."; }
+      else { set("pRe", "flow"); set("pDc", "flow"); set("pIn", "flow"); set("pBa", "flow");
+        txt = m === "low" ? "The rectifier accepts 195 V and the inverter still makes a clean 230 V. The battery is not used." : "All power is converted twice: AC → DC → AC. The output is regenerated, isolated from mains disturbances. Losses ~4–8 %."; }
+    } else if (t === "li") {
+      if (m === "fail") { set("pBa", "flow bat"); set("pDc", "flow bat"); set("pIn", "flow bat"); set("pOut", "flow bat");
+        txt = "Relay opens, inverter takes over in roughly 2–6 ms. Most IT power supplies ride through this."; }
+      else { set("pBy", "flow"); charge();
+        txt = m === "low" ? "The autotransformer boosts 195 V to about 225 V without using the battery. This is the VI advantage." : "Mains passes through the autotransformer to the load. The charger keeps the battery full. The inverter idles."; out = m === "low" ? "≈225 V" : "230 V"; }
+    } else {
+      if (m === "fail") { set("pBa", "flow bat"); set("pDc", "flow bat"); set("pIn", "flow bat"); set("pOut", "flow bat");
+        txt = "Relay switches to the inverter after roughly 5–12 ms. Sensitive loads may reset. Cheap units output a stepped wave."; }
+      else { set("pBy", "flow"); charge();
+        if (m === "low") { set("pBy", "flow bad"); set("pOut", "flow bad"); out = "195 V";
+          txt = "No regulation: the load gets 195 V until it drops below the transfer threshold, then goes to battery. Frequent battery use on a weak grid."; }
+        else txt = "Mains goes straight to the load. Only the charger is active. Cheap and efficient, minimal protection."; }
+    }
+    if (m === "fail") out = "230 V (inverter)";
+    $("tpOut").textContent = out;
+    ["tpBy", "tpRe", "tpBa", "tpIn"].forEach((b) => $(b).classList.remove("lit"));
+    if (t === "dc" || m === "fail") { $("tpIn").classList.add("lit"); }
+    if (m === "fail") $("tpBa").classList.add("lit");
+    fig.querySelector(".readout").textContent = txt;
+  };
+  fig.querySelectorAll("[data-t]").forEach((b) => b.addEventListener("click", () => { t = b.dataset.t; draw(); }));
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { m = b.dataset.m; draw(); }));
+  draw();
+})();
+
+// 17.2 Runtime calculator.
+(() => {
+  const fig = document.getElementById("runtime");
+  const inp = {};
+  fig.querySelectorAll("input[data-k]").forEach((i) => (inp[i.dataset.k] = i));
+  const svg = fig.querySelector("svg");
+  const stats = fig.querySelector(".pw-stats");
+  // Effective Wh shrinks as discharge power per Wh rises (crude Peukert stand-in).
+  const minutes = (w, wh, soh) => {
+    const c = w / wh;
+    const derate = Math.min(1, Math.max(0.45, 1 - 0.18 * Math.log2(Math.max(1, c * 4))));
+    return (wh * soh * 0.92 * derate) / w * 60;
+  };
+  const fmt = (m) => (m >= 120 ? (m / 60).toFixed(1) + " h" : Math.round(m) + " min");
+  const draw = () => {
+    const va = +inp.va.value, cap = va * 0.9, wh = +inp.wh.value, soh = inp.soh.value / 100;
+    const w = +inp.w.value;
+    inp.va.nextElementSibling.textContent = va + " VA = " + cap + " W";
+    inp.w.nextElementSibling.textContent = w + " W";
+    inp.wh.nextElementSibling.textContent = wh + " Wh";
+    inp.soh.nextElementSibling.textContent = inp.soh.value + " %";
+    const load = (w / cap) * 100;
+    const lin = (wh * soh * 0.92) / w * 60, real = minutes(w, wh, soh);
+    const lc = load > 100 ? "bad" : load > 80 ? "warn" : "ok";
+    stats.innerHTML =
+      `<div class="pw-stat ${lc}"><span>UPS load</span><b>${load.toFixed(0)} %</b></div>` +
+      `<div class="pw-stat"><span>Linear estimate</span><b>${fmt(lin)}</b></div>` +
+      `<div class="pw-stat ${real < 10 ? "bad" : real < 20 ? "warn" : "ok"}"><span>Rate-derated</span><b>${load > 100 ? "overload" : fmt(real)}</b></div>` +
+      `<div class="pw-stat"><span>Usable energy</span><b>${Math.round(wh * soh * 0.92)} Wh</b></div>`;
+    // Curve of runtime vs load up to the UPS capacity.
+    const X0 = 40, X1 = 590, Y0 = 130, Y1 = 10;
+    const maxM = Math.min(240, minutes(cap * 0.1, wh, soh));
+    const x = (p) => X0 + (p / cap) * (X1 - X0);
+    const y = (m) => Y0 - Math.min(1, m / maxM) * (Y0 - Y1);
+    let d = "";
+    for (let p = cap * 0.05; p <= cap; p += cap / 80) d += (d ? " L" : "M") + x(p).toFixed(1) + "," + y(minutes(p, wh, soh)).toFixed(1);
+    const px = Math.min(X1, x(w));
+    svg.innerHTML = `<line class="grid" x1="${X0}" y1="${Y0}" x2="${X1}" y2="${Y0}"/><line class="grid" x1="${X0}" y1="${Y1}" x2="${X0}" y2="${Y0}"/>
+      <line class="ref" x1="${x(cap * 0.8)}" y1="${Y1}" x2="${x(cap * 0.8)}" y2="${Y0}"/><text class="small" x="${x(cap * 0.8) - 4}" y="${Y1 + 10}" text-anchor="end">80 %</text>
+      <path class="wave" d="${d}"/>
+      <circle cx="${px}" cy="${y(real)}" r="6" class="fill-accent"/>
+      <text class="small" x="${X0}" y="146">0 W</text><text class="small" x="${X1}" y="146" text-anchor="end">${cap} W</text>
+      <text class="small" x="${X0 + 4}" y="${Y1 + 10}">${fmt(maxM)}</text>`;
+  };
+  Object.values(inp).forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 17.3 NUT upsc simulation.
+(() => {
+  const fig = document.getElementById("nut");
+  const pre = fig.querySelector("pre");
+  const log = fig.querySelector(".pw-log");
+  let s, timer;
+  const reset = () => {
+    s = { mains: 1, charge: 100, test: 0, t: 0, ob: 0, fsd: 0, lines: [] };
+    add("mu", "upsmon: UPS rack1@nas on line power");
+    tick(true);
+  };
+  const add = (c, txt) => { s.lines.unshift(`<span class="${c}">[t+${Math.round(s.t)}s] ${txt}</span>`); s.lines = s.lines.slice(0, 6); };
+  const tick = (noAdvance) => {
+    if (!noAdvance) {
+      s.t += 30;
+      const onBat = !s.mains || s.test > 0;
+      if (s.fsd) {} else if (onBat) { s.charge = Math.max(0, s.charge - 3.2); s.ob += 30; }
+      else s.charge = Math.min(100, s.charge + 1.5);
+      if (s.test > 0) { s.test -= 30; if (s.test <= 0) add("ok", "UPS self-test passed (battery OK)"); }
+    }
+    const onBat = !s.mains || s.test > 0;
+    const runtime = Math.round((s.charge / 100) * 1850);
+    const lb = onBat && runtime < 300;
+    let st = onBat ? "OB DISCHRG" : s.charge < 100 ? "OL CHRG" : "OL";
+    if (lb) st += " LB";
+    if (s.fsd) st = "FSD OB LB";
+    if (lb && !s.fsd && !s.test) { s.fsd = 1; add("bad", "upsmon: UPS rack1@nas battery is low. Setting FSD, executing SHUTDOWNCMD"); }
+    pre.textContent =
+`battery.charge: ${Math.round(s.charge)}
+battery.charge.low: 15
+battery.runtime: ${runtime}
+battery.voltage: ${(25.0 + s.charge * 0.027 - (onBat ? 1.1 : 0)).toFixed(1)}
+input.voltage: ${s.mains ? "231.4" : "0.0"}
+output.voltage: 230.0
+ups.load: 40
+ups.model: Example 1500 VA online
+ups.status: ${st}
+ups.test.result: ${s.test > 0 ? "In progress" : "Done and passed"}`;
+    log.innerHTML = s.lines.join("\n");
+  };
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => {
+    const v = +b.dataset.m;
+    fig.querySelectorAll("[data-m]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    if (v === s.mains) return;
+    s.mains = v;
+    if (!v) add("ex", "upsmon: UPS rack1@nas on battery");
+    else { add("ok", "upsmon: UPS rack1@nas on line power"); s.ob = 0; }
+    tick(true);
+  }));
+  fig.querySelector("[data-act=test]").addEventListener("click", () => { if (s.mains && !s.test) { s.test = 300; add("mu", "upscmd rack1@nas test.battery.start.quick"); tick(true); } });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => {
+    fig.querySelectorAll("[data-m]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.m === "1"));
+    reset();
+  });
+  reset();
+  timer = setInterval(() => tick(false), 1000);
+})();
+
+// 17.4 Shutdown chain timeline.
+(() => {
+  const fig = document.getElementById("chain");
+  const tIn = fig.querySelector("[data-k=t]"), sIn = fig.querySelector("[data-k=start]");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  const RUNTIME = 28;
+  const SYS = [["Front ends, reports", 1], ["BMS supervisor, historian", 2.5], ["NAS / storage", 2], ["Hypervisor host", 1.5], ["UPS output off", 2]];
+  const X0 = 170, X1 = 600, MAXT = 40;
+  const x = (m) => X0 + (m / MAXT) * (X1 - X0);
+  const draw = () => {
+    const t = +tIn.value, start = +sIn.value;
+    tIn.nextElementSibling.textContent = t + " min";
+    sIn.nextElementSibling.textContent = start + " min";
+    let cur = start, h = "";
+    h += `<rect x="${x(0)}" y="10" width="${x(RUNTIME) - x(0)}" height="12" rx="3" class="fill-accent-soft"/><text class="small" x="${x(0) + 4}" y="20">battery</text>`;
+    h += `<line class="ref" x1="${x(RUNTIME)}" y1="6" x2="${x(RUNTIME)}" y2="200"/><text class="small" x="${x(RUNTIME) + 3}" y="20">empty</text>`;
+    let crashed = false, msg = "";
+    SYS.forEach(([n, d], i) => {
+      const y = 36 + i * 32, a = cur, b = cur + d;
+      const late = b > RUNTIME;
+      let state;
+      if (b <= RUNTIME) state = t < a ? "ok" : t < b ? "warn" : "off";
+      else state = t >= RUNTIME ? "bad" : t < a ? "ok" : "warn";
+      if (state === "bad") crashed = true;
+      const fill = state === "ok" ? "fill-ok" : state === "warn" ? "fill-example" : state === "bad" ? "fill-bad" : "fill-muted";
+      const label = { ok: "running", warn: "shutting down", off: "off cleanly", bad: "power lost" }[state];
+      h += `<text x="${X0 - 8}" y="${y + 13}" text-anchor="end">${n}</text>`;
+      h += `<rect x="${x(a)}" y="${y}" width="${Math.max(2, x(Math.min(b, MAXT)) - x(a))}" height="18" rx="3" class="${fill}"${late ? ' stroke-dasharray="3 3"' : ""}/>`;
+      h += `<text class="small" x="${Math.min(x(b) + 4, X1 - 60)}" y="${y + 13}">${label}</text>`;
+      cur = b;
+    });
+    h += `<line x1="${x(t)}" y1="4" x2="${x(t)}" y2="200" class="lit-line"/>`;
+    for (let m = 0; m <= MAXT; m += 10) h += `<text class="small" x="${x(m)}" y="220" text-anchor="middle">${m}</text>`;
+    svg.innerHTML = h;
+    const end = cur;
+    if (end > RUNTIME) msg = `Chain needs until ${end} min but the battery ends at ${RUNTIME} min. ${crashed ? "Late systems lost power hard." : "Start earlier."}`;
+    else if (t < start) msg = `On battery. Shutdown starts at ${start} min. Margin at the end: ${(RUNTIME - end).toFixed(1)} min.`;
+    else if (t < end) msg = `Chain running. It finishes at ${end} min, ${(RUNTIME - end).toFixed(1)} min before the battery is empty.`;
+    else msg = `All systems off cleanly. When mains returns, the UPS output comes back and servers boot in reverse order.`;
+    out.textContent = msg;
+  };
+  [tIn, sIn].forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 17.5 ATS transfer sequence.
+(() => {
+  const fig = document.getElementById("ats");
+  const $ = (id) => fig.querySelector("#" + id);
+  // u: utility ok, g: gen state, a: ATS position, p: UPS source, l: essential loads powered
+  const S = [
+    { u: "230 V OK", g: "standby, auto", a: "→ normal", p: "on mains", l: "on", w: ["wU", "wP", "wL", "wC"], txt: "0 s · Normal operation. Utility feeds everything through the ATS. Generator in AUTO, block heater keeping it warm." },
+    { u: "0 V", g: "standby", a: "sensing", p: "ON BATTERY", l: "off", w: ["wC"], bat: 1, txt: "t = 0 · Utility fails. Essential loads go dark. The UPS switches to battery (or, if online, simply carries on). The ATS starts its 2 s start delay." },
+    { u: "0 V", g: "cranking", a: "start signal", p: "ON BATTERY", l: "off", w: ["wC"], bat: 1, txt: "t ≈ 2 s · Outage confirmed. The ATS closes the generator start contact. The engine cranks." },
+    { u: "0 V", g: "400 V 50 Hz", a: "gen available", p: "ON BATTERY", l: "off", w: ["wC"], bat: 1, txt: "t ≈ 8–10 s · Engine at speed, voltage and frequency inside the window. The ATS waits a short settle time." },
+    { u: "0 V", g: "on load", a: "→ emergency", p: "walk-in", l: "on", w: ["wG", "wP", "wL", "wC"], gen: 1, txt: "t ≈ 10–12 s · ATS transfers. Essential loads restart. The UPS rectifier ramps its load in over several seconds to avoid a step on the generator." },
+    { u: "230 V back", g: "on load", a: "TDEN timing", p: "on gen", l: "on", w: ["wG", "wP", "wL", "wC"], gen: 1, txt: "Utility returns. The ATS waits e.g. 15 minutes to be sure it is stable before switching back." },
+    { u: "230 V OK", g: "cooldown", a: "→ normal", p: "brief battery", l: "on", w: ["wU", "wP", "wL", "wC"], txt: "Retransfer (open transition: a short gap, which the UPS covers). Generator runs unloaded 5 minutes to cool, then stops and returns to auto." },
+  ];
+  let i = 0;
+  const draw = () => {
+    const st = S[i];
+    $("aUt").textContent = st.u; $("aGt").textContent = st.g; $("aAt").textContent = st.a; $("aPt").textContent = st.p;
+    $("aCt").textContent = "on"; $("aLt").textContent = st.l;
+    ["wU", "wG", "wP", "wL", "wC"].forEach((w) => {
+      let cls = "off";
+      if (st.w.includes(w)) cls = w === "wC" && st.bat ? "flow bat" : "flow";
+      $(w).setAttribute("class", cls);
+    });
+    $("aU").classList.toggle("lit", st.u.startsWith("230"));
+    $("aG").classList.toggle("lit", !!st.gen);
+    $("aP").classList.toggle("lit", !!st.bat);
+    $("aL").classList.toggle("dim", st.l === "off");
+    fig.querySelector(".readout").textContent = `Step ${i + 1}/${S.length} · ${st.txt}`;
+  };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(S.length - 1, i + 1); draw(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(0, i - 1); draw(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { i = 0; draw(); });
+  draw();
+})();
+
+// 17.6 PV + battery day simulation.
+(() => {
+  const fig = document.getElementById("pv");
+  const inp = {};
+  fig.querySelectorAll("[data-k]").forEach((i) => (inp[i.dataset.k] = i));
+  const svg = fig.querySelector("svg"), stats = fig.querySelector(".pw-stats");
+  const pvAt = (h, kwp, sky) => (h < 6 || h > 20 ? 0 : kwp * 0.8 * sky * Math.pow(Math.sin(((h - 6) / 14) * Math.PI), 1.5));
+  const loadAt = (h) => (h >= 7.5 && h < 18 ? 10 : 3) + (h >= 12 && h < 13.5 ? 2 : 0);
+  // Simulate the whole day in 0.5 h steps; battery starts at 30 %.
+  const sim = (kwp, kwh, sky) => {
+    let soc = kwh * 0.3; const rows = [];
+    let imp = 0, exp = 0, pvE = 0, selfE = 0;
+    for (let k = 0; k < 48; k++) {
+      const h = k / 2, pv = pvAt(h, kwp, sky), ld = loadAt(h);
+      let net = pv - ld, bat = 0, grid = 0;
+      const lim = kwh * 0.5;
+      if (net > 0) { bat = Math.min(net, lim, (kwh - soc) * 2); net -= bat; grid = -net; }
+      else { bat = -Math.min(-net, lim, (soc - kwh * 0.1) * 2 > 0 ? (soc - kwh * 0.1) * 2 : 0); net -= bat; grid = -net; }
+      soc += bat / 2;
+      rows.push({ h, pv, ld, bat, grid, soc });
+      pvE += pv / 2; if (grid > 0) imp += grid / 2; else exp += -grid / 2;
+    }
+    selfE = pvE - exp;
+    return { rows, imp, exp, pvE, selfE };
+  };
+  const box = (x, y, w, h, t, sub, lit) => `<rect class="box${lit ? " lit" : ""}" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/><text x="${x + w / 2}" y="${y + 22}" text-anchor="middle">${t}</text><text class="small" x="${x + w / 2}" y="${y + 38}" text-anchor="middle">${sub}</text>`;
+  const line = (d, on, cls) => `<path class="${on ? "flow " + (cls || "") : "off"}" d="${d}"/>`;
+  const draw = () => {
+    const h = +inp.h.value, kwp = +inp.kwp.value, kwh = +inp.kwh.value, sky = +inp.sky.value;
+    inp.h.nextElementSibling.textContent = String(Math.floor(h)).padStart(2, "0") + ":" + (h % 1 ? "30" : "00");
+    inp.kwp.nextElementSibling.textContent = kwp + " kWp";
+    inp.kwh.nextElementSibling.textContent = kwh + " kWh";
+    const r = sim(kwp, kwh, sky), now = r.rows[Math.round(h * 2)];
+    const f = (v) => Math.abs(v).toFixed(1) + " kW";
+    // Arrow direction: reverse path when flow is negative.
+    let s = "";
+    s += box(250, 10, 120, 50, "PV", f(now.pv), now.pv > 0.05);
+    s += box(30, 110, 120, 50, "Battery", `${kwh ? Math.round((now.soc / kwh) * 100) : 0} % · ${now.bat > 0 ? "charging" : now.bat < 0 ? "discharging" : "idle"}`, Math.abs(now.bat) > 0.05);
+    s += box(250, 110, 120, 50, "Hybrid inverter", "AC bus", true);
+    s += box(470, 110, 120, 50, "Grid", now.grid > 0.05 ? "import " + f(now.grid) : now.grid < -0.05 ? "export " + f(now.grid) : "≈ 0", Math.abs(now.grid) > 0.05);
+    s += box(250, 200, 120, 50, "Building", f(now.ld), true);
+    s += line("M310,60 L310,110", now.pv > 0.05);
+    s += line(now.bat >= 0 ? "M250,135 L150,135" : "M150,135 L250,135", Math.abs(now.bat) > 0.05, "bat");
+    s += line(now.grid <= 0 ? "M370,135 L470,135" : "M470,135 L370,135", Math.abs(now.grid) > 0.05, now.grid > 0 ? "bad" : "");
+    s += line("M310,160 L310,200", true);
+    // Day chart.
+    const X0 = 30, X1 = 600, Y0 = 345, Y1 = 270, mx = Math.max(12, kwp * 0.8);
+    const x = (hh) => X0 + (hh / 24) * (X1 - X0), y = (v) => Y0 - (v / mx) * (Y0 - Y1);
+    let dp = "", dl = "", ds = "";
+    r.rows.forEach((row, k) => { const c = k ? " L" : "M"; dp += c + x(row.h) + "," + y(row.pv); dl += c + x(row.h) + "," + y(row.ld); ds += c + x(row.h) + "," + (Y0 - (kwh ? row.soc / kwh : 0) * (Y0 - Y1)); });
+    s += `<line class="grid" x1="${X0}" y1="${Y0}" x2="${X1}" y2="${Y0}"/>`;
+    s += `<path class="wave" d="${dp}"/><path class="wave s-bad" d="${dl}"/><path class="wave s-ex" stroke-dasharray="4 3" d="${ds}"/>`;
+    s += `<line class="lit-line" x1="${x(h)}" y1="${Y1 - 4}" x2="${x(h)}" y2="${Y0}"/>`;
+    s += `<text class="small" x="${X0}" y="${Y1 - 6}">— PV  — load (red)  - - battery SoC</text>`;
+    [0, 6, 12, 18, 24].forEach((hh) => (s += `<text class="small" x="${x(hh)}" y="358" text-anchor="middle">${hh}h</text>`));
+    svg.innerHTML = s;
+    const sc = r.pvE ? (r.selfE / r.pvE) * 100 : 0;
+    stats.innerHTML =
+      `<div class="pw-stat"><span>PV today</span><b>${r.pvE.toFixed(0)} kWh</b></div>` +
+      `<div class="pw-stat"><span>Grid import</span><b>${r.imp.toFixed(0)} kWh</b></div>` +
+      `<div class="pw-stat"><span>Export</span><b>${r.exp.toFixed(0)} kWh</b></div>` +
+      `<div class="pw-stat ok"><span>Self-consumption</span><b>${sc.toFixed(0)} %</b></div>`;
+  };
+  Object.values(inp).forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 17.7 Power quality waveform.
+(() => {
+  const fig = document.getElementById("pq");
+  const svg = fig.querySelector("svg"), stats = fig.querySelector(".pw-stats");
+  const hRow = fig.querySelector("#pqH");
+  const h3 = fig.querySelector("[data-k=h3]"), h5 = fig.querySelector("[data-k=h5]");
+  let d = "clean";
+  const PK = 325, X0 = 10, X1 = 590, YM = 110, SC = 90 / 400;
+  const v = (t) => { // t in cycles, 0..6
+    const w = 2 * Math.PI * t;
+    let a = 1;
+    if (d === "sag" && t >= 2 && t < 4) a = 0.6;
+    if (d === "swell" && t >= 2 && t < 3.5) a = 1.15;
+    let s = Math.sin(w);
+    if (d === "step") { const p = ((t % 1) + 1) % 1; s = p < 0.125 || (p > 0.375 && p < 0.625) || p > 0.875 ? 0 : p < 0.5 ? 1 : -1; }
+    if (d === "harm") s = Math.sin(w) + (h3.value / 100) * Math.sin(3 * w) + (h5.value / 100) * Math.sin(5 * w + Math.PI);
+    let y = PK * a * s;
+    if (d === "trans" && Math.abs(t - 3.12) < 0.01) y += 900 * (1 - Math.abs(t - 3.12) / 0.01);
+    return y;
+  };
+  const draw = () => {
+    fig.querySelectorAll("[data-d]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.d === d));
+    hRow.style.display = d === "harm" ? "" : "none";
+    h3.nextElementSibling.textContent = h3.value + " %"; h5.nextElementSibling.textContent = h5.value + " %";
+    const N = 1200; let p = "";
+    const rms = [0, 0, 0, 0, 0, 0];
+    for (let k = 0; k <= N; k++) {
+      const t = (k / N) * 6, val = v(t);
+      const yy = Math.max(4, Math.min(216, YM - val * SC));
+      p += (k ? " L" : "M") + (X0 + (t / 6) * (X1 - X0)).toFixed(1) + "," + yy.toFixed(1);
+      if (k < N) rms[Math.floor(t)] += val * val / (N / 6);
+    }
+    let s = `<line class="grid" x1="${X0}" y1="${YM}" x2="${X1}" y2="${YM}"/>`;
+    s += `<line class="ref" x1="${X0}" y1="${YM - PK * SC}" x2="${X1}" y2="${YM - PK * SC}"/><line class="ref" x1="${X0}" y1="${YM + PK * SC}" x2="${X1}" y2="${YM + PK * SC}"/>`;
+    for (let c = 1; c < 6; c++) s += `<line class="grid" x1="${X0 + c * (X1 - X0) / 6}" y1="20" x2="${X0 + c * (X1 - X0) / 6}" y2="200" stroke-dasharray="2 4"/>`;
+    s += `<path class="wave" d="${p}"/>`;
+    rms.forEach((r, c) => (s += `<text class="small" x="${X0 + (c + 0.5) * (X1 - X0) / 6}" y="214" text-anchor="middle">${Math.sqrt(r).toFixed(0)} V</text>`));
+    svg.innerHTML = s;
+    const minR = Math.min(...rms.map(Math.sqrt)), maxR = Math.max(...rms.map(Math.sqrt));
+    const thd = d === "harm" ? Math.hypot(h3.value, h5.value) : d === "step" ? 30 : 0;
+    const NOTE = { clean: "Ideal 230 V sine", sag: "2 cycles at 60 %: an IEC dip (40 ms)", swell: "Short swell to 115 %", harm: "Flat-topped wave from rectifier loads", trans: "Fast spike, µs scale (exaggerated width)", step: "Offline UPS 'simulated sine'" };
+    stats.innerHTML =
+      `<div class="pw-stat"><span>Event</span><b style="font-size:13px">${NOTE[d]}</b></div>` +
+      `<div class="pw-stat ${minR < 207 ? "bad" : "ok"}"><span>Min cycle RMS</span><b>${minR.toFixed(0)} V</b></div>` +
+      `<div class="pw-stat ${maxR > 253 ? "bad" : "ok"}"><span>Max cycle RMS</span><b>${maxR.toFixed(0)} V</b></div>` +
+      `<div class="pw-stat ${thd > 8 ? "bad" : thd > 5 ? "warn" : "ok"}"><span>Voltage THD ${d === "step" ? "(approx.)" : ""}</span><b>${thd.toFixed(1)} %</b></div>`;
+  };
+  fig.querySelectorAll("[data-d]").forEach((b) => b.addEventListener("click", () => { d = b.dataset.d; draw(); }));
+  [h3, h5].forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+</script>
+</body>
+</html>

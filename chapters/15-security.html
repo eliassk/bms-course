@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security Systems</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+.zone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 8px; margin: 10px 0; }
+.zone { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--surface); font: 600 13px var(--font); color: var(--text); cursor: pointer; text-align: left; }
+.zone small { display: block; font-weight: 400; color: var(--muted); }
+.zone.open { border-color: var(--example); background: var(--example-soft); }
+.zone.bypass { opacity: .5; }
+.zone.alarm { border-color: var(--bad); background: var(--bad-soft); }
+.panel-lcd { font: 600 15px var(--mono); padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); overflow-wrap: anywhere; }
+.panel-lcd.alarm { background: var(--bad); color: #fff; border-color: var(--bad); }
+.panel-lcd.armed { border-color: var(--accent); color: var(--accent); }
+.calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+.calc label { font-size: 14px; font-weight: 600; display: block; }
+.calc input[type=range] { width: 100%; }
+.calc output { font-family: var(--mono); }
+.big-num { font: 700 26px var(--mono); color: var(--accent); }
+svg .st-node rect { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+svg .st-node.on rect { fill: var(--accent); stroke: var(--accent); }
+svg .st-node.on text { fill: #fff; }
+svg .st-node.bad.on rect { fill: var(--bad); stroke: var(--bad); }
+svg .zone-ok { fill: var(--ok-soft); stroke: var(--ok); }
+svg .zone-bad { fill: var(--bad-soft); stroke: var(--bad); }
+svg .zone-mid { fill: var(--example-soft); stroke: var(--example); }
+.det-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 130px), 1fr)); gap: 6px; font-size: 13px; }
+.det { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: var(--surface); }
+.det.tp { border-color: var(--ok); background: var(--ok-soft); }
+.det.fp { border-color: var(--bad); background: var(--bad-soft); }
+.det.fn { border-style: dashed; border-color: var(--example); }
+.det.tn { opacity: .55; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="15">
+<div class="content">
+  <div class="kicker">Chapter 15</div>
+  <h1>Security systems</h1>
+  <p class="lead">Intrusion alarms, access control, barriers and video. How each one works inside, which standards
+    grade it, and how to connect it to a BMS without weakening it.</p>
+
+  <!-- 15.1 -->
+  <section class="lesson" id="s1" data-num="15.1">
+    <h2>15.1 Intrusion alarm: zones, detectors, arming</h2>
+    <p>An <strong>intrusion and hold-up alarm system (I&amp;HAS)</strong> has four parts: a <strong>control panel</strong>
+      (the CIE, control and indicating equipment), <strong>detectors</strong>, <strong>keypads</strong> or other
+      set/unset devices, and <strong>warning and signalling devices</strong>: sirens, strobes and a communicator
+      that reports to an alarm receiving centre (ARC). The panel has its own battery. It is a self-contained
+      system that keeps working with every network in the building down.</p>
+
+    <h3>Detectors</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Detector</th><th>Principle</th><th>Typical use</th><th>Weak spot</th></tr>
+      <tr><td><strong>Magnetic contact</strong></td><td>Reed switch held by a magnet. Opens when the door moves.</td><td>Doors, windows, hatches</td><td>Defeated by a second magnet unless high-security (balanced) type.</td></tr>
+      <tr><td><strong>PIR</strong></td><td>Passive infrared. Sees a change in heat across its zones as a body moves.</td><td>Rooms, corridors, ~10–15 m range</td><td>Slow approach, heat sources, masking (covering the lens).</td></tr>
+      <tr><td><strong>Dual-tech</strong></td><td>PIR plus microwave Doppler. Both must agree.</td><td>Warehouses, rooms with heaters or drafts</td><td>Microwave passes through thin walls; must be aimed with care.</td></tr>
+      <tr><td><strong>Glass break</strong></td><td>Microphone listens for the flex thump and the high-frequency shatter.</td><td>Shop fronts, glazed façades</td><td>Laminated glass, curtains, range ~6–9 m.</td></tr>
+      <tr><td><strong>Seismic / shock</strong></td><td>Vibration sensor on a wall or safe.</td><td>Vaults, ATMs, safes</td><td>Tuning against traffic and machinery.</td></tr>
+      <tr><td><strong>Beam / outdoor</strong></td><td>Active IR beams, radar, fence sensors.</td><td>Perimeter, yards</td><td>Weather, animals, vegetation.</td></tr>
+    </table></div>
+    <p>Higher-grade detectors add <strong>anti-masking</strong>: an active IR or microwave check that sees spray or
+      tape over the lens and reports a fault while the system is unset.</p>
+
+    <h3>Zones and zone types</h3>
+    <p>Each detector is wired (or radio-enrolled) as a <strong>zone</strong>. The zone <em>type</em> decides how the
+      panel reacts. The names differ by vendor; the behaviour is common:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>Behaviour</th></tr>
+      <tr><td><strong>Entry/exit</strong></td><td>The front door. Starts an entry timer (e.g. 30 s) instead of an instant alarm.</td></tr>
+      <tr><td><strong>Follower (access)</strong></td><td>The hall PIR on the route to the keypad. Instant, unless an entry timer is running.</td></tr>
+      <tr><td><strong>Instant</strong></td><td>Any other room or window. Alarm at once when set.</td></tr>
+      <tr><td><strong>24-hour</strong></td><td>Always active, set or not: tamper, safe, server room door.</td></tr>
+      <tr><td><strong>Hold-up / panic</strong></td><td>Always active, often silent, goes straight to the ARC.</td></tr>
+      <tr><td><strong>Technical</strong></td><td>Water, freezer, gas. Reported, but not an intrusion.</td></tr>
+    </table></div>
+    <p><strong>Partitions</strong> (areas) let one panel run several independent alarms: shop and flat, office floors,
+      tenants. <strong>Part set</strong> (stay/night) arms only the perimeter while people are inside.</p>
+
+    <h3>How a panel reads a zone: end-of-line resistors</h3>
+    <p>A simple loop would read only "closed" or "open". A cut wire would look like a closed door's opposite and a
+      shorted wire would hide every future alarm. So the panel measures <strong>resistance</strong>. With
+      double end-of-line (DEOL) wiring, typical values are a 4.7 kΩ resistor for normal and a second 4.7 kΩ that
+      adds in series when the alarm contact opens. The panel now tells four states apart. Values vary by panel
+      (1 k, 2.2 k, 4.7 k, 5.6 k are all common), so always use the ones in the installation manual.</p>
+
+    <figure class="viz" id="eol">
+      <svg viewBox="0 0 620 120" role="img" aria-label="Loop resistance scale with short, normal, alarm and open regions">
+        <rect x="20" y="40" width="80" height="30" class="zone-bad" stroke-width="1.5"/>
+        <rect x="100" y="40" width="190" height="30" class="zone-ok" stroke-width="1.5"/>
+        <rect x="290" y="40" width="200" height="30" class="zone-mid" stroke-width="1.5"/>
+        <rect x="490" y="40" width="110" height="30" class="zone-bad" stroke-width="1.5"/>
+        <text x="60" y="60" text-anchor="middle" class="small">tamper: short</text>
+        <text x="195" y="60" text-anchor="middle" class="small">normal ~4.7 kΩ</text>
+        <text x="390" y="60" text-anchor="middle" class="small">alarm ~9.4 kΩ</text>
+        <text x="545" y="60" text-anchor="middle" class="small">tamper: open</text>
+        <text x="20" y="92" class="small">0</text><text x="290" y="92" class="small" text-anchor="middle">7 k</text><text x="600" y="92" class="small" text-anchor="end">∞</text>
+        <path id="eolPtr" d="M0,34 l-7,-12 h14 z" class="fill-accent"/>
+      </svg>
+      <div class="demo" style="margin:8px 0 0">
+        <label for="eolR">Loop resistance: <output id="eolOut">4.7</output> kΩ</label>
+        <input type="range" id="eolR" min="0" max="30" step="0.1" value="4.7">
+      </div>
+      <div class="readout" id="eolTxt" aria-live="polite"></div>
+      <figcaption>Illustrative DEOL thresholds. Real panels use windows of roughly ±10–20 % around each nominal value.</figcaption>
+    </figure>
+
+    <h3>Try it: arm a small office</h3>
+    <figure class="viz" id="arm">
+      <div class="controls seg" role="group" aria-label="Panel command">
+        <button data-cmd="away">Set (away)</button>
+        <button data-cmd="part">Part set (night)</button>
+        <button data-cmd="unset">Unset (enter code)</button>
+        <button data-cmd="reset">Reset</button>
+      </div>
+      <div class="panel-lcd" id="armLcd" aria-live="polite">UNSET · READY</div>
+      <div class="zone-grid" id="armZones"></div>
+      <div class="readout" id="armLog"></div>
+      <figcaption>Click a zone to open or close it. Timers run at 5× speed: a 30 s entry delay takes 6 s here.</figcaption>
+    </figure>
+
+    <div class="callout example">A small shop uses a panel with eight wired zones and a 4G/IP dual-path
+      communicator. Front door = entry/exit with 30 s entry and 45 s exit time. Hall PIR = follower. Stockroom
+      PIR and windows = instant. Panic button under the counter = 24-hour silent hold-up. Night part set arms
+      only the door and windows for the owner living upstairs.</div>
+    <div class="callout warn">Long entry delays are a classic weakness. An intruder has the whole delay to find and
+      smash the keypad. Keep entry time short, mount the panel away from the keypad, and if possible use a
+      system that reports an alarm when the entry time expires even if the keypad was destroyed.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">The system is set. Someone walks in through the front door and then past the hall PIR. Why is the PIR not an instant alarm?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A 24-hour zone would alarm even when unset.">It is a 24-hour zone</button>
+        <button class="opt" data-opt="b" data-why="Follower zones behave as part of the entry route while the entry timer runs.">It is a follower zone and the entry timer is running</button>
+        <button class="opt" data-opt="c" data-why="Bypassing would ignore it entirely, which is a security hole.">It is permanently bypassed</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Panel, detectors, keypads, sirens and communicator; own battery, self-contained.</li>
+      <li>Zone type decides the reaction: entry/exit, follower, instant, 24-hour, hold-up.</li>
+      <li>EOL resistors let the panel tell normal, alarm, cut and short apart.</li>
+    </ul>
+  </section>
+
+  <!-- 15.2 -->
+  <section class="lesson" id="s2" data-num="15.2">
+    <h2>15.2 Grade standards (EN 50131)</h2>
+    <p>In Europe the EN 50131 series defines intrusion and hold-up alarm systems. Its core idea is the
+      <strong>security grade</strong>: 1 to 4, chosen from a risk assessment of who is likely to attack and how
+      much they know. Every component in a system must be at least the system's grade; the system takes the grade
+      of its <em>lowest</em> component. Insurers often require a grade in the policy.</p>
+
+    <figure class="viz" id="grade">
+      <div class="controls seg" role="group" aria-label="Security grade">
+        <button data-g="0">Grade 1</button>
+        <button data-g="1" aria-pressed="true">Grade 2</button>
+        <button data-g="2">Grade 3</button>
+        <button data-g="3">Grade 4</button>
+      </div>
+      <div class="class-scale" id="gradeScale"><div><b>1</b>low</div><div><b>2</b>low–medium</div><div><b>3</b>medium–high</div><div><b>4</b>high</div></div>
+      <div class="readout" id="gradeTxt" style="font-family:var(--font)"></div>
+      <figcaption>Simplified summary. The exact requirements are in EN 50131-1 and the product standards.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Grade</th><th>Expected intruder</th><th>Typical premises</th><th>Notable requirements</th></tr>
+      <tr><td><strong>1</strong></td><td>Little knowledge, few tools</td><td>Low-risk domestic</td><td>Basic tamper detection. Rarely accepted by insurers.</td></tr>
+      <tr><td><strong>2</strong></td><td>Some knowledge, common tools (e.g. a screwdriver)</td><td>Most homes, small offices and shops</td><td>Tamper on lids and loops, event log, user codes with at least ~10,000 combinations.</td></tr>
+      <tr><td><strong>3</strong></td><td>Experienced, knows alarm systems, portable tools</td><td>Shops with valuable stock, commercial sites, pharmacies</td><td>Anti-masking on detectors, monitored signalling path, tighter tamper and log requirements.</td></tr>
+      <tr><td><strong>4</strong></td><td>Organised, plans the attack, specialist equipment</td><td>Banks, vaults, high-risk sites</td><td>Highest anti-masking, redundant monitored paths, extensive logging.</td></tr>
+    </table></div>
+
+    <h3>Other parts of the standard</h3>
+    <ul>
+      <li><strong>Environmental class</strong> I–IV: indoor heated, indoor general, outdoor sheltered, outdoor general.</li>
+      <li><strong>EN 50131-1</strong>: system requirements. <strong>-2-x</strong>: detectors. <strong>-3</strong>: control panel.
+        <strong>-4</strong>: warning devices. <strong>-6</strong>: power supplies. <strong>-7</strong>: application guidelines.</li>
+      <li><strong>EN 50136</strong>: alarm transmission systems (ATS), graded SP1–SP6 (single path) and DP1–DP4 (dual path)
+        by how fast a failed path is detected.</li>
+      <li><strong>Standby battery</strong>: grade and notification type set the hours (commonly 12 h or more, more if no ARC monitors it).</li>
+    </ul>
+    <p>Other regions use other schemes, for example UL 2050 / UL 681 in the US, and national police or insurer
+      rules (VdS in Germany, NSI/SSAIB certification in the UK) on top of EN 50131.</p>
+
+    <div class="callout example">A jeweller's insurer demands grade 3. The installer picks grade 3 detectors with
+      anti-masking, a grade 3 panel and a dual-path communicator (IP plus 4G) to an ARC. One cheap grade 2
+      wireless contact on a back window would drop the whole system to grade 2.</div>
+    <div class="callout warn">"Grade 3 panel" on a datasheet does not make a grade 3 system. The grade belongs to the
+      installed system: lowest component, correct configuration, correct signalling.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A system has a grade 3 panel, grade 3 PIRs and one grade 2 door contact. What is the system grade?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The panel does not decide alone.">Grade 3, because the panel is grade 3</button>
+        <button class="opt" data-opt="b" data-why="There is no averaging in EN 50131.">Grade 2.5</button>
+        <button class="opt" data-opt="c" data-why="The system grade is the lowest grade of any component.">Grade 2</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Grades 1–4 follow the expected attacker's skill and tools.</li>
+      <li>System grade = lowest component grade.</li>
+      <li>EN 50136 grades the signalling path to the ARC separately.</li>
+    </ul>
+  </section>
+
+  <!-- 15.3 -->
+  <section class="lesson" id="s3" data-num="15.3">
+    <h2>15.3 Access control: readers, controllers, credentials</h2>
+    <p>Access control answers one question at every door: <em>may this person pass here, now?</em> The parts:</p>
+    <ul>
+      <li><strong>Credential</strong>: card, fob, phone, PIN or biometric.</li>
+      <li><strong>Reader</strong>: reads the credential and sends an ID to the controller.</li>
+      <li><strong>Door controller</strong>: holds the access rules and the cardholder database locally, drives the lock, reads the door contact and the request-to-exit (REX).</li>
+      <li><strong>Lock</strong>: electric strike, magnetic lock, motorised lock or electronic cylinder.</li>
+      <li><strong>Server</strong>: enrols people, defines groups and schedules, collects events. Doors MUST keep working if it is offline.</li>
+    </ul>
+
+    <h3>The door is a state machine</h3>
+    <p>A controller tracks each door with two inputs (door position contact, REX) and one output (lock relay).
+      From these it derives states such as <em>forced open</em> (door opened without a grant) and <em>held open</em>
+      (door left open after the shunt time, e.g. 30 s). Step through it.</p>
+
+    <figure class="viz" id="door">
+      <svg viewBox="0 0 620 240" role="img" aria-label="Door state machine">
+        <defs><marker id="dah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <g class="st-node" id="d-locked"><rect x="20" y="90" width="120" height="50" rx="10"/><text x="80" y="120" text-anchor="middle">Locked, closed</text></g>
+        <g class="st-node" id="d-granted"><rect x="230" y="20" width="140" height="50" rx="10"/><text x="300" y="50" text-anchor="middle">Unlocked (grant)</text></g>
+        <g class="st-node" id="d-open"><rect x="460" y="20" width="140" height="50" rx="10"/><text x="530" y="50" text-anchor="middle">Open, authorised</text></g>
+        <g class="st-node bad" id="d-held"><rect x="460" y="170" width="140" height="50" rx="10"/><text x="530" y="200" text-anchor="middle">Held open</text></g>
+        <g class="st-node bad" id="d-forced"><rect x="230" y="170" width="140" height="50" rx="10"/><text x="300" y="200" text-anchor="middle">Forced open</text></g>
+        <path class="arrow" d="M140,105 L228,55" marker-end="url(#dah)"/><text x="150" y="70" class="small">valid card / REX</text>
+        <path class="arrow" d="M370,45 L458,45" marker-end="url(#dah)"/><text x="380" y="36" class="small">door opens</text>
+        <path class="arrow" d="M530,72 L530,168" marker-end="url(#dah)"/><text x="536" y="125" class="small">shunt time out</text>
+        <path class="arrow" d="M140,125 L228,185" marker-end="url(#dah)"/><text x="120" y="172" class="small">opens, no grant</text>
+        <path class="arrow" d="M300,72 C300,110 160,110 140,110" marker-end="url(#dah)" stroke-dasharray="4 4"/><text x="200" y="100" class="small">no entry, relock</text>
+      </svg>
+      <div class="controls">
+        <button class="btn secondary" data-ev="card">Valid card</button>
+        <button class="btn secondary" data-ev="bad">Unknown card</button>
+        <button class="btn secondary" data-ev="openD">Door opens</button>
+        <button class="btn secondary" data-ev="closeD">Door closes</button>
+        <button class="btn secondary" data-ev="tick">+10 s</button>
+      </div>
+      <div class="readout" id="doorTxt" aria-live="polite"></div>
+      <figcaption>Unlock time 5 s, shunt (door open allowed) time 30 s. Values are typical, per door.</figcaption>
+    </figure>
+
+    <h3>Fail-safe and fail-secure</h3>
+    <p>A <strong>fail-safe</strong> lock unlocks when power is lost (a maglock: no power, no hold). A
+      <strong>fail-secure</strong> lock stays locked (most strikes can be ordered either way). Doors on an escape
+      route must let people out at all times: mechanical free egress by the handle, or a fail-safe lock released
+      by the fire alarm and an emergency break-glass. Local fire and building codes decide; in Europe EN 179,
+      EN 1125 and EN 13637 cover exit hardware and electrically controlled exit systems.</p>
+
+    <h3>Credentials compared</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Technology</th><th>How it works</th><th>Security</th></tr>
+      <tr><td><strong>125 kHz prox</strong> (EM4100, HID Prox)</td><td>Card broadcasts a fixed number.</td><td>Very low. Cloned in seconds with cheap tools.</td></tr>
+      <tr><td><strong>MIFARE Classic</strong></td><td>13.56 MHz, proprietary Crypto-1.</td><td>Broken since 2008. Do not use for new systems.</td></tr>
+      <tr><td><strong>MIFARE DESFire EV2/EV3</strong>, iCLASS SE / Seos, LEGIC</td><td>13.56 MHz, AES or similar, mutual authentication.</td><td>Good, if site-specific keys are used rather than the card UID.</td></tr>
+      <tr><td><strong>Mobile (BLE / NFC)</strong></td><td>Phone app or wallet pass, credential issued remotely.</td><td>Good; phone lock adds a factor. Depends on the vendor's cloud.</td></tr>
+      <tr><td><strong>PIN</strong></td><td>Something you know.</td><td>Shared and shoulder-surfed. Best as a second factor.</td></tr>
+      <tr><td><strong>Biometric</strong></td><td>Face, finger, vein. Template compared to a stored one.</td><td>Strong identity; privacy law (GDPR biometrics) applies.</td></tr>
+    </table></div>
+
+    <h3>Reader to controller: Wiegand and OSDP</h3>
+    <p>The classic <strong>Wiegand</strong> interface sends the card number one way over two data wires. The common
+      26-bit format is 1 parity bit, 8-bit facility code, 16-bit card number, 1 parity bit: only 65,535 card numbers
+      per facility. It has no encryption and no supervision, so a small device on the wires can record and replay
+      cards. <strong>OSDP</strong> (Open Supervised Device Protocol, IEC 60839-11-5) runs over RS-485, is
+      bidirectional, supervises the reader and, with Secure Channel, encrypts the link with AES-128.</p>
+
+    <figure class="viz" id="wieg">
+      <div class="demo" style="margin:0">
+        <label for="wFac">Facility code: <output id="wFacO">42</output></label>
+        <input type="range" id="wFac" min="0" max="255" value="42">
+        <label for="wCard" style="margin-top:8px">Card number: <output id="wCardO">12345</output></label>
+        <input type="range" id="wCard" min="0" max="65535" value="12345">
+      </div>
+      <svg viewBox="0 0 620 70" role="img" aria-label="26-bit Wiegand frame"><g id="wBits"></g></svg>
+      <div class="readout" id="wTxt"></div>
+      <figcaption>26-bit Wiegand: even parity over the first 12 data bits, odd parity over the last 12.</figcaption>
+    </figure>
+
+    <div class="callout example">An office replaces 125 kHz cards with DESFire EV3 cards carrying a site key, and
+      swaps Wiegand readers for OSDP readers with Secure Channel. The controller now raises an alarm if a reader is
+      unplugged, and a sniffer on the cable sees only ciphertext.</div>
+    <div class="callout warn">Many "secure" cards are read only by their UID (serial number). A UID is not a secret
+      and can be emulated. Make sure the reader authenticates against an application key on the card.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">The door contact opens but the controller issued no grant and no REX. What event?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Door open without grant or exit request.">Door forced open</button>
+        <button class="opt" data-opt="b" data-why="Held open needs a valid opening first, then a timeout.">Door held open</button>
+        <button class="opt" data-opt="c" data-why="Access denied is a credential event; the door did not need to move.">Access denied</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Controllers decide locally; the server only manages and logs.</li>
+      <li>Door contact + REX + lock give granted, forced and held-open states.</li>
+      <li>Prefer DESFire/Seos-class cards with site keys, and OSDP Secure Channel over Wiegand.</li>
+    </ul>
+  </section>
+
+  <!-- 15.4 -->
+  <section class="lesson" id="s4" data-num="15.4">
+    <h2>15.4 Barriers and gates</h2>
+    <p>Barriers, sliding gates, swing gates, bollards and turnstiles are access control points with a motor. That
+      motor can hurt people, so the safety design matters as much as the access logic.</p>
+
+    <h3>Vehicle detection</h3>
+    <p>An <strong>inductive loop</strong> is a few turns of wire cut into the road surface. A loop detector drives
+      it at roughly 20–150 kHz; a car's metal lowers the inductance and shifts the frequency. Typical layout:</p>
+    <ul>
+      <li><strong>Arming / presence loop</strong> before the barrier: the reader only accepts a card when a vehicle is there.</li>
+      <li><strong>Safety loop</strong> under the boom: the boom MUST NOT close while it is occupied.</li>
+      <li><strong>Closing loop</strong> after the barrier: close once the vehicle has left it.</li>
+    </ul>
+    <p>Other inputs: ANPR cameras (number plates), long-range UHF tags, radar and photocells.</p>
+
+    <figure class="viz" id="gate">
+      <svg viewBox="0 0 620 170" role="img" aria-label="Barrier with arming, safety and closing loops">
+        <rect x="0" y="80" width="620" height="60" class="fill-surface" stroke="var(--border)"/>
+        <rect id="gL1" x="70" y="88" width="120" height="44" rx="4" class="box"/><text x="130" y="155" text-anchor="middle" class="small">arming loop</text>
+        <rect id="gL2" x="260" y="88" width="100" height="44" rx="4" class="box"/><text x="310" y="155" text-anchor="middle" class="small">safety loop</text>
+        <rect id="gL3" x="430" y="88" width="120" height="44" rx="4" class="box"/><text x="490" y="155" text-anchor="middle" class="small">closing loop</text>
+        <rect x="300" y="40" width="20" height="40" class="fill-muted"/>
+        <line id="gBoom" x1="310" y1="44" x2="310" y2="44" stroke="var(--bad)" stroke-width="8" stroke-linecap="round"/>
+        <g id="gCar"><rect x="-80" y="94" width="70" height="32" rx="8" class="fill-accent"/></g>
+        <text x="10" y="20" id="gState" class="big">Closed</text>
+      </svg>
+      <div class="controls"><button class="btn secondary" data-act="prev">← Back</button><button class="btn" data-act="next">Next step →</button></div>
+      <div class="readout" id="gateTxt" style="font-family:var(--font)" aria-live="polite"></div>
+    </figure>
+
+    <h3>Safety standards</h3>
+    <p>In Europe powered gates fall under the Machinery Directive (moving to the Machinery Regulation
+      2023/1230) and the product standard EN 13241, with EN 12453 setting safety in use. The approach is risk
+      based: limit the force (EN 12453 sets dynamic force limits, such as around 400 N in some zones, measured
+      with a force gauge), or add safety edges and photocells, or both. Results are recorded at commissioning
+      and re-tested at maintenance. Turnstiles and speed gates have their own product rules.</p>
+
+    <div class="callout example">A car park barrier has a 3 m boom, a card reader on a pedestal, three loops and a
+      photocell. The parking system opens it on a valid card or ANPR match. A fire alarm input raises all boom
+      gates so emergency vehicles and leaving cars are not blocked.</div>
+    <div class="callout warn">Never let a BMS or remote panel "close" a gate without local safety devices in the
+      loop. A remote close command MUST still be subject to the safety loop, photocells and force limits in the
+      gate controller itself.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A car stops under the boom. What prevents the barrier closing on it?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The arming loop is before the barrier.">The arming loop</button>
+        <button class="opt" data-opt="b" data-why="The safety loop holds the boom up while occupied.">The safety loop (plus photocells)</button>
+        <button class="opt" data-opt="c" data-why="The closing loop triggers closing; it does not protect.">The closing loop</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Loops detect metal by frequency shift: arming, safety, closing.</li>
+      <li>Gate safety (force limits, edges, photocells) lives in the gate controller.</li>
+      <li>Fire alarm opens barriers on egress routes.</li>
+    </ul>
+  </section>
+
+  <!-- 15.5 -->
+  <section class="lesson" id="s5" data-num="15.5">
+    <h2>15.5 CCTV: IP cameras, ONVIF, RTSP, NVR</h2>
+    <p>Modern CCTV is IP video. A camera contains an image sensor, an encoder (H.264 or H.265), a small Linux
+      system and a web server. It is powered by PoE: 802.3af gives up to 15.4 W at the switch port, 802.3at
+      30 W for PTZ and heaters. Recording happens on an <strong>NVR</strong> (network video recorder) or a
+      <strong>VMS</strong> (video management software) on a server.</p>
+
+    <h3>The protocols</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Layer</th><th>Protocol</th><th>Job</th></tr>
+      <tr><td>Discovery and control</td><td><strong>ONVIF</strong> (SOAP over HTTP, WS-Discovery)</td><td>Find cameras, read profiles, get stream URLs, move PTZ, subscribe to events.</td></tr>
+      <tr><td>Session control</td><td><strong>RTSP</strong> (TCP 554)</td><td>DESCRIBE, SETUP, PLAY, TEARDOWN a stream, like a remote control.</td></tr>
+      <tr><td>Session description</td><td><strong>SDP</strong></td><td>Lists the tracks: video H.264, audio AAC, payload types.</td></tr>
+      <tr><td>Media transport</td><td><strong>RTP / RTCP</strong> (UDP, or interleaved in the RTSP TCP connection)</td><td>Carries the compressed frames with timestamps.</td></tr>
+      <tr><td>Browser viewing</td><td><strong>WebRTC</strong>, HLS, MJPEG</td><td>Converted by the VMS or a gateway (e.g. go2rtc).</td></tr>
+    </table></div>
+    <p>ONVIF <strong>profiles</strong> define what a conformant device supports: Profile S (streaming), G
+      (edge recording), T (H.265, imaging, events), M (analytics metadata). "ONVIF compliant" without a listed
+      profile means little.</p>
+
+    <figure class="viz" id="rtsp">
+      <svg viewBox="0 0 620 250" role="img" aria-label="ONVIF and RTSP sequence between VMS and camera">
+        <defs><marker id="rah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="30" y="10" width="140" height="36" rx="8"/><text x="100" y="33" text-anchor="middle">VMS / NVR</text>
+        <rect class="box" x="450" y="10" width="140" height="36" rx="8"/><text x="520" y="33" text-anchor="middle">IP camera</text>
+        <line x1="100" y1="46" x2="100" y2="240" class="arrow" stroke-dasharray="3 4"/>
+        <line x1="520" y1="46" x2="520" y2="240" class="arrow" stroke-dasharray="3 4"/>
+        <path id="rMsg" class="arrow" d="M100,140 L518,140" marker-end="url(#rah)"/>
+        <text id="rLabel" x="310" y="130" text-anchor="middle" class="big">—</text>
+        <text id="rSub" x="310" y="165" text-anchor="middle" class="small"></text>
+      </svg>
+      <div class="controls"><button class="btn secondary" data-act="prev">← Back</button><button class="btn" data-act="next">Next step →</button></div>
+      <div class="readout" id="rtspTxt" style="font-family:var(--font)" aria-live="polite"></div>
+    </figure>
+    <p>A typical stream URL looks like <code>rtsp://192.0.2.31:554/Streaming/Channels/101</code> (main stream) and
+      <code>…/102</code> (sub stream). The path is vendor specific; ONVIF <code>GetStreamUri</code> returns the correct one.
+      Cameras usually offer a high-resolution <strong>main stream</strong> for recording and a low-resolution
+      <strong>sub stream</strong> for live grids and analytics.</p>
+
+    <h3>Bitrate and storage</h3>
+    <p>Storage is simple arithmetic: bitrate × time × cameras. A 4 MP H.265 camera at 15 fps often runs
+      2–4 Mbit/s with normal motion; the same in H.264 needs roughly 1.5–2× more. Scenes with trees, rain or
+      night noise raise bitrate sharply. Use the calculator.</p>
+
+    <figure class="viz" id="store">
+      <div class="calc">
+        <div><label>Cameras: <output id="sCamO"></output></label><input type="range" id="sCam" min="1" max="200" value="24"></div>
+        <div><label>Bitrate per camera: <output id="sBrO"></output> Mbit/s</label><input type="range" id="sBr" min="0.5" max="16" step="0.5" value="4"></div>
+        <div><label>Retention: <output id="sDayO"></output> days</label><input type="range" id="sDay" min="1" max="90" value="30"></div>
+        <div><label>Recording: <output id="sDutyO"></output> % of the time</label><input type="range" id="sDuty" min="5" max="100" step="5" value="100"></div>
+      </div>
+      <div class="controls seg" role="group" aria-label="RAID" style="margin-top:12px">
+        <button data-raid="0" aria-pressed="true">No RAID</button><button data-raid="5">RAID 5</button><button data-raid="6">RAID 6</button>
+      </div>
+      <div class="calc" style="margin-top:12px">
+        <div><div class="small">Net storage</div><div class="big-num" id="sNet"></div></div>
+        <div><div class="small">Raw disk (8 TB drives)</div><div class="big-num" id="sRaw"></div></div>
+        <div><div class="small">Network into recorder</div><div class="big-num" id="sNetw"></div></div>
+      </div>
+      <figcaption>TB = 10¹² bytes. Includes 10 % headroom for the file system. Raw disk count assumes 8 TB drives.</figcaption>
+    </figure>
+
+    <div class="callout example">A school records 40 cameras at 4 Mbit/s for 30 days, continuously: 40 × 4 Mbit/s =
+      160 Mbit/s = 20 MB/s, about 1.73 TB per day, about 52 TB for 30 days. With RAID 6 on 8 TB drives this is
+      nine or ten drives. Many sites cut this by half with motion- or event-based recording and lower night bitrate.</div>
+    <div class="callout warn">Cameras ship with web interfaces, cloud "P2P" services and sometimes old firmware with
+      known vulnerabilities. Put them on their own VLAN, block internet access, disable UPnP and P2P, change default
+      passwords and update firmware. Retention is also a legal limit under privacy law: keep footage no longer
+      than the stated purpose needs.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Which protocol tells the VMS the correct RTSP URL of a camera's main stream?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="RTP only carries media.">RTP</button>
+        <button class="opt" data-opt="b" data-why="SDP describes tracks of a stream you already asked for.">SDP</button>
+        <button class="opt" data-opt="c" data-why="ONVIF Media service GetStreamUri returns it.">ONVIF (GetProfiles, GetStreamUri)</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>ONVIF finds and configures; RTSP sets up; RTP carries the video.</li>
+      <li>Storage = bitrate × seconds × cameras; codec and scene dominate bitrate.</li>
+      <li>Cameras go on an isolated VLAN with no internet access.</li>
+    </ul>
+  </section>
+
+  <!-- 15.6 -->
+  <section class="lesson" id="s6" data-num="15.6">
+    <h2>15.6 Video analytics</h2>
+    <p>Video analytics turns pixels into events. Classic analytics used motion detection: compare frames, count
+      changed pixels. It triggers on rain, shadows and headlights. Modern analytics run neural networks that
+      detect and classify <strong>objects</strong> (person, vehicle, bicycle) and track them across frames. Rules
+      then sit on top of the tracks.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Rule</th><th>Example</th></tr>
+      <tr><td>Line crossing</td><td>A person crosses the fence line from outside to inside.</td></tr>
+      <tr><td>Intrusion / area</td><td>A vehicle is in the loading bay for more than 10 s after 22:00.</td></tr>
+      <tr><td>Loitering</td><td>A person stays near an ATM for more than 3 min.</td></tr>
+      <tr><td>Counting / occupancy</td><td>People in and out of a shop entrance, feeding occupancy to the BMS.</td></tr>
+      <tr><td>ANPR / LPR</td><td>Number plate read at a car park barrier.</td></tr>
+      <tr><td>Left object, crowd, fall</td><td>More specialist, with more false alarms.</td></tr>
+    </table></div>
+    <p>Analytics can run <strong>at the edge</strong> (in the camera's own chip) or <strong>on a server</strong>
+      (GPU, VMS plug-in). Edge scales with camera count and sends only metadata; server analytics are more flexible.
+      ONVIF Profile M standardises how analytics metadata and events are delivered.</p>
+
+    <h3>Try it: the confidence threshold trade-off</h3>
+    <p>Each detection comes with a confidence score. The threshold decides which ones raise an event. Low threshold:
+      every intruder is caught, but so are cats and swaying bushes. High threshold: quiet, but some people are missed.</p>
+    <figure class="viz" id="thr">
+      <div class="demo" style="margin:0 0 10px">
+        <label for="thrR">Confidence threshold: <output id="thrO">0.50</output></label>
+        <input type="range" id="thrR" min="0.05" max="0.95" step="0.05" value="0.5">
+      </div>
+      <div class="det-list" id="thrList"></div>
+      <div class="readout" id="thrTxt"></div>
+      <figcaption>Green: real person, alarm. Red: false alarm. Dashed: real person missed. Faded: correctly ignored. Invented scores for illustration.</figcaption>
+    </figure>
+
+    <div class="callout example">A logistics yard monitored by an ARC used motion detection and saw hundreds of
+      false alarms per night. After switching to person and vehicle classification with a line-crossing rule on the
+      fence, false alarms dropped to a handful, and operators started trusting alarms again.</div>
+    <div class="callout warn">Face recognition and other biometric analytics are heavily regulated. In the EU, GDPR
+      treats biometric data as a special category, and the AI Act restricts real-time remote biometric
+      identification in public spaces. Check the legal basis before enabling it.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">An ARC complains about too many false alarms from foxes. What is the first fix?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Object class filters remove animals at the source.">Filter by object class (person/vehicle) and tune the rule area</button>
+        <button class="opt" data-opt="b" data-why="Lower threshold creates more alarms.">Lower the confidence threshold</button>
+        <button class="opt" data-opt="c" data-why="Bitrate affects image quality, not classification rules.">Increase the bitrate</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Object detection + tracking + rules beats pixel motion detection.</li>
+      <li>The threshold trades missed events against false alarms.</li>
+      <li>Edge analytics send only metadata; ONVIF Profile M standardises it.</li>
+    </ul>
+  </section>
+
+  <!-- 15.7 -->
+  <section class="lesson" id="s7" data-num="15.7">
+    <h2>15.7 Integrating security with BMS safely</h2>
+    <p>A BMS gains a lot from security data: an unset alarm area means people are present, so heating and lighting
+      can follow. A door badge can wake a meeting room. A camera people-count can drive ventilation. The risk is the
+      opposite direction: a compromised or buggy BMS that can <em>unset an alarm</em> or <em>unlock a door</em>
+      has become part of the security system, without its certification.</p>
+
+    <figure class="viz" id="bound">
+      <svg viewBox="0 0 620 260" role="img" aria-label="Integration boundary between security and BMS">
+        <defs><marker id="bah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect x="10" y="10" width="250" height="240" rx="12" class="fill-accent-soft" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="135" y="34" text-anchor="middle" class="big">Security zone</text>
+        <rect class="box" x="30" y="50" width="210" height="34" rx="6"/><text x="135" y="72" text-anchor="middle">Intrusion panel</text>
+        <rect class="box" x="30" y="94" width="210" height="34" rx="6"/><text x="135" y="116" text-anchor="middle">Access controllers</text>
+        <rect class="box" x="30" y="138" width="210" height="34" rx="6"/><text x="135" y="160" text-anchor="middle">VMS / cameras</text>
+        <text x="135" y="200" text-anchor="middle" class="small">certified · own power · own VLAN</text>
+        <rect x="290" y="95" width="70" height="80" rx="8" class="fill-example-soft" stroke="var(--example)" stroke-width="1.5"/>
+        <text x="325" y="125" text-anchor="middle" class="small">gateway</text><text x="325" y="142" text-anchor="middle" class="small">firewall</text><text x="325" y="159" text-anchor="middle" class="small">read-only</text>
+        <rect class="box" x="390" y="60" width="210" height="150" rx="12"/>
+        <text x="495" y="88" text-anchor="middle" class="big">BMS</text>
+        <text x="495" y="118" text-anchor="middle" class="small">area set/unset → HVAC mode</text>
+        <text x="495" y="138" text-anchor="middle" class="small">door events → room wake-up</text>
+        <text x="495" y="158" text-anchor="middle" class="small">people count → ventilation</text>
+        <text x="495" y="178" text-anchor="middle" class="small">panel faults → alarm list</text>
+        <path id="bIn" class="arrow" d="M240,120 L288,120" marker-end="url(#bah)"/><path id="bIn2" class="arrow" d="M362,120 L388,120" marker-end="url(#bah)"/>
+        <path id="bOut" class="arrow" d="M388,160 L362,160 M288,160 L242,160" marker-end="url(#bah)" stroke-dasharray="5 5"/>
+        <text x="325" y="230" text-anchor="middle" class="small" id="bNote">status flows out; commands stay out</text>
+      </svg>
+      <div class="controls seg" role="group" aria-label="Integration pattern">
+        <button data-p="ro" aria-pressed="true">Read-only</button>
+        <button data-p="limited">Limited commands</button>
+        <button data-p="full">Full control</button>
+      </div>
+      <div class="readout" id="boundTxt" style="font-family:var(--font)" aria-live="polite"></div>
+    </figure>
+
+    <h3>Interface options</h3>
+    <ul>
+      <li><strong>Dry contacts</strong>: panel relay outputs "area A set", "alarm", "fault" into BMS digital inputs. Simple, one-way, very robust.</li>
+      <li><strong>Vendor SDK / API</strong>: many panels and access systems have an IP integration module or REST/SDK. Use a dedicated low-privilege account.</li>
+      <li><strong>BACnet / Modbus / OPC UA gateways</strong> offered by the security vendor, ideally with commands disabled.</li>
+      <li><strong>ONVIF events / VMS API</strong> for video: motion, analytics, camera offline.</li>
+      <li><strong>Fire alarm interface</strong>: hard-wired, certified release of escape doors, independent of BMS software.</li>
+    </ul>
+
+    <h3>Rules of thumb</h3>
+    <ol>
+      <li>Default to <strong>read-only</strong>. Security status out, no commands in.</li>
+      <li>If a command is needed (open the visitor gate, unlock a meeting room during a booked slot), allow only that point, log it with a named user, and let the security system enforce its own rules.</li>
+      <li>Never unset an intrusion area from the BMS without a user code entered by a person.</li>
+      <li>Separate networks: security VLAN, firewall rules that permit only the integration host and port.</li>
+      <li>The security system MUST keep working if the BMS and the integration fail.</li>
+    </ol>
+
+    <h3>Sort these integrations</h3>
+    <div class="classify" data-cats="Good practice,Risky">
+      <div class="item" data-cat="Good practice" data-why="Status out, used for energy saving."><span class="label">Alarm area "set" drives the HVAC unoccupied mode.</span></div>
+      <div class="item" data-cat="Risky" data-why="Anyone with BMS access, or an attacker in it, can disarm the building."><span class="label">A dashboard button unsets the intrusion alarm without a code.</span></div>
+      <div class="item" data-cat="Good practice" data-why="Fault visibility helps maintenance and does not alter security."><span class="label">Panel mains failure and battery fault show in the BMS alarm list.</span></div>
+      <div class="item" data-cat="Risky" data-why="Escape door release must be certified and hard-wired to the fire system."><span class="label">The BMS unlocks escape doors in a fire via a script.</span></div>
+      <div class="item" data-cat="Good practice" data-why="Single point, logged, enforced by the access system's own schedule."><span class="label">Reception staff open the visitor gate via the access API, logged per user.</span></div>
+      <div class="item" data-cat="Risky" data-why="Cameras exposed to the internet are routinely scanned and exploited."><span class="label">Camera web pages are port-forwarded so the BMS cloud can show them.</span></div>
+    </div>
+
+    <div class="callout example">An office building wires three relay outputs from the intrusion panel (floors 1–3
+      set) into the BMS. When a floor is set, the BMS drops it to unoccupied setpoints and switches off lighting.
+      When unset, comfort mode starts. The BMS has no path to send anything back to the panel.</div>
+    <div class="callout warn">Convenience creeps. "Just one button to arm from the panel" soon becomes "and disarm",
+      then "remotely". Each step moves security decisions into a system that was never graded or tested for them.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">Which integration is safest for driving HVAC from intrusion status?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Full API access gives the BMS power it does not need.">Full admin API account on the panel</button>
+        <button class="opt" data-opt="b" data-why="Shared credentials make audit impossible.">Shared installer code stored in the BMS</button>
+        <button class="opt" data-opt="c" data-why="Exposes the panel beyond the security network.">Panel web interface opened to the office LAN</button>
+        <button class="opt" data-opt="d" data-why="One-way, simple and robust; the BMS cannot change the panel.">Panel relay outputs into BMS digital inputs</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Status out, commands stay in the security system.</li>
+      <li>Any command allowed: single point, named user, logged.</li>
+      <li>Escape door release is hard-wired to fire, never BMS logic.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. A zone reads 0 Ω on a DEOL panel. What does the panel report?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Normal is the single EOL resistance.">Normal</button>
+        <button class="opt" data-opt="b" data-why="Alarm is the higher, two-resistor value.">Alarm</button>
+        <button class="opt" data-opt="c" data-why="A short circuit means wiring tamper.">Tamper (short circuit)</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">2. Which EN 50131 grade fits a typical small office with an ordinary insurer?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Grade 1 is rarely accepted.">Grade 1</button>
+        <button class="opt" data-opt="b" data-why="Grade 2 covers most homes and small businesses.">Grade 2</button>
+        <button class="opt" data-opt="c" data-why="Grade 4 is for banks and vaults.">Grade 4</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Why replace Wiegand readers with OSDP Secure Channel?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="OSDP is bidirectional, supervised and encrypted.">Encryption and supervision of the reader link</button>
+        <button class="opt" data-opt="b" data-why="Card range depends on the card technology.">Longer card read range</button>
+        <button class="opt" data-opt="c" data-why="OSDP uses RS-485, not PoE by definition.">It powers the reader over Ethernet</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. 10 cameras at 2 Mbit/s, recorded continuously for 7 days. Roughly how much storage?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is about one camera for one day.">0.2 TB</button>
+        <button class="opt" data-opt="b" data-why="Ten times too much: check the units.">15 TB</button>
+        <button class="opt" data-opt="c" data-why="Too high by a factor of about ten.">150 TB</button>
+        <button class="opt" data-opt="d" data-why="20 Mbit/s = 2.5 MB/s; × 604,800 s ≈ 1.5 × 10¹² bytes.">About 1.5 TB</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">5. A BMS needs to know when the building is empty. Best source?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Motion while set means an alarm, not occupancy data.">PIR alarms from the intrusion panel while set</button>
+        <button class="opt" data-opt="b" data-why="Too much power for a status need.">Remote arming rights on the panel</button>
+        <button class="opt" data-opt="c" data-why="Read-only status, one-way, robust.">The area "set" status, read-only</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="14-audio-av.html">← Chapter 14</a>
+    <a class="btn" href="16-fire-safety.html">Chapter 16 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 15 visualizations.
+
+// 15.1 DEOL loop resistance.
+(() => {
+  const r = document.getElementById("eolR"), out = document.getElementById("eolOut");
+  const txt = document.getElementById("eolTxt"), ptr = document.getElementById("eolPtr");
+  // Piecewise scale matching the SVG bands.
+  const px = (k) => k < 1 ? 20 + k * 80 : k < 7 ? 100 + (k - 1) / 6 * 190 : k < 14 ? 290 + (k - 7) / 7 * 200 : Math.min(600, 490 + (k - 14) / 16 * 110);
+  const draw = () => {
+    const k = Number(r.value);
+    out.textContent = k >= 30 ? "∞" : k.toFixed(1);
+    ptr.setAttribute("transform", `translate(${px(k)},0)`);
+    let s;
+    if (k < 1) s = "TAMPER: loop short-circuited. Someone may have bridged the wires to hide the detector.";
+    else if (k < 3.8) s = "FAULT: resistance low but not a short. Check for moisture or a wrong resistor.";
+    else if (k <= 5.6) s = "NORMAL: contact closed, one EOL resistor seen.";
+    else if (k < 8) s = "FAULT: between windows. Corroded joint or wrong value.";
+    else if (k <= 11) s = "ALARM: contact open, both resistors in series.";
+    else s = "TAMPER: loop open. Cable cut or detector removed.";
+    txt.textContent = s;
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 15.1 Arming simulator.
+(() => {
+  const fig = document.getElementById("arm");
+  const lcd = document.getElementById("armLcd"), log = document.getElementById("armLog"), grid = document.getElementById("armZones");
+  const ZONES = [
+    { n: "Front door", t: "entry", part: true },
+    { n: "Hall PIR", t: "follower", part: false },
+    { n: "Office PIR", t: "instant", part: false },
+    { n: "Windows", t: "instant", part: true },
+    { n: "Server room", t: "24h", part: true },
+    { n: "Panic button", t: "holdup", part: true },
+  ];
+  const SPEED = 5, EXIT = 45, ENTRY = 30;
+  let mode = "unset", timer = null, left = 0, phase = null, open = ZONES.map(() => false), alarm = null;
+  const say = (m) => { log.textContent = m; };
+  const stop = () => { clearInterval(timer); timer = null; phase = null; };
+  const render = () => {
+    grid.innerHTML = "";
+    ZONES.forEach((z, i) => {
+      const b = document.createElement("button");
+      const inactive = mode === "part" && !z.part;
+      b.className = "zone" + (open[i] ? " open" : "") + (inactive ? " bypass" : "") + (alarm === i ? " alarm" : "");
+      b.innerHTML = `${z.n}<small>${z.t}${open[i] ? " · OPEN" : " · closed"}</small>`;
+      b.addEventListener("click", () => { open[i] = !open[i]; if (open[i]) trip(i); render(); });
+      grid.appendChild(b);
+    });
+    lcd.className = "panel-lcd" + (alarm !== null ? " alarm" : mode !== "unset" ? " armed" : "");
+    if (alarm !== null) lcd.textContent = `ALARM · ${ZONES[alarm].n.toUpperCase()}`;
+    else if (phase === "exit") lcd.textContent = `EXIT TIME ${left} s`;
+    else if (phase === "entry") lcd.textContent = `ENTRY TIME ${left} s · ENTER CODE`;
+    else lcd.textContent = mode === "unset" ? (open.some((o, i) => o && ZONES[i].t !== "holdup") ? "UNSET · NOT READY" : "UNSET · READY") : mode === "away" ? "SET (AWAY)" : "PART SET (NIGHT)";
+  };
+  const fire = (i, why) => { stop(); alarm = i; say(why); render(); };
+  const countdown = (p, secs, done) => {
+    stop(); phase = p; left = secs;
+    timer = setInterval(() => { left -= SPEED; if (left <= 0) { const ph = phase; stop(); done(ph); } render(); }, 1000);
+  };
+  function trip(i) {
+    const z = ZONES[i];
+    if (alarm !== null) return;
+    if (z.t === "24h") return fire(i, "24-hour zone: alarm whether set or not.");
+    if (z.t === "holdup") return fire(i, "Hold-up: silent alarm sent straight to the ARC. Siren stays off.");
+    if (mode === "unset") return say(`${z.n} open. Unset, so no alarm.`);
+    if (phase === "exit" && (z.t === "entry" || z.t === "follower")) return say(`${z.n} open during exit time: allowed.`);
+    if (mode === "part" && !z.part) return say(`${z.n} is not part of the night set. Ignored.`);
+    if (z.t === "entry" && phase !== "entry") { say("Entry delay started. Enter the code before it ends."); return countdown("entry", ENTRY, () => fire(i, "Entry time expired: full alarm.")); }
+    if (z.t === "follower" && phase === "entry") return say("Follower zone during entry time: no alarm yet.");
+    fire(i, `${z.t === "follower" ? "Follower zone with no entry timer" : "Instant zone"}: alarm.`);
+  }
+  fig.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => {
+    const c = b.dataset.cmd;
+    if (c === "reset") { stop(); mode = "unset"; alarm = null; open = ZONES.map(() => false); say("System reset."); }
+    else if (c === "unset") { stop(); mode = "unset"; say(alarm !== null ? "Code entered. Alarm silenced; the event stays in the log." : "Code entered. Unset."); alarm = null; }
+    else if (alarm === null) {
+      const blocking = open.findIndex((o, i) => o && ZONES[i].t === "instant" && (c === "away" || ZONES[i].part));
+      if (blocking >= 0) say(`Cannot set: ${ZONES[blocking].n} is open. Close it or bypass it.`);
+      else { mode = c; say(c === "away" ? "Exit time started. Leave through the front door." : "Part set: perimeter only, interior PIRs off."); countdown("exit", c === "away" ? EXIT : 15, () => { say("Set. Exit time over."); }); }
+    }
+    render();
+  }));
+  render();
+})();
+
+// 15.2 Grade selector.
+(() => {
+  const fig = document.getElementById("grade");
+  const T = [
+    "Grade 1: intruder with little knowledge. Basic tamper, simple codes. Domestic only, and few insurers accept it.",
+    "Grade 2: some knowledge, common tools. Tamper on enclosures, event log, codes with ≥10,000 combinations. Most homes and small businesses.",
+    "Grade 3: experienced intruder who knows alarm systems. Detector anti-masking, monitored signalling path, stricter logging. Commercial and higher-risk retail.",
+    "Grade 4: organised attack with specialist tools. Highest anti-masking and path redundancy. Banks, vaults, critical sites.",
+  ];
+  const cells = fig.querySelectorAll("#gradeScale div");
+  const draw = (g) => {
+    cells.forEach((c, k) => c.classList.toggle("on", k === g));
+    fig.querySelector("#gradeTxt").textContent = T[g];
+    fig.querySelectorAll("[data-g]").forEach((b) => b.setAttribute("aria-pressed", Number(b.dataset.g) === g));
+  };
+  fig.querySelectorAll("[data-g]").forEach((b) => b.addEventListener("click", () => draw(Number(b.dataset.g))));
+  draw(1);
+})();
+
+// 15.3 Door state machine.
+(() => {
+  const fig = document.getElementById("door"), txt = document.getElementById("doorTxt");
+  let st = "locked", t = 0;
+  const MSG = {
+    locked: "Locked and closed. Waiting.",
+    granted: "Valid card: lock released for 5 s. Door may now open.",
+    open: "Door open with a grant. Shunt timer running (30 s).",
+    held: "HELD OPEN: door open longer than the shunt time. Alarm to the operator.",
+    forced: "FORCED OPEN: door moved without a grant or exit request. Alarm.",
+  };
+  const draw = (extra) => {
+    fig.querySelectorAll(".st-node").forEach((n) => n.classList.toggle("on", n.id === "d-" + st));
+    txt.textContent = (extra ? extra + " " : "") + MSG[st];
+  };
+  const ev = (e) => {
+    let x = "";
+    if (e === "card") { if (st === "locked") { st = "granted"; t = 0; } else x = "Card ignored in this state."; }
+    else if (e === "bad") x = "Access denied: unknown card. Event logged, door stays locked.";
+    else if (e === "openD") { if (st === "granted") { st = "open"; t = 0; } else if (st === "locked") st = "forced"; else x = "Door already open."; }
+    else if (e === "closeD") { if (st === "open" || st === "held" || st === "forced") { x = st === "open" ? "Closed and relocked." : "Door closed. Alarm cleared, event stays logged."; st = "locked"; } else x = "Door is already closed."; }
+    else if (e === "tick") {
+      t += 10;
+      if (st === "granted" && t >= 5) { st = "locked"; x = "Nobody entered within 5 s: relocked."; }
+      else if (st === "open" && t >= 30) st = "held";
+      else x = `${t} s passed.`;
+    }
+    draw(x);
+  };
+  fig.querySelectorAll("[data-ev]").forEach((b) => b.addEventListener("click", () => ev(b.dataset.ev)));
+  draw();
+})();
+
+// 15.3 Wiegand 26-bit frame.
+(() => {
+  const f = document.getElementById("wFac"), c = document.getElementById("wCard");
+  const g = document.getElementById("wBits"), txt = document.getElementById("wTxt");
+  const draw = () => {
+    const fac = Number(f.value), card = Number(c.value);
+    document.getElementById("wFacO").textContent = fac;
+    document.getElementById("wCardO").textContent = card;
+    const data = fac.toString(2).padStart(8, "0") + card.toString(2).padStart(16, "0");
+    const ones = (s) => [...s].filter((b) => b === "1").length;
+    const pe = ones(data.slice(0, 12)) % 2 ? "1" : "0";
+    const po = ones(data.slice(12)) % 2 ? "0" : "1";
+    const bits = pe + data + po;
+    const w = 600 / 26;
+    g.innerHTML = [...bits].map((b, i) => {
+      const cls = i === 0 || i === 25 ? "fill-example-soft" : i <= 8 ? "fill-accent-soft" : "fill-surface";
+      return `<rect x="${10 + i * w}" y="10" width="${w - 2}" height="30" rx="3" class="${cls}" stroke="var(--border)"/><text x="${10 + i * w + w / 2 - 1}" y="30" text-anchor="middle">${b}</text>`;
+    }).join("") + `<text x="10" y="60" class="small">P</text><text x="${10 + 5 * w}" y="60" class="small" text-anchor="middle">facility (8)</text><text x="${10 + 17 * w}" y="60" class="small" text-anchor="middle">card number (16)</text><text x="${10 + 25.5 * w}" y="60" class="small" text-anchor="middle">P</text>`;
+    txt.textContent = `Sent in clear: ${bits}. Anyone tapping the D0/D1 wires can record and replay it.`;
+  };
+  f.addEventListener("input", draw); c.addEventListener("input", draw); draw();
+})();
+
+// 15.4 Barrier stepper.
+(() => {
+  const fig = document.getElementById("gate"), $ = (id) => document.getElementById(id);
+  // car x, boom up?, loops occupied [arming, safety, closing], state, text.
+  const S = [
+    [-80, false, [0, 0, 0], "Closed", "Barrier closed. No vehicle."],
+    [95, false, [1, 0, 0], "Closed", "Car on the arming loop. The reader is now enabled."],
+    [95, true, [1, 0, 0], "Opening", "Valid card or ANPR match. Boom rises (typically 2–6 s)."],
+    [275, true, [0, 1, 0], "Open", "Car under the boom on the safety loop. Closing is inhibited."],
+    [445, true, [0, 0, 1], "Open", "Car on the closing loop. It has passed the boom."],
+    [640, false, [0, 0, 0], "Closing", "Closing loop cleared: boom closes. Photocell and force limits stay active."],
+  ];
+  let i = 0;
+  const draw = () => {
+    const [x, up, L, s, t] = S[i];
+    $("gCar").setAttribute("transform", `translate(${x + 80},0)`);
+    $("gBoom").setAttribute("x2", up ? 310 : 600); $("gBoom").setAttribute("y2", up ? 2 : 44);
+    ["gL1", "gL2", "gL3"].forEach((id, k) => $(id).classList.toggle("lit", !!L[k]));
+    $("gState").textContent = s;
+    $("gateTxt").textContent = `${i + 1}/${S.length} · ${t}`;
+  };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(S.length - 1, i + 1); draw(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(0, i - 1); draw(); });
+  draw();
+})();
+
+// 15.5 ONVIF/RTSP sequence stepper.
+(() => {
+  const fig = document.getElementById("rtsp"), $ = (id) => document.getElementById(id);
+  // [label, sub, direction: 1 = to camera, -1 = to VMS, text]
+  const S = [
+    ["WS-Discovery Probe", "UDP multicast 239.255.255.250:3702", 1, "ONVIF: the VMS asks who is on the network. Cameras answer with their service address."],
+    ["GetProfiles", "SOAP over HTTP, digest auth", 1, "ONVIF Media: list profiles, e.g. main 2560×1440 H.265 and sub 640×360 H.264."],
+    ["GetStreamUri → rtsp://…/101", "SOAP response", -1, "The camera returns the RTSP URL for the chosen profile."],
+    ["RTSP DESCRIBE", "TCP 554", 1, "The VMS asks what the stream contains. Reply carries an SDP: video H.265, payload type 96."],
+    ["RTSP SETUP", "transport: RTP/AVP/TCP interleaved or UDP ports", 1, "Agree how media will travel. TCP interleaved passes firewalls; UDP has lower overhead."],
+    ["RTSP PLAY", "session id", 1, "Start streaming."],
+    ["RTP packets …", "~2–4 Mbit/s, keyframe every 1–2 s", -1, "Video flows as RTP packets. RTCP sends timing and loss reports alongside."],
+    ["RTSP TEARDOWN", "", 1, "End the session. Most VMS keep recording streams open permanently."],
+  ];
+  let i = 0;
+  const draw = () => {
+    const [l, s, d, t] = S[i];
+    $("rLabel").textContent = l; $("rSub").textContent = s;
+    $("rMsg").setAttribute("d", d > 0 ? "M100,140 L518,140" : "M520,140 L102,140");
+    $("rtspTxt").textContent = `${i + 1}/${S.length} · ${t}`;
+  };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(S.length - 1, i + 1); draw(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(0, i - 1); draw(); });
+  draw();
+})();
+
+// 15.5 Storage calculator.
+(() => {
+  const fig = document.getElementById("store"), $ = (id) => document.getElementById(id);
+  let raid = 0;
+  const draw = () => {
+    const cam = Number($("sCam").value), br = Number($("sBr").value), day = Number($("sDay").value), duty = Number($("sDuty").value) / 100;
+    $("sCamO").textContent = cam; $("sBrO").textContent = br; $("sDayO").textContent = day; $("sDutyO").textContent = Math.round(duty * 100);
+    const tb = cam * br * 1e6 / 8 * 86400 * day * duty * 1.1 / 1e12;
+    const parity = raid === 5 ? 1 : raid === 6 ? 2 : 0;
+    const drives = Math.max(raid ? parity + 2 : 1, Math.ceil(tb / 8) + parity);
+    $("sNet").textContent = tb < 10 ? tb.toFixed(1) + " TB" : Math.round(tb) + " TB";
+    $("sRaw").textContent = `${drives} × 8 TB`;
+    $("sNetw").textContent = Math.round(cam * br) + " Mbit/s";
+  };
+  ["sCam", "sBr", "sDay", "sDuty"].forEach((id) => $(id).addEventListener("input", draw));
+  fig.querySelectorAll("[data-raid]").forEach((b) => b.addEventListener("click", () => {
+    raid = Number(b.dataset.raid);
+    fig.querySelectorAll("[data-raid]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    draw();
+  }));
+  draw();
+})();
+
+// 15.6 Confidence threshold.
+(() => {
+  const D = [
+    ["Person at fence", 0.94, 1], ["Person, night IR", 0.71, 1], ["Person behind bush", 0.42, 1], ["Crouching person", 0.33, 1],
+    ["Fox", 0.38, 0], ["Swaying branch", 0.22, 0], ["Headlights", 0.15, 0], ["Cat", 0.55, 0], ["Rain streak", 0.09, 0], ["Cyclist (person)", 0.81, 1],
+  ];
+  const r = document.getElementById("thrR"), list = document.getElementById("thrList"), txt = document.getElementById("thrTxt");
+  const draw = () => {
+    const th = Number(r.value);
+    document.getElementById("thrO").textContent = th.toFixed(2);
+    let tp = 0, fp = 0, fn = 0;
+    list.innerHTML = D.map(([n, s, real]) => {
+      const hit = s >= th;
+      const c = hit && real ? "tp" : hit ? "fp" : real ? "fn" : "tn";
+      if (c === "tp") tp++; if (c === "fp") fp++; if (c === "fn") fn++;
+      return `<div class="det ${c}"><b>${n}</b><br>${s.toFixed(2)}</div>`;
+    }).join("");
+    txt.textContent = `Caught ${tp}/${tp + fn} people · false alarms ${fp} · missed ${fn}`;
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 15.7 Integration boundary.
+(() => {
+  const fig = document.getElementById("bound"), $ = (id) => document.getElementById(id);
+  const P = {
+    ro: ["status flows out; commands stay out", "", "Read-only: the BMS sees set/unset, alarms and faults. It cannot change the security system. Recommended default."],
+    limited: ["one logged command allowed", "lit-line", "Limited: one named point (e.g. visitor gate) may be commanded, by a named user, logged, and still checked by the access system's own rules."],
+    full: ["BMS can disarm and unlock", "lit-line", "Full control: the BMS is now part of the security system, without its grade or testing. Anyone who compromises the BMS owns the doors."],
+  };
+  const draw = (k) => {
+    const [n, c, t] = P[k];
+    $("bNote").textContent = n;
+    $("bOut").setAttribute("class", "arrow " + c);
+    $("bOut").style.stroke = k === "full" ? "var(--bad)" : "";
+    $("bOut").style.strokeDasharray = k === "ro" ? "5 5" : "";
+    $("bOut").style.opacity = k === "ro" ? 0.3 : 1;
+    $("boundTxt").textContent = t;
+    fig.querySelectorAll("[data-p]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === k));
+  };
+  fig.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.p)));
+  draw("ro");
+})();
+</script>
+</body>
+</html>

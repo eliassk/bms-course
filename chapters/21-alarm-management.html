@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alarm Management</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .am-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px 16px; margin: 10px 0; }
+  .am-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .am-row input[type=range] { width: 100%; }
+  .am-row output { font: 13px var(--mono); color: var(--text); }
+  .am-log { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; max-height: 200px; overflow: auto; margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .am-log .ok { color: var(--ok); } .am-log .bad { color: var(--bad); } .am-log .ex { color: var(--example); } .am-log .mu { color: var(--muted); }
+  .verdict { font-weight: 700; padding: 8px 12px; border-radius: 8px; margin-top: 10px; display: inline-block; }
+  .verdict.ok { background: var(--ok-soft); color: var(--ok); }
+  .verdict.warn { background: var(--example-soft); color: var(--example); }
+  .verdict.bad { background: var(--bad-soft); color: var(--bad); }
+  .matrix { display: grid; grid-template-columns: minmax(0, 1.1fr) repeat(4, minmax(0, 1fr)); gap: 4px; font-size: 12px; }
+  .matrix .hd { font-weight: 700; color: var(--muted); padding: 6px 4px; overflow-wrap: anywhere; }
+  .matrix button { font: 600 12px var(--font); border: 1px solid var(--border); border-radius: 6px; padding: 10px 2px; cursor: pointer;
+    background: var(--surface); color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+  .matrix button[data-p="High"] { background: var(--bad-soft); color: var(--bad); }
+  .matrix button[data-p="Medium"] { background: var(--example-soft); color: var(--example); }
+  .matrix button[data-p="Low"] { background: var(--accent-soft); color: var(--accent); }
+  .matrix button[data-p="None"] { color: var(--muted); }
+  .matrix button[aria-pressed=true] { outline: 3px solid var(--accent); outline-offset: 1px; }
+  svg .st-node { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; transition: fill .15s, stroke .15s; }
+  svg .st-node.on { fill: var(--accent); stroke: var(--accent); }
+  svg text.on { fill: #fff; }
+  svg .sig { stroke: var(--accent); stroke-width: 2; fill: none; }
+  svg .thr { stroke: var(--bad); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  svg .thr2 { stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 3 3; }
+  svg .band-ok { fill: var(--ok-soft); } svg .band-warn { fill: var(--example-soft); } svg .band-bad { fill: var(--bad-soft); }
+  svg .alm { fill: var(--bad); opacity: .85; }
+  svg .shl { fill: var(--muted); opacity: .35; }
+  svg .bar { fill: var(--accent); }
+  svg .bar.over { fill: var(--bad); }
+  svg .route { stroke: var(--border); stroke-width: 2; fill: none; transition: stroke .15s; }
+  svg .route.on { stroke: var(--accent); stroke-width: 3; }
+  svg .ch { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+  svg .ch.on { fill: var(--accent-soft); stroke: var(--accent); }
+  .esc { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+  .esc li { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; font-size: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .esc li b { font-family: var(--mono); min-width: 4.5em; }
+  .esc li.done { border-color: var(--ok); background: var(--ok-soft); }
+  .esc li.fired { border-color: var(--example); background: var(--example-soft); }
+  .esc li.skip { opacity: .45; }
+  .am-in { font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0; resize: vertical; }
+  .am-check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="21">
+<div class="content">
+  <div class="kicker">Chapter 21</div>
+  <h1>Alarm management</h1>
+  <p class="lead">An alarm is a request for a human to act. Everything in this chapter follows from that one sentence:
+    which conditions deserve an alarm, how urgent each one is, how to stop noise, how to pair "raised" with "cleared",
+    which channel reaches a person, and what happens when nobody answers.</p>
+
+  <!-- 21.1 -->
+  <section class="lesson" id="s1" data-num="21.1">
+    <h2>21.1 Alarm philosophy (ISA-18.2, EEMUA 191)</h2>
+    <p>Most building systems are born with too many alarms. Every controller vendor ships hundreds of possible alarm
+      points, integrators enable them "to be safe", and within a year the operators have learned to ignore the alarm
+      list. Alarm management is the discipline that prevents this. It came from the process industry after
+      accidents where operators were buried in alarms, and two documents define it:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Document</th><th>What it is</th><th>What to take from it</th></tr>
+      <tr><td><strong>EEMUA 191</strong></td><td>UK industry guide, first published 1999 after incidents such as the 1994 Milford Haven refinery explosion. Now in its third edition.</td><td>Practical benchmarks: alarm rates, priority distribution, the "alarm must be useful and relevant" test.</td></tr>
+      <tr><td><strong>ANSI/ISA-18.2</strong></td><td>US standard (2009, revised 2016) for alarm management in process industries.</td><td>The <em>alarm lifecycle</em>, formal alarm states, the definition of an alarm, required documents.</td></tr>
+      <tr><td><strong>IEC 62682</strong></td><td>International standard closely based on ISA-18.2.</td><td>Same model, cited in European tenders.</td></tr>
+    </table></div>
+    <p>Buildings are not refineries. Nobody dies if a meeting room is 2 K too warm. But the human problem is
+      identical: one person, a phone, and a stream of messages. The principles scale down very well.</p>
+
+    <h3>The definition that does the work</h3>
+    <p>ISA-18.2 defines an alarm as an audible and/or visible means of indicating an equipment malfunction, process
+      deviation or abnormal condition <em>requiring a response</em>. Read the last three words twice. A message that
+      requires no action is not an alarm. It is an event, a log entry or a status. That gives you a simple test for
+      every candidate alarm:</p>
+    <ol>
+      <li><strong>Is there a defined action?</strong> "Call the boiler contractor", "reset the pump", "close the window". If you cannot write the action, it is not an alarm.</li>
+      <li><strong>Is it unique?</strong> If another alarm already tells the operator the same thing, one of them goes.</li>
+      <li><strong>Is it timely?</strong> It must arrive early enough for the action to matter, and not so early it is noise.</li>
+      <li><strong>Is it understandable?</strong> "AHU2 supply fan failed, building west wing unventilated" beats "DI 4.07 = 1".</li>
+    </ol>
+
+    <h3>The lifecycle</h3>
+    <p>ISA-18.2 describes alarm management as a loop, not a one-off configuration task. Click a stage.</p>
+    <figure class="viz" id="life">
+      <svg viewBox="0 0 600 300" role="img" aria-label="ISA-18.2 alarm lifecycle loop">
+        <defs><marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <g class="nodes"></g>
+        <text class="small" x="300" y="150" text-anchor="middle">continuous loop:</text>
+        <text class="small" x="300" y="166" text-anchor="middle">measure, fix, repeat</text>
+      </svg>
+      <div class="readout" id="lifeOut" aria-live="polite"></div>
+      <figcaption>Stages of the ISA-18.2 lifecycle (simplified; management of change and audit wrap around the whole loop).</figcaption>
+    </figure>
+
+    <h3>The philosophy document</h3>
+    <p>The first stage produces a short <strong>alarm philosophy</strong>. For a building it can be four pages. It
+      fixes the rules before anyone configures a single point:</p>
+    <ul>
+      <li>What qualifies as an alarm, and what is only an event.</li>
+      <li>Priority levels and how to pick one (the matrix in 21.2).</li>
+      <li>Target rates: average alarms per operator per hour, and what counts as a flood.</li>
+      <li>Who may shelve or disable an alarm, for how long, and how it is logged.</li>
+      <li>Notification channels per priority, on-call rules, escalation.</li>
+      <li>Naming and message text conventions.</li>
+    </ul>
+
+    <h3>Benchmarks: how many is too many?</h3>
+    <p>EEMUA 191 and ISA-18.2 give rough targets for one operator. ISA-18.2 treats about 150 alarms per day (about
+      one per 10 minutes) as <em>very likely acceptable</em> and about 300 per day (two per 10 minutes) as <em>maximum
+      manageable</em>. A <strong>flood</strong> starts when more than 10 alarms arrive in 10 minutes. These numbers
+      come from control rooms with a dedicated operator. A building technician who also fixes things should aim far
+      lower: a handful per day.</p>
+    <figure class="viz" id="flood">
+      <div class="controls seg" role="group" aria-label="Scenario">
+        <button data-sc="good" aria-pressed="true">Tuned site</button>
+        <button data-sc="chatter">Chattering sensor</button>
+        <button data-sc="power">Power blip</button>
+      </div>
+      <div class="am-row">
+        <label>Base rate (alarms per hour) <input type="range" id="floodRate" min="0" max="30" value="3"><output id="floodRateO"></output></label>
+      </div>
+      <svg viewBox="0 0 600 220" role="img" aria-label="Alarms per 10 minute bucket over 12 hours">
+        <g class="bands"></g><g class="bars"></g><g class="axis"></g>
+      </svg>
+      <div class="readout" id="floodOut" aria-live="polite"></div>
+      <figcaption>Alarms per 10-minute bucket over a 12-hour shift. Green: ≤1 (very likely acceptable). Amber: ≤2 (manageable). Red band: above 10 = flood. Random but repeatable.</figcaption>
+    </figure>
+    <div class="callout example">A typical "power blip" flood: the mains dips for 300 ms. Every VFD trips, every
+      room controller reboots and reports a communication loss, the UPS reports "on battery", and the BMS logs 200
+      alarms in 2 minutes. The only actionable one is "AHU 1 did not restart". Good design suppresses the consequential
+      alarms while "mains failure" is active (state-based suppression, see 21.3) and leaves one root cause on screen.</div>
+    <div class="callout warn">Measuring is the step most sites skip. Without a weekly "top 10 most frequent alarms"
+      report, nobody notices the one sensor that produced 60 % of all alarms last month. In practice a few bad actors
+      usually dominate the count.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A point raises "Filter pressure logged: 142 Pa" every hour. No action is defined. What is it under ISA-18.2?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Priority does not rescue it; there is still no required response.">A low-priority alarm</button>
+        <button class="opt" data-opt="b" data-why="Correct. No required response means it is an event or a trend value, not an alarm.">Not an alarm: an event or log entry</button>
+        <button class="opt" data-opt="c" data-why="Shelving is for alarms that are temporarily nuisance. This was never an alarm.">An alarm that should be shelved</button>
+        <button class="opt" data-opt="d" data-why="Frequency is not the test; required action is.">An alarm, because it repeats</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>An alarm requires a response. No action, no alarm.</li>
+      <li>ISA-18.2 / IEC 62682 give the lifecycle and states; EEMUA 191 gives the benchmarks.</li>
+      <li>~1 alarm per 10 min is acceptable for a full-time operator; &gt;10 per 10 min is a flood.</li>
+      <li>Write a short philosophy first. Measure every week after.</li>
+    </ul>
+  </section>
+
+  <!-- 21.2 -->
+  <section class="lesson" id="s2" data-num="21.2">
+    <h2>21.2 Severity, priority, alarm fatigue</h2>
+    <p>Two words are often mixed up. <strong>Severity</strong> describes how bad the consequence is if nothing is
+      done. <strong>Priority</strong> tells the operator what to handle first. Priority is derived from severity
+      <em>and</em> from how much time there is to respond. A leak into the server room is severe and fast. A failed
+      backup boiler in July is severe on paper but there are months to fix it.</p>
+
+    <h3>The priority matrix</h3>
+    <p>During <em>rationalisation</em>, each alarm is placed on a matrix. Pick the worst credible consequence and the
+      maximum time before the consequence happens. The cell gives the priority.</p>
+    <figure class="viz" id="matrix">
+      <div class="matrix" role="group" aria-label="Priority matrix"></div>
+      <div class="readout" id="matOut" aria-live="polite"></div>
+      <figcaption>Example matrix for a building. Rows: time to respond. Columns: consequence. Your philosophy defines the exact bands.</figcaption>
+    </figure>
+    <div class="table-wrap"><table>
+      <tr><th>Priority</th><th>Target share</th><th>Building example</th><th>Expected response</th></tr>
+      <tr><td><strong>High / critical</strong></td><td>~5 %</td><td>Water leak in plant room, freezer above −10 °C, fire panel fault</td><td>Minutes, any hour</td></tr>
+      <tr><td><strong>Medium</strong></td><td>~15 %</td><td>Boiler lockout in winter, AHU fan failed, UPS on battery</td><td>Within an hour</td></tr>
+      <tr><td><strong>Low</strong></td><td>~80 %</td><td>Filter dirty, sensor out of range, door held open</td><td>Next working day</td></tr>
+    </table></div>
+    <p>The 80/15/5 split is the EEMUA-style guideline. If 40 % of your alarms are "critical", the word means nothing.
+      Three or four priority levels are enough; more levels cannot be told apart under stress.</p>
+
+    <h3>Alarm fatigue</h3>
+    <p>Alarm fatigue is the learned habit of ignoring alarms because most of them did not matter. It is well studied in
+      hospitals, where a large share of bedside monitor alarms are false or clinically irrelevant. The mechanism is
+      simple conditioning: if 19 out of 20 messages are noise, the brain stops treating the 20th as a signal. The
+      slider below is a <em>toy model</em>, not measured data. It shows the shape of the problem.</p>
+    <figure class="viz" id="fatigue">
+      <div class="am-row">
+        <label>Alarms per day <input type="range" id="fatN" min="1" max="200" value="20"><output id="fatNO"></output></label>
+        <label>Share that are actionable <input type="range" id="fatA" min="5" max="100" value="30"><output id="fatAO"></output></label>
+      </div>
+      <svg viewBox="0 0 600 120" role="img" aria-label="Actionable versus noise alarms"><g class="dots"></g></svg>
+      <div class="readout" id="fatOut" aria-live="polite"></div>
+      <figcaption>Each dot is one alarm in a day: filled = actionable, hollow = noise. Toy model: chance of a quick response falls as noise rises.</figcaption>
+    </figure>
+    <div class="callout warn">Do not "fix" fatigue by making everything high priority. That trains the same habit at a
+      louder volume. Fix it by deleting, merging and tuning alarms until nearly every one leads to an action.</div>
+    <div class="callout example">A cold-store alarm is set at −15 °C. Each defrost cycle lifts the air probe to −12 °C
+      for 20 minutes, four times a day. Staff learn to ignore it. One night the compressor fails and nobody reacts for
+      hours. The fix: suppress during the defrost window, use the product probe instead of the air probe, and add a
+      30-minute delay.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A backup boiler fails in July. The consequence (no heat) is severe, but heating is not needed for months. What priority?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Severity alone does not set priority.">High, because no heat is severe</button>
+        <button class="opt" data-opt="b" data-why="It still needs action; it is not just a log entry.">None, it is an event</button>
+        <button class="opt" data-opt="c" data-why="Correct. Long time to respond lowers priority.">Low: severe consequence, but very long time to respond</button>
+        <button class="opt" data-opt="d" data-why="Priority depends on both axes, not on the season name.">Medium, always, for boilers</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Severity = how bad. Priority = what first. Priority uses severity and time to respond.</li>
+      <li>Aim for roughly 80 % low, 15 % medium, 5 % high.</li>
+      <li>Fatigue comes from noise. Cure it by removing noise, not by shouting louder.</li>
+    </ul>
+  </section>
+
+  <!-- 21.3 -->
+  <section class="lesson" id="s3" data-num="21.3">
+    <h2>21.3 Debounce, cooldown, shelving</h2>
+    <p>A real signal is noisy. A temperature hovers around its limit, a float switch bounces as water ripples, a
+      network link drops for two seconds. Without filtering, each crossing becomes an alarm. An alarm that raises and
+      clears repeatedly in a short time is called <strong>chattering</strong>. These tools stop it:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Tool</th><th>What it does</th><th>Typical values</th></tr>
+      <tr><td><strong>Deadband (hysteresis)</strong></td><td>Raise at the limit, clear only after the value is back by a margin.</td><td>Temperature 0.5–2 K; pressure 2–5 % of range</td></tr>
+      <tr><td><strong>On-delay (debounce)</strong></td><td>The condition must hold for N seconds before the alarm raises.</td><td>Digital inputs 1–5 s; temperatures 5–15 min; comm loss 30–120 s</td></tr>
+      <tr><td><strong>Off-delay</strong></td><td>The condition must be gone for N seconds before the alarm clears.</td><td>Similar to on-delay or shorter</td></tr>
+      <tr><td><strong>Cooldown (re-notify limit)</strong></td><td>After one notification, do not send another for the same alarm for N minutes.</td><td>15–60 min</td></tr>
+      <tr><td><strong>Shelving</strong></td><td>An operator hides a known nuisance alarm for a fixed time. It returns automatically.</td><td>1 h to 1 shift; max set in philosophy</td></tr>
+      <tr><td><strong>Suppression by design</strong></td><td>Logic hides alarms that are expected in a state (plant off, maintenance mode, mains failure).</td><td>Rule-based, no timer</td></tr>
+      <tr><td><strong>Out of service</strong></td><td>Alarm removed for maintenance, with a permit and a log entry.</td><td>Days, with review</td></tr>
+    </table></div>
+
+    <h3>Try it</h3>
+    <p>A room temperature with noise and one real fault (heating failure around minute 140). The alarm limit is
+      below the setpoint: low temperature. Tune the filters to get one alarm for the real fault and none for noise.</p>
+    <figure class="viz" id="deb">
+      <div class="am-row">
+        <label>Low limit (°C) <input type="range" id="dLim" min="17" max="20" step="0.1" value="19.5"><output id="dLimO"></output></label>
+        <label>Deadband (K) <input type="range" id="dDb" min="0" max="2" step="0.1" value="0"><output id="dDbO"></output></label>
+        <label>On-delay (min) <input type="range" id="dOn" min="0" max="20" value="0"><output id="dOnO"></output></label>
+        <label>Off-delay (min) <input type="range" id="dOff" min="0" max="20" value="0"><output id="dOffO"></output></label>
+      </div>
+      <div class="controls">
+        <label class="am-check"><input type="checkbox" id="dShelve"> Shelve minutes 40–100 (cleaning crew opens windows)</label>
+      </div>
+      <svg viewBox="0 0 600 240" role="img" aria-label="Signal, limits and resulting alarms over four hours">
+        <g class="g"></g>
+      </svg>
+      <div id="debOut"></div>
+      <figcaption>Blue: temperature. Red dashed: raise limit. Green dotted: clear limit (limit + deadband). Red bars: alarm active. Grey: shelved period.</figcaption>
+    </figure>
+    <p>Notice the trade-off. Every second of on-delay is a second of later warning for the real fault. For a slow room
+      temperature, 10 minutes costs nothing. For a water leak, a 10-minute delay is a flooded floor. Pick delays per
+      alarm, from the time-to-respond column of the matrix.</p>
+
+    <h3>Implementation sketch</h3>
+<pre class="code">// Evaluated on every new sample.
+const low = value &lt; limit;
+const clear = value &gt;= limit + deadband;
+if (!active &amp;&amp; low)   { since ??= now; if (now - since &gt;= onDelay)  raise(); }
+else if (active &amp;&amp; clear) { since ??= now; if (now - since &gt;= offDelay) clear_(); }
+else since = null;           // Condition broke; restart the timer.</pre>
+    <p>Two details matter. The timer resets when the condition breaks, so a bouncing signal never satisfies the delay.
+      And timers MUST survive a restart of the alarm engine, or a reboot raises every pending alarm at once.</p>
+
+    <h3>Shelving rules</h3>
+    <ul>
+      <li>Shelving always has an end time. "Shelved forever" is a disabled alarm without paperwork.</li>
+      <li>Record who shelved it, when and why.</li>
+      <li>Show shelved alarms in a separate list, so the shift handover sees them.</li>
+      <li>Do not allow high-priority alarms to be shelved without a second person, if your philosophy says so.</li>
+    </ul>
+    <div class="callout warn">A cooldown limits <em>notifications</em>, not the alarm state. The alarm list must still
+      show the current truth. A common bug: the cooldown blocks the "cleared" message too, so the phone says "leak!"
+      and never says "dry again".</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A low-temperature alarm at 19.5 °C chatters as the room sits at 19.4–19.6 °C. What is the cleanest single fix?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Correct. Clearing only at, say, 20.5 °C stops the toggling around the limit.">Add a deadband so it clears only at a higher value</button>
+        <button class="opt" data-opt="b" data-why="Shelving hides it but does not fix it, and it comes back.">Shelve it permanently</button>
+        <button class="opt" data-opt="c" data-why="Cooldown reduces messages, but the alarm still toggles in the list.">Add a 1-hour notification cooldown</button>
+        <button class="opt" data-opt="d" data-why="Higher priority makes the chatter louder.">Raise its priority</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Deadband stops chatter at the limit; on-delay stops short spikes.</li>
+      <li>Delays cost warning time. Choose them per alarm.</li>
+      <li>Shelving is temporary, logged and visible. Suppression by design handles expected states.</li>
+      <li>Cooldown throttles messages, never the alarm state itself.</li>
+    </ul>
+  </section>
+
+  <!-- 21.4 -->
+  <section class="lesson" id="s4" data-num="21.4">
+    <h2>21.4 Raise and clear pairs</h2>
+    <p>An alarm is a state, not a message. It has a beginning (raised), an end (cleared, or <em>return to normal</em>)
+      and a human side (acknowledged or not). If you only send a message when something goes wrong, the receiver
+      never learns that it is over. They either drive to site for nothing or stop trusting the system.</p>
+
+    <h3>Two independent bits</h3>
+    <p>ISA-18.2 models an alarm as two dimensions: is the <strong>process</strong> abnormal now, and has a
+      <strong>person</strong> acknowledged it. That gives four basic states:</p>
+    <div class="table-wrap"><table>
+      <tr><th>State</th><th>Process</th><th>Acknowledged</th><th>Typical display</th></tr>
+      <tr><td><strong>Normal</strong></td><td>OK</td><td>yes</td><td>Not shown</td></tr>
+      <tr><td><strong>Unacknowledged</strong></td><td>Abnormal</td><td>no</td><td>Flashing, with sound</td></tr>
+      <tr><td><strong>Acknowledged</strong></td><td>Abnormal</td><td>yes</td><td>Steady, no sound</td></tr>
+      <tr><td><strong>RTN unacknowledged</strong></td><td>OK</td><td>no</td><td>Shown dimmed until acknowledged (some systems clear it automatically)</td></tr>
+    </table></div>
+    <p>Plus the special states: <strong>shelved</strong>, <strong>suppressed by design</strong> and
+      <strong>out of service</strong>. Drive the state machine yourself:</p>
+    <figure class="viz" id="fsm">
+      <div class="controls">
+        <button class="btn secondary" data-ev="bad">Condition true</button>
+        <button class="btn secondary" data-ev="good">Condition false</button>
+        <button class="btn secondary" data-ev="ack">Acknowledge</button>
+        <button class="btn secondary" data-ev="shelve">Shelve 1 h</button>
+        <button class="btn secondary" data-ev="unshelve">Shelf expires</button>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Alarm state machine">
+        <defs><marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <path class="arrow" d="M150,62 L238,62" marker-end="url(#ah4)"/><text class="small" x="194" y="54" text-anchor="middle">condition</text>
+        <path class="arrow" d="M370,62 L450,62" marker-end="url(#ah4)"/><text class="small" x="410" y="54" text-anchor="middle">ack</text>
+        <path class="arrow" d="M300,84 L300,160" marker-end="url(#ah4)"/><text class="small" x="306" y="128">clears</text>
+        <path class="arrow" d="M510,84 C510,150 120,150 90,84" marker-end="url(#ah4)"/><text class="small" x="460" y="140">clears</text>
+        <path class="arrow" d="M238,182 L150,90" marker-end="url(#ah4)"/><text class="small" x="150" y="140">ack</text>
+        <path class="arrow" d="M80,230 L80,90" marker-end="url(#ah4)" stroke-dasharray="4 3"/>
+        <g class="nodes"></g>
+      </svg>
+      <div class="am-log" id="fsmLog" aria-live="polite"></div>
+      <figcaption>Solid: main path. Each transition logs what the notifier would send. Shelved hides the alarm but keeps evaluating it.</figcaption>
+    </figure>
+
+    <h3>Designing the pair</h3>
+    <ul>
+      <li><strong>One alarm ID</strong> for both messages, so the receiver (and the log) can match them: <code>ahu2.fan_fail</code>, not two free-text strings.</li>
+      <li><strong>Same text root</strong>: "AHU2 supply fan failed" / "Cleared: AHU2 supply fan running again (down 43 min)". Including the duration is cheap and very useful.</li>
+      <li><strong>Clear goes to the same people</strong> who got the raise, on a quiet channel. Waking someone at 3 a.m. to say "it is fine now" is its own nuisance; a chat message is enough.</li>
+      <li><strong>Clear after restart</strong>: after a reboot the engine MUST re-read the real state. A raise sent before the reboot needs a clear even if the engine "forgot".</li>
+      <li><strong>Unknown is not normal</strong>: if a sensor goes offline, the alarm is neither raised nor cleared. Raise a separate "communication lost" alarm and keep the original state as unknown.</li>
+    </ul>
+    <div class="callout example">Message pair from a well-run site. 02:14 "HIGH: Plant room B leak sensor wet. Action:
+      isolate valve V-B1, call on-call plumber." 02:51 "Cleared: Plant room B leak sensor dry (wet 37 min). Acknowledged
+      by duty engineer at 02:19." The second message tells everyone the event is closed and who handled it.</div>
+    <div class="callout warn">Edge vs level. If the notifier triggers on <em>changes</em> only (edge), a missed MQTT or
+      webhook message means the clear never arrives. Periodically reconcile against the current <em>level</em>: every
+      few minutes, compare the list of active alarms with the real states and repair the difference.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">An alarm is acknowledged, then the condition goes away. Which state is it in now?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That would be condition gone but not yet acknowledged.">RTN unacknowledged</button>
+        <button class="opt" data-opt="b" data-why="It was already acknowledged.">Unacknowledged</button>
+        <button class="opt" data-opt="c" data-why="Shelving is an operator action, not a result of clearing.">Shelved</button>
+        <button class="opt" data-opt="d" data-why="Correct. Acknowledged and returned to normal means it is back to Normal.">Normal</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>An alarm is a state with two bits: process abnormal, person acknowledged.</li>
+      <li>Every raise gets a matching clear, with the same ID and the duration.</li>
+      <li>Reconcile against real state; do not trust edges alone. Unknown is not normal.</li>
+    </ul>
+  </section>
+
+  <!-- 21.5 -->
+  <section class="lesson" id="s5" data-num="21.5">
+    <h2>21.5 Notification channels: Telegram, SMS, push, e-mail</h2>
+    <p>Most building alarms are not watched in a control room. They go to a phone. Each channel has different
+      reliability, cost, speed and loudness. A good design routes by priority, not "everything everywhere".</p>
+    <div class="table-wrap"><table>
+      <tr><th>Channel</th><th>How it works</th><th>Strengths</th><th>Weaknesses</th></tr>
+      <tr><td><strong>Chat bot</strong> (Telegram, Slack, Teams, Signal)</td><td>HTTPS API call to the provider; the app delivers to a chat or group.</td><td>Free or cheap, rich text, groups, buttons for "acknowledge", history.</td><td>Needs internet on both ends; muted by many users; provider rate limits (Telegram documents roughly 1 message per second per chat and lower limits for groups).</td></tr>
+      <tr><td><strong>SMS</strong></td><td>HTTP API to an SMS gateway (Twilio, MessageBird, local operators) or a GSM modem on site.</td><td>Works without mobile data; a GSM modem works without internet; loud by default.</td><td>Costs per message; 160 GSM-7 characters per segment; no delivery guarantee; some delays; no rich content.</td></tr>
+      <tr><td><strong>Mobile push</strong></td><td>Your app's server sends to APNs (Apple) or FCM (Google), which deliver to the device.</td><td>Free, instant, can carry buttons; iOS "critical alerts" can break through silent mode (needs a special Apple entitlement).</td><td>Needs your own app; OS battery savers may delay; tokens expire.</td></tr>
+      <tr><td><strong>E-mail</strong></td><td>SMTP via a relay or provider API.</td><td>Free, good for reports and low-priority items, auditable.</td><td>Slow to be noticed; spam filters (set up SPF, DKIM, DMARC); never for urgent alarms.</td></tr>
+      <tr><td><strong>Voice call</strong></td><td>Telephony API reads text aloud and asks for a key press.</td><td>Hardest to ignore; key press = acknowledgement.</td><td>Costs most; annoying if overused.</td></tr>
+    </table></div>
+
+    <h3>Route by priority</h3>
+    <figure class="viz" id="route">
+      <div class="controls seg" role="group" aria-label="Alarm priority">
+        <button data-p="high" aria-pressed="true">High</button>
+        <button data-p="med">Medium</button>
+        <button data-p="low">Low</button>
+        <button data-p="clear">Cleared</button>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Alarm router fanning out to channels">
+        <rect class="box" x="10" y="100" width="120" height="60" rx="10"/>
+        <text class="big" x="70" y="126" text-anchor="middle">Alarm</text>
+        <text class="small" x="70" y="145" text-anchor="middle">engine</text>
+        <rect class="box" x="180" y="100" width="120" height="60" rx="10"/>
+        <text class="big" x="240" y="126" text-anchor="middle">Router</text>
+        <text class="small" x="240" y="145" text-anchor="middle">rules + cooldown</text>
+        <path class="route on" d="M130,130 L180,130"/>
+        <g class="chs"></g>
+      </svg>
+      <div class="readout" id="routeOut" aria-live="polite"></div>
+      <figcaption>One reasonable routing policy. The point is that the channel set changes with priority.</figcaption>
+    </figure>
+
+    <h3>SMS: count your segments</h3>
+    <p>SMS is billed per <em>segment</em>. With the GSM-7 alphabet one segment holds 160 characters, or 153 each when
+      the message is split. A single character outside GSM-7, for example "ł", "ő" or an emoji, switches the whole
+      message to UCS-2: 70 characters, or 67 per part. Some gateways transliterate automatically; many do not.</p>
+    <figure class="viz" id="sms">
+      <textarea class="am-in" id="smsIn" rows="3" aria-label="SMS text">HIGH Leak plant room B. Isolate V-B1. Ack: reply 1</textarea>
+      <div class="readout" id="smsOut" aria-live="polite"></div>
+      <figcaption>Type a message. The counter checks the GSM-7 basic set (extension characters like € count as two).</figcaption>
+    </figure>
+
+    <h3>Message content</h3>
+    <p>A mobile alarm is read on a lock screen. The first 40 characters decide whether it gets opened. Put priority,
+      place and problem first, the action second, and the link or ID last:</p>
+<pre class="code">HIGH · Plant room B · Leak sensor wet
+Isolate valve V-B1. Call on-call plumber.
+ID leak.prb.1 · 02:14 · reply ACK</pre>
+    <div class="callout warn">Every channel depends on something. Chat bots and push need internet; a hosted SMS API
+      needs internet too. If the alarm that matters most is "internet down" or "power failed", only a channel with a
+      separate path can tell you: a GSM modem on UPS, or an external watchdog that alarms when your system stops
+      sending heartbeats ("dead man's switch").</div>
+    <div class="callout example">A common pattern: a team group chat for all medium and low alarms and every clear;
+      SMS to the on-call phone for high alarms; a daily e-mail digest of everything still open; and an external
+      uptime service that expects a heartbeat every 5 minutes and sends its own SMS when it stops.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Which channel can still report "site internet is down" from the site itself?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The bot API is on the internet.">A Telegram bot</button>
+        <button class="opt" data-opt="b" data-why="Correct. It uses the mobile network, not the site internet. Put it on UPS.">A local GSM modem sending SMS</button>
+        <button class="opt" data-opt="c" data-why="APNs and FCM are reached over the internet.">Mobile push via FCM/APNs</button>
+        <button class="opt" data-opt="d" data-why="SMTP needs the internet as well.">E-mail</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Route by priority: loud channels for few alarms, quiet ones for the rest and for clears.</li>
+      <li>SMS: 160 GSM-7 or 70 UCS-2 characters per segment. One emoji changes the bill.</li>
+      <li>Have one path that does not share the failure you are alarming on, plus an external heartbeat watchdog.</li>
+    </ul>
+  </section>
+
+  <!-- 21.6 -->
+  <section class="lesson" id="s6" data-num="21.6">
+    <h2>21.6 Escalation and on-call</h2>
+    <p>A notification that nobody reads is the same as no notification. Escalation closes that loop: if an alarm is
+      not acknowledged within a set time, the system tries the next person or a louder channel. Tools such as
+      PagerDuty, Opsgenie or Grafana OnCall do this for IT; many BMS platforms and simple scripts can do it too.</p>
+
+    <h3>Building blocks</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Concept</th><th>Meaning</th></tr>
+      <tr><td><strong>On-call schedule</strong></td><td>Who is responsible now. Weekly rotation is common; handover at a fixed time, for example Monday 09:00.</td></tr>
+      <tr><td><strong>Escalation policy</strong></td><td>Ordered steps: notify A; after N minutes without ack, notify A louder and B; then the manager.</td></tr>
+      <tr><td><strong>Acknowledgement</strong></td><td>"I own this." Stops escalation. Not the same as fixed.</td></tr>
+      <tr><td><strong>Resolution</strong></td><td>The condition clears (21.4). Closes the incident.</td></tr>
+      <tr><td><strong>Re-alert</strong></td><td>If acknowledged but still active after a long time (for example 2 h), notify again.</td></tr>
+    </table></div>
+
+    <h3>Simulate an escalation</h3>
+    <figure class="viz" id="esc">
+      <div class="am-row">
+        <label>Primary acknowledges after (min, 0 = never) <input type="range" id="eA" min="0" max="40" value="0"><output id="eAO"></output></label>
+        <label>Step timeout (min) <input type="range" id="eT" min="2" max="20" value="10"><output id="eTO"></output></label>
+      </div>
+      <svg viewBox="0 0 600 90" role="img" aria-label="Escalation timeline"><g class="g"></g></svg>
+      <ul class="esc" id="escList"></ul>
+      <figcaption>A high-priority alarm raised at 02:00. Each step fires only if nobody acknowledged before it.</figcaption>
+    </figure>
+
+    <h3>Choosing timeouts</h3>
+    <p>Timeouts come from the matrix again. If a leak must be handled within 30 minutes, three steps of 10 minutes is
+      already the whole budget, and the last step reaches someone with no time left. Shorter steps for high
+      priority (5 minutes), longer for medium (15–30 minutes), no escalation for low priority: those go to the
+      next-day list.</p>
+
+    <h3>Human rules</h3>
+    <ul>
+      <li>Acknowledging MUST be one tap: a button in the chat, a reply to the SMS, a key press on the call.</li>
+      <li>Everyone who received the alarm should see who acknowledged it, so two people do not drive to site.</li>
+      <li>Test the whole chain on a schedule, for example a monthly test alarm that must be acknowledged.</li>
+      <li>Count night pages per on-call week. If someone is woken more than a couple of times a week by things that could wait, fix the alarms, not the person.</li>
+      <li>Respect working-time and on-call agreements; escalation design is also an HR question.</li>
+    </ul>
+    <div class="callout example">A typical small-site policy for high-priority alarms: step 1 at 0 min, chat message
+      and SMS to the on-call technician; step 2 at 10 min, voice call to the technician and SMS to the backup; step 3
+      at 20 min, call to the facility manager. Medium alarms only send step 1 and re-notify once after 60 minutes.</div>
+    <div class="callout warn">The escalation engine is itself a single point of failure. If it runs on the same server
+      as the BMS and that server dies, nothing escalates. Monitor it from outside with a heartbeat.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">The on-call technician acknowledges an alarm but the leak is still active. What should happen?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Correct. Ack stops escalation; the alarm stays active until it clears, with a re-alert after a long period.">Escalation stops; the alarm stays active until it clears, with a later re-alert</button>
+        <button class="opt" data-opt="b" data-why="Acknowledged is not resolved.">The alarm is closed</button>
+        <button class="opt" data-opt="c" data-why="That would defeat the purpose of acknowledging.">Escalation continues to the manager anyway</button>
+        <button class="opt" data-opt="d" data-why="Nothing in an alarm lifecycle shelves automatically on ack.">The alarm is shelved for 24 hours</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Escalate on missing acknowledgement, in timed steps, to more people or louder channels.</li>
+      <li>Ack = ownership, clear = resolution. Different events.</li>
+      <li>Timeouts come from time-to-respond. Test the chain regularly and watch it from outside.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. According to ISA-18.2, what makes something an alarm?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Many abnormal values need no action.">Any value outside its normal range</button>
+        <button class="opt" data-opt="b" data-why="Loudness is a display choice.">It is shown in red with sound</button>
+        <button class="opt" data-opt="c" data-why="Correct. The definition hinges on a required response.">It indicates an abnormal condition that requires an operator response</button>
+        <button class="opt" data-opt="d" data-why="Vendors ship many points that are not alarms.">The controller vendor flagged it as an alarm</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">2. An operator receives 14 alarms in 10 minutes. By the common benchmark this is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Acceptable is about 1 per 10 minutes.">Acceptable</button>
+        <button class="opt" data-opt="b" data-why="Correct. More than 10 in 10 minutes is a flood.">An alarm flood</button>
+        <button class="opt" data-opt="c" data-why="Manageable is about 2 per 10 minutes.">Manageable</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">3. A float switch bounces for 1–2 s as water ripples. Which filter fits best?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Shelving hides a real leak too.">Shelving for a shift</button>
+        <button class="opt" data-opt="b" data-why="Deadband applies to analog values; a switch has no margin.">A 2 K deadband</button>
+        <button class="opt" data-opt="c" data-why="Far too long for a leak.">A 30-minute on-delay</button>
+        <button class="opt" data-opt="d" data-why="Correct. A short debounce removes bounce without delaying a real leak much.">A short on-delay of a few seconds</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">4. A notifier sends only on state changes. A clear message is lost in transit. What prevents a stuck alarm?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Correct. Comparing active alarms with real states repairs missed edges.">Periodic reconciliation against the current state</button>
+        <button class="opt" data-opt="b" data-why="Cooldown would make it worse.">A longer cooldown</button>
+        <button class="opt" data-opt="c" data-why="Priority does not fix lost messages.">A higher priority</button>
+        <button class="opt" data-opt="d" data-why="Ack is a human event; it does not tell you the process state.">Asking the operator to acknowledge</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">5. A high-priority alarm must be handled within 15 minutes. Which escalation is sensible?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The budget is gone before step 2.">Steps every 30 minutes</button>
+        <button class="opt" data-opt="b" data-why="E-mail is too slow for high priority.">E-mail the team, no escalation</button>
+        <button class="opt" data-opt="c" data-why="Correct. Short steps leave time to act after the second person is reached.">Primary at 0 min, backup at 5 min, manager at 10 min</button>
+        <button class="opt" data-opt="d" data-why="Paging everyone at once causes confusion over ownership.">Call everyone at 0 min</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="20-custom-frontend.html">← Chapter 20</a>
+    <a class="btn" href="22-infrastructure.html">Chapter 22 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+const SVGNS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, text) => {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+};
+const segInit = (root, cb) => {
+  const btns = root.querySelectorAll(".seg button");
+  btns.forEach((b) => b.addEventListener("click", () => {
+    btns.forEach((x) => x.setAttribute("aria-pressed", x === b));
+    cb(b);
+  }));
+};
+// Deterministic PRNG so widgets are repeatable.
+const rng = (seed) => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+
+// 21.1 Lifecycle ring.
+(() => {
+  const STAGES = [
+    ["Philosophy", "Write the rules: definition, priorities, rate targets, shelving, routing."],
+    ["Identification", "Collect candidate alarms from vendor lists, risk reviews, incident history."],
+    ["Rationalisation", "Test each candidate: action, consequence, time to respond, priority, limit. Many are deleted here."],
+    ["Detailed design", "Limits, deadbands, delays, suppression logic, message text, HMI display."],
+    ["Implementation", "Configure, test each alarm, train the people who receive them."],
+    ["Operation", "Alarms in daily use: acknowledge, shelve within the rules, respond."],
+    ["Maintenance", "Out-of-service handling during repairs and sensor replacement."],
+    ["Monitoring", "Weekly rates, top 10 frequent, chattering and stale alarms. Feeds back into rationalisation."],
+  ];
+  const fig = document.getElementById("life"), g = fig.querySelector(".nodes"), out = document.getElementById("lifeOut");
+  const cx = 300, cy = 150, rx = 230, ry = 112;
+  const nodes = STAGES.map(([name, desc], i) => {
+    const a = -Math.PI / 2 + (i / STAGES.length) * 2 * Math.PI;
+    const x = cx + rx * Math.cos(a), y = cy + ry * Math.sin(a);
+    const grp = el("g", { role: "button", tabindex: "0", "aria-label": name });
+    const r = el("rect", { class: "st-node", x: x - 62, y: y - 17, width: 124, height: 34, rx: 17 });
+    const t = el("text", { x, y: y + 5, "text-anchor": "middle" }, name);
+    grp.append(r, t); g.appendChild(grp);
+    const pick = () => {
+      nodes.forEach((n) => { n.r.classList.remove("on"); n.t.classList.remove("on"); });
+      r.classList.add("on"); t.classList.add("on");
+      out.innerHTML = `<strong>${i + 1}. ${name}.</strong> ${desc}`;
+    };
+    grp.addEventListener("click", pick);
+    grp.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+    return { r, t, pick };
+  });
+  nodes[0].pick();
+})();
+
+// 21.1 Flood chart.
+(() => {
+  const fig = document.getElementById("flood");
+  const rate = document.getElementById("floodRate"), rateO = document.getElementById("floodRateO");
+  const bars = fig.querySelector(".bars"), bands = fig.querySelector(".bands"), axis = fig.querySelector(".axis");
+  const out = document.getElementById("floodOut");
+  const N = 72, X0 = 34, W = 556, H = 170, Y0 = 190, MAX = 20;
+  const y = (v) => Y0 - (Math.min(v, MAX) / MAX) * H;
+  bands.append(
+    el("rect", { class: "band-ok", x: X0, y: y(1), width: W, height: Y0 - y(1) }),
+    el("rect", { class: "band-warn", x: X0, y: y(2), width: W, height: y(1) - y(2) }),
+    el("rect", { class: "band-bad", x: X0, y: y(MAX), width: W, height: y(10) - y(MAX) })
+  );
+  [0, 2, 10, 20].forEach((v) => {
+    axis.append(el("text", { class: "small", x: X0 - 6, y: y(v) + 4, "text-anchor": "end" }, v));
+  });
+  axis.append(el("line", { class: "thr", x1: X0, x2: X0 + W, y1: y(10), y2: y(10) }));
+  axis.append(el("text", { class: "small", x: X0 + W, y: y(10) - 4, "text-anchor": "end" }, "flood > 10 / 10 min"));
+  ["0 h", "6 h", "12 h"].forEach((s, i) => axis.append(el("text", { class: "small", x: X0 + (i * W) / 2, y: 208, "text-anchor": i ? (i === 2 ? "end" : "middle") : "start" }, s)));
+  let sc = "good";
+  const draw = () => {
+    rateO.textContent = `${rate.value} / h`;
+    const r = rng(42), lam = Number(rate.value) / 6;
+    const data = Array.from({ length: N }, (_, i) => {
+      // Poisson-ish count via summed Bernoulli trials.
+      let c = 0; for (let k = 0; k < 40; k++) if (r() < lam / 40) c++;
+      if (sc === "chatter" && i >= 20 && i < 44) c += 3 + Math.floor(r() * 5);
+      if (sc === "power" && i === 40) c += 180;
+      if (sc === "power" && i === 41) c += 25;
+      return c;
+    });
+    bars.innerHTML = "";
+    const bw = W / N;
+    data.forEach((c, i) => {
+      const yy = y(c);
+      bars.append(el("rect", { class: "bar" + (c > 10 ? " over" : ""), x: X0 + i * bw + 1, y: yy, width: Math.max(1, bw - 2), height: Y0 - yy }));
+    });
+    const total = data.reduce((a, b) => a + b, 0), floods = data.filter((c) => c > 10).length;
+    const perDay = Math.round((total / 12) * 24), avg = total / N;
+    const cls = floods ? "bad" : avg <= 1 ? "ok" : avg <= 2 ? "warn" : "bad";
+    const word = floods ? `${floods} flood bucket(s)` : avg <= 1 ? "very likely acceptable" : avg <= 2 ? "manageable" : "overloaded";
+    out.innerHTML = `${total} alarms in 12 h (≈${perDay}/day), average ${avg.toFixed(1)} per 10 min. Peak ${Math.max(...data)}. <span class="verdict ${cls}">${word}</span>`;
+  };
+  segInit(fig, (b) => { sc = b.dataset.sc; draw(); });
+  rate.addEventListener("input", draw); draw();
+})();
+
+// 21.2 Priority matrix.
+(() => {
+  const CONS = ["Minor (comfort)", "Moderate (equipment, cost)", "Major (asset loss, outage)", "Severe (safety, legal)"];
+  const TIME = ["< 15 min", "15 min – 2 h", "2 – 24 h", "> 24 h"];
+  const P = [
+    ["Medium", "High", "High", "High"],
+    ["Low", "Medium", "High", "High"],
+    ["Low", "Low", "Medium", "High"],
+    ["None", "Low", "Low", "Medium"],
+  ];
+  const EX = {
+    "0,0": "Lecture hall too warm during an event.", "0,1": "Fridge in kitchen rising; stock at risk soon.",
+    "0,2": "Water leak in a server room.", "0,3": "Fire panel fault with the building occupied.",
+    "1,0": "Meeting room CO2 high.", "1,1": "AHU supply fan failed in office hours.",
+    "1,2": "Boiler lockout on a −10 °C night.", "1,3": "Refuge-area ventilation fault.",
+    "2,0": "Lighting scene not recalled in a corridor.", "2,1": "Heat pump fault with buffer tank warm.",
+    "2,2": "UPS on battery with hours of runtime.", "2,3": "Legionella: hot water below 50 °C for a day.",
+    "3,0": "Sensor out of range on an unused zone: log it, not alarm.", "3,1": "Filter dirty.",
+    "3,2": "Backup boiler failed in July.", "3,3": "Annual inspection overdue.",
+  };
+  const fig = document.getElementById("matrix"), grid = fig.querySelector(".matrix"), out = document.getElementById("matOut");
+  grid.innerHTML = `<div class="hd">Time ↓ / Consequence →</div>` + CONS.map((c) => `<div class="hd">${c}</div>`).join("") +
+    TIME.map((t, r) => `<div class="hd">${t}</div>` + CONS.map((_, c) =>
+      `<button data-r="${r}" data-c="${c}" data-p="${P[r][c]}" aria-pressed="false" aria-label="${t}, ${CONS[c]}: ${P[r][c]}">${P[r][c]}</button>`).join("")).join("");
+  const btns = grid.querySelectorAll("button");
+  btns.forEach((b) => b.addEventListener("click", () => {
+    btns.forEach((x) => x.setAttribute("aria-pressed", x === b));
+    const { r, c, p } = b.dataset;
+    out.innerHTML = `<strong>${p}.</strong> ${TIME[r]} to respond, ${CONS[c].toLowerCase()}. Example: ${EX[r + "," + c]}`;
+  }));
+  btns[5].click();
+})();
+
+// 21.2 Fatigue toy model.
+(() => {
+  const fig = document.getElementById("fatigue"), g = fig.querySelector(".dots");
+  const n = document.getElementById("fatN"), a = document.getElementById("fatA");
+  const nO = document.getElementById("fatNO"), aO = document.getElementById("fatAO"), out = document.getElementById("fatOut");
+  const draw = () => {
+    const N = Number(n.value), A = Number(a.value) / 100;
+    nO.textContent = N; aO.textContent = `${a.value} %`;
+    g.innerHTML = "";
+    const cols = 40, sz = 600 / cols, r = rng(7);
+    for (let i = 0; i < N; i++) {
+      const x = (i % cols) * sz + sz / 2, y = Math.floor(i / cols) * 22 + 12;
+      const act = r() < A;
+      g.append(el("circle", { cx: x, cy: y, r: 5, class: act ? "fill-accent" : "", fill: act ? null : "none", stroke: "currentColor", style: act ? "" : "stroke: var(--muted)" }));
+    }
+    // Toy: response likelihood drops with noise per day.
+    const noise = N * (1 - A);
+    const p = Math.max(5, Math.round(100 / (1 + noise / 8)));
+    const cls = p > 70 ? "ok" : p > 40 ? "warn" : "bad";
+    out.innerHTML = `${Math.round(N * A)} actionable, ${Math.round(noise)} noise per day. Toy response likelihood: <span class="verdict ${cls}">${p} %</span>`;
+  };
+  n.addEventListener("input", draw); a.addEventListener("input", draw); draw();
+})();
+
+// 21.3 Debounce simulator.
+(() => {
+  const fig = document.getElementById("deb"), g = fig.querySelector(".g"), out = document.getElementById("debOut");
+  const ids = ["dLim", "dDb", "dOn", "dOff"], inp = Object.fromEntries(ids.map((k) => [k, document.getElementById(k)]));
+  const shelve = document.getElementById("dShelve");
+  const T = 240, X0 = 34, W = 556, YT = 10, YB = 190, VMIN = 15, VMAX = 22;
+  const r = rng(11);
+  // Setpoint 20 °C, noise, window-open dips at 40–100, real fault after 140.
+  const sig = Array.from({ length: T }, (_, t) => {
+    let v = 20 + Math.sin(t / 9) * 0.25 + (r() - 0.5) * 0.6;
+    if (t >= 55 && t < 62) v -= 1.6;
+    if (t >= 80 && t < 85) v -= 1.2;
+    if (t >= 140) v -= Math.min(3.5, (t - 140) * 0.06);
+    if (t >= 205) v += Math.min(3.5, (t - 205) * 0.15);
+    return v;
+  });
+  const sx = (t) => X0 + (t / (T - 1)) * W;
+  const sy = (v) => YB - ((v - VMIN) / (VMAX - VMIN)) * (YB - YT);
+  const draw = () => {
+    const lim = +inp.dLim.value, db = +inp.dDb.value, on = +inp.dOn.value, off = +inp.dOff.value, sh = shelve.checked;
+    inp.dLim.nextElementSibling.textContent = lim.toFixed(1);
+    inp.dDb.nextElementSibling.textContent = db.toFixed(1);
+    inp.dOn.nextElementSibling.textContent = on;
+    inp.dOff.nextElementSibling.textContent = off;
+    let active = false, since = null, start = 0;
+    const alarms = [];
+    sig.forEach((v, t) => {
+      const low = v < lim, clr = v >= lim + db;
+      if (!active && low) { since ??= t; if (t - since >= on) { active = true; start = t; since = null; } }
+      else if (active && clr) { since ??= t; if (t - since >= off) { active = false; alarms.push([start, t]); since = null; } }
+      else since = null;
+    });
+    if (active) alarms.push([start, T - 1]);
+    const inShelf = (t) => sh && t >= 40 && t <= 100;
+    const shown = alarms.filter(([s]) => !inShelf(s));
+    const real = shown.filter(([s, e]) => e >= 150 && s <= 230);
+    const nuis = shown.length - real.length;
+    g.innerHTML = "";
+    if (sh) g.append(el("rect", { class: "shl", x: sx(40), y: YT, width: sx(100) - sx(40), height: YB - YT }));
+    g.append(el("rect", { x: sx(140), y: YT, width: sx(205) - sx(140), height: YB - YT, class: "fill-example-soft", opacity: ".5" }));
+    g.append(el("text", { class: "small", x: sx(172), y: YT + 12, "text-anchor": "middle" }, "real fault"));
+    g.append(el("polyline", { class: "sig", points: sig.map((v, t) => `${sx(t).toFixed(1)},${sy(v).toFixed(1)}`).join(" ") }));
+    g.append(el("line", { class: "thr", x1: X0, x2: X0 + W, y1: sy(lim), y2: sy(lim) }));
+    if (db > 0) g.append(el("line", { class: "thr2", x1: X0, x2: X0 + W, y1: sy(lim + db), y2: sy(lim + db) }));
+    [16, 18, 20, 22].forEach((v) => g.append(el("text", { class: "small", x: X0 - 6, y: sy(v) + 4, "text-anchor": "end" }, v)));
+    alarms.forEach(([s, e]) => g.append(el("rect", { class: inShelf(s) ? "shl" : "alm", x: sx(s), y: 200, width: Math.max(2, sx(e) - sx(s)), height: 12 })));
+    g.append(el("text", { class: "small", x: X0, y: 230 }, "0 min"));
+    g.append(el("text", { class: "small", x: X0 + W, y: 230, "text-anchor": "end" }, "240 min"));
+    g.append(el("text", { class: "small", x: X0 - 6, y: 210, "text-anchor": "end" }, "alarm"));
+    const firstReal = real[0];
+    const delay = firstReal ? Math.max(0, firstReal[0] - sig.findIndex((v, t) => t >= 140 && v < lim)) : null;
+    const good = real.length === 1 && nuis === 0;
+    const cls = good ? "ok" : real.length === 0 ? "bad" : "warn";
+    const msg = real.length === 0 ? "Real fault missed!" : good ? "One alarm, for the real fault only." : "Noise still gets through.";
+    out.innerHTML = `<div class="readout">${shown.length} notified alarm(s): ${real.length} real, ${nuis} nuisance${firstReal ? `. Fault reported ${delay} min after first crossing.` : "."}</div><span class="verdict ${cls}">${msg}</span>`;
+  };
+  ids.forEach((k) => inp[k].addEventListener("input", draw));
+  shelve.addEventListener("change", draw); draw();
+})();
+
+// 21.4 State machine.
+(() => {
+  const fig = document.getElementById("fsm"), g = fig.querySelector(".nodes"), log = document.getElementById("fsmLog");
+  const POS = { normal: [80, 62, "Normal"], unack: [300, 62, "Unacknowledged"], ack: [510, 62, "Acknowledged"], rtn: [300, 182, "RTN unack"], shelved: [80, 230, "Shelved"] };
+  const nodes = {};
+  for (const k in POS) {
+    const [x, y, label] = POS[k];
+    const r = el("rect", { class: "st-node", x: x - 68, y: y - 20, width: 136, height: 40, rx: 10 });
+    const t = el("text", { x, y: y + 5, "text-anchor": "middle" }, label);
+    g.append(r, t); nodes[k] = { r, t };
+  }
+  let st = "normal", cond = false, shelf = null, t0 = 0, clock = 0;
+  const hhmm = () => { clock += 7; const m = 120 + clock; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
+  const say = (cls, s) => { log.innerHTML = `<span class="${cls}">${hhmm()} ${s}</span>\n` + log.innerHTML; };
+  const show = () => {
+    for (const k in nodes) { const on = k === st; nodes[k].r.classList.toggle("on", on); nodes[k].t.classList.toggle("on", on); }
+  };
+  const ev = (e) => {
+    if (st === "shelved") {
+      if (e === "bad") { cond = true; say("mu", "condition true while shelved: evaluated, not notified"); }
+      else if (e === "good") { cond = false; say("mu", "condition false while shelved"); }
+      else if (e === "unshelve") {
+        st = cond ? "unack" : "normal";
+        say(cond ? "bad" : "ok", cond ? "shelf expired, still active → RAISE notification again" : "shelf expired, condition normal → back to Normal");
+      } else say("mu", `${e} ignored while shelved`);
+      return show();
+    }
+    if (e === "bad" && !cond) {
+      cond = true; t0 = clock;
+      if (st === "normal" || st === "rtn") { st = "unack"; say("bad", "RAISE → send: HIGH AHU2 supply fan failed"); }
+    } else if (e === "good" && cond) {
+      cond = false;
+      const dur = clock + 7 - t0;
+      if (st === "unack") { st = "rtn"; say("ok", `CLEAR → send: Cleared, AHU2 fan running (down ${dur} min), not yet acknowledged`); }
+      else if (st === "ack") { st = "normal"; say("ok", `CLEAR → send: Cleared, AHU2 fan running (down ${dur} min)`); }
+    } else if (e === "ack") {
+      if (st === "unack") { st = "ack"; say("ex", "ACK by duty engineer → escalation stops, alarm stays active"); }
+      else if (st === "rtn") { st = "normal"; say("ex", "ACK of a cleared alarm → Normal"); }
+      else say("mu", "nothing to acknowledge");
+    } else if (e === "shelve") {
+      if (st === "normal") say("mu", "nothing to shelve");
+      else { shelf = st; st = "shelved"; say("ex", "SHELVED for 1 h by operator, reason logged"); }
+    } else if (e === "unshelve") say("mu", "not shelved");
+    else say("mu", `no change (condition already ${cond ? "true" : "false"})`);
+    show();
+  };
+  fig.querySelectorAll("[data-ev]").forEach((b) => b.addEventListener("click", () => ev(b.dataset.ev)));
+  show(); log.innerHTML = '<span class="mu">Start: Normal. Press "Condition true".</span>';
+})();
+
+// 21.5 Routing diagram.
+(() => {
+  const fig = document.getElementById("route"), g = fig.querySelector(".chs"), out = document.getElementById("routeOut");
+  const CH = ["Voice call", "SMS", "Push", "Chat group", "E-mail digest"];
+  const RULE = {
+    high: [[0, 1, 2, 3], "On-call phone: SMS + push at once, chat group for visibility, voice call if not acknowledged in 10 min."],
+    med: [[2, 3], "Push to on-call and the team chat. No SMS, no night call unless the philosophy says so."],
+    low: [[3, 4], "Team chat in working hours, plus the daily e-mail digest. Nobody is woken."],
+    clear: [[3], "Clear goes to the chat where people saw the raise, with duration. Quiet, never a call."],
+  };
+  const items = CH.map((name, i) => {
+    const y = 20 + i * 48;
+    const p = el("path", { class: "route", d: `M300,130 C360,130 360,${y + 18} 420,${y + 18}` });
+    const r = el("rect", { class: "ch", x: 420, y, width: 170, height: 36, rx: 8 });
+    const t = el("text", { x: 505, y: y + 23, "text-anchor": "middle" }, name);
+    g.append(p, r, t); return { p, r };
+  });
+  const draw = (k) => {
+    const [on, txt] = RULE[k];
+    items.forEach((it, i) => { const lit = on.includes(i); it.p.classList.toggle("on", lit); it.r.classList.toggle("on", lit); });
+    out.textContent = txt;
+  };
+  segInit(fig, (b) => draw(b.dataset.p)); draw("high");
+})();
+
+// 21.5 SMS segment counter.
+(() => {
+  const BASIC = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+  const EXT = "^{}\\[~]|€\f";
+  const inp = document.getElementById("smsIn"), out = document.getElementById("smsOut");
+  const draw = () => {
+    const chars = [...inp.value];
+    let gsm = true, units = 0;
+    const bad = new Set();
+    for (const c of chars) {
+      if (BASIC.includes(c)) units += 1;
+      else if (EXT.includes(c)) units += 2;
+      else { gsm = false; bad.add(c); }
+    }
+    // UCS-2 counts UTF-16 code units; emoji take two.
+    const len = gsm ? units : inp.value.length;
+    const one = gsm ? 160 : 70, multi = gsm ? 153 : 67;
+    const seg = len === 0 ? 0 : len <= one ? 1 : Math.ceil(len / multi);
+    const cls = seg <= 1 ? "ok" : seg <= 2 ? "warn" : "bad";
+    out.innerHTML = `${gsm ? "GSM-7" : "UCS-2"} · ${len} units · <span class="verdict ${cls}">${seg} segment${seg === 1 ? "" : "s"}</span>` +
+      (bad.size ? `<br>Non-GSM characters: <code>${[...bad].join(" ").replace(/[<&]/g, (m) => (m === "<" ? "&lt;" : "&amp;"))}</code>` : "");
+  };
+  inp.addEventListener("input", draw); draw();
+})();
+
+// 21.6 Escalation timeline.
+(() => {
+  const fig = document.getElementById("esc"), g = fig.querySelector(".g"), list = document.getElementById("escList");
+  const a = document.getElementById("eA"), t = document.getElementById("eT");
+  const STEPS = [
+    ["Chat + SMS to on-call technician", 0],
+    ["Voice call to technician, SMS to backup", 1],
+    ["Voice call to facility manager", 2],
+    ["Re-alert whole team", 3],
+  ];
+  const X0 = 20, W = 560, SPAN = 60, sx = (m) => X0 + (Math.min(m, SPAN) / SPAN) * W;
+  const draw = () => {
+    const ack = +a.value, step = +t.value;
+    a.nextElementSibling.textContent = ack ? `${ack} min` : "never";
+    t.nextElementSibling.textContent = `${step} min`;
+    g.innerHTML = "";
+    g.append(el("line", { class: "arrow", x1: X0, x2: X0 + W, y1: 40, y2: 40 }));
+    [0, 15, 30, 45, 60].forEach((m) => g.append(el("text", { class: "small", x: sx(m), y: 80, "text-anchor": m ? (m === 60 ? "end" : "middle") : "start" }, `+${m}`)));
+    list.innerHTML = "";
+    STEPS.forEach(([what, k]) => {
+      const at = k * step;
+      const fired = !ack || at < ack;
+      const x = sx(at);
+      if (at <= SPAN) {
+        g.append(el("circle", { cx: x, cy: 40, r: 7, class: fired ? "fill-accent" : "fill-surface", stroke: "currentColor", style: "stroke: var(--muted)" }));
+        g.append(el("text", { class: "small", x, y: 24, "text-anchor": "middle" }, `S${k + 1}`));
+      }
+      const li = document.createElement("li");
+      li.className = fired ? "fired" : "skip";
+      const hh = `02:${String(at).padStart(2, "0")}`;
+      li.innerHTML = `<b>${at < 60 ? hh : "+" + at + " min"}</b><span>Step ${k + 1}: ${what}${fired ? "" : " (skipped, acknowledged)"}</span>`;
+      list.appendChild(li);
+    });
+    if (ack) {
+      g.append(el("rect", { class: "fill-ok", x: sx(ack) - 2, y: 28, width: 4, height: 24 }));
+      g.append(el("text", { class: "small", x: sx(ack), y: 64, "text-anchor": "middle" }, "ack"));
+      const li = document.createElement("li");
+      li.className = "done";
+      li.innerHTML = `<b>02:${String(ack).padStart(2, "0")}</b><span>Acknowledged by technician. Escalation stops; others see who owns it.</span>`;
+      const idx = [...list.children].findIndex((c) => c.classList.contains("skip"));
+      list.insertBefore(li, idx < 0 ? null : list.children[idx]);
+    }
+  };
+  a.addEventListener("input", draw); t.addEventListener("input", draw); draw();
+})();
+</script>
+</body>
+</html>

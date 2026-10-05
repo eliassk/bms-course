@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ventilation and Air Handling</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .v-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px 16px; margin-bottom: 10px; }
+  .v-grid label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .v-grid input[type=range] { width: 100%; }
+  .v-grid output { font-family: var(--mono); color: var(--text); }
+  .v-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; margin-top: 10px; }
+  .v-stat { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; min-width: 0; }
+  .v-stat span { display: block; font-size: 12px; color: var(--muted); }
+  .v-stat b { font: 600 17px var(--mono); overflow-wrap: anywhere; }
+  .v-stat.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .v-stat.ok { border-color: var(--ok); background: var(--ok-soft); }
+  .ahu [role=button] rect, .ahu [role=button] circle, .ahu [role=button] polygon { transition: fill .15s, stroke .15s; }
+  .ahu [role=button]:hover rect, .ahu [role=button]:hover circle { stroke: var(--accent); }
+  .ahu [aria-pressed=true] rect, .ahu [aria-pressed=true] circle, .ahu [aria-pressed=true] polygon { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; }
+  .zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-bottom: 10px; }
+  .zone { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px; min-width: 0; font-size: 13px; }
+  .zone b { display: block; margin-bottom: 4px; }
+  .zone .seg button { padding: 5px 8px; font-size: 12px; }
+  .stepper .st-text { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 10px; min-height: 4.5em; }
+  svg .dim { opacity: .25; }
+  svg .grid-l { stroke: var(--border); stroke-width: 1; }
+  svg .curve { fill: none; stroke: var(--accent); stroke-width: 3; }
+  svg .curve-m { fill: none; stroke: var(--muted); stroke-width: 2; }
+  svg .curve-b { fill: none; stroke: var(--bad); stroke-width: 2; stroke-dasharray: 6 4; }
+  svg .curve-ok { fill: none; stroke: var(--ok); stroke-width: 2; stroke-dasharray: 6 4; }
+  svg .duct { fill: var(--surface); stroke: var(--text); stroke-width: 1.5; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="11">
+<div class="content">
+  <div class="kicker">Chapter 11</div>
+  <h1>Ventilation and air handling</h1>
+  <p class="lead">Why buildings need fresh air, how an air handling unit treats it, how heat is recovered from the
+    exhaust, and how fans, dampers and sensors are controlled so the right amount of air arrives at the right
+    condition for the least energy.</p>
+
+  <!-- 11.1 -->
+  <section class="lesson" id="s1" data-num="11.1">
+    <h2>11.1 Indoor air quality: CO₂, humidity, VOC</h2>
+    <p>People indoors produce heat, moisture, CO₂, odours and particles. Buildings add their own emissions:
+      furniture, paint, cleaning products, printers. Ventilation dilutes all of it with outdoor air. The question a
+      controller must answer is simple: <em>how much outdoor air, right now?</em> To answer it, it needs an indicator.</p>
+
+    <h3>CO₂ as a proxy for people</h3>
+    <p>CO₂ at indoor levels is not the main health problem. It is used because it tracks <strong>human
+      occupancy</strong> very well and is cheap to measure. A seated adult exhales about <strong>0.005 L/s</strong>
+      of CO₂ (roughly 18 L/h). Outdoor air is about <strong>420 ppm</strong> today. If the room is well mixed, the
+      steady-state concentration is:</p>
+    <p style="text-align:center"><code>C = C<sub>out</sub> + n × G ÷ Q × 10⁶</code></p>
+    <p>with <code>n</code> people, <code>G</code> = 0.005 L/s each and <code>Q</code> the outdoor airflow in L/s.
+      Ten people with 100 L/s (10 L/s per person) settle at 420 + 500 = 920 ppm. With 5 L/s per person it is
+      1 420 ppm. The <em>volume</em> of the room does not change where you end up. It only changes how fast you get
+      there.</p>
+
+    <figure class="viz" id="co2">
+      <div class="v-grid">
+        <label>People <output id="co2nO">12</output>
+          <input type="range" id="co2n" min="1" max="40" value="12"></label>
+        <label>Outdoor airflow <output id="co2qO">120</output> L/s
+          <input type="range" id="co2q" min="0" max="500" step="10" value="120"></label>
+        <label>Room volume <output id="co2vO">120</output> m³
+          <input type="range" id="co2v" min="30" max="600" step="10" value="120"></label>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="CO2 concentration over a three hour period: meeting for 90 minutes then room empty">
+        <g id="co2grid"></g>
+        <rect x="60" y="20" width="250" height="210" class="fill-accent-soft" opacity=".5"/>
+        <text class="small" x="185" y="34" text-anchor="middle">meeting (90 min)</text>
+        <text class="small" x="440" y="34" text-anchor="middle">room empty</text>
+        <path id="co2lim" class="curve-b"/>
+        <path id="co2path" class="curve"/>
+        <text class="small" x="330" y="256" text-anchor="middle">minutes</text>
+      </svg>
+      <div class="v-stats">
+        <div class="v-stat"><span>Per person</span><b id="co2pp">–</b></div>
+        <div class="v-stat" id="co2ssBox"><span>Steady state</span><b id="co2ss">–</b></div>
+        <div class="v-stat"><span>Peak in meeting</span><b id="co2pk">–</b></div>
+        <div class="v-stat"><span>Time to 1 000 ppm</span><b id="co2t">–</b></div>
+      </div>
+      <figcaption>Well-mixed single-zone model, outdoor 420 ppm, 0.005 L/s CO₂ per person. Dashed line: 1 000 ppm.
+        Shrink the room: the curve rises faster but levels at the same value.</figcaption>
+    </figure>
+
+    <p>The time constant is <code>τ = V ÷ Q</code>. A 120 m³ room with 120 L/s (0.12 m³/s) has τ = 1 000 s, about
+      17 minutes. After one τ you are 63 % of the way to steady state, after three τ about 95 %. Short meetings in big
+      rooms may never reach steady state, which is why a fixed airflow sized for full occupancy is often wasted.</p>
+
+    <h3>What is "good"?</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Guidance (commonly quoted)</th><th>Typical value</th><th>Comment</th></tr>
+      <tr><td>EN 16798-1 category II (normal new building)</td><td>≈ 800 ppm above outdoor</td><td>Categories I–IV; I is strictest. Values are in an informative annex, national rules vary.</td></tr>
+      <tr><td>Common BMS setpoint for DCV</td><td>800–1 000 ppm absolute</td><td>Simple, easy to explain, works with any sensor.</td></tr>
+      <tr><td>ASHRAE 62.1</td><td>No CO₂ limit as such</td><td>Specifies airflow per person plus per m²; ~700 ppm above outdoor is a well-known rule of thumb.</td></tr>
+      <tr><td>Classrooms, many national rules</td><td>1 000–1 500 ppm</td><td>Above ~1 500 ppm studies link to lower concentration.</td></tr>
+    </table></div>
+
+    <h3>Humidity</h3>
+    <p>Relative humidity (RH) between about <strong>30 % and 60 %</strong> is the usual comfort band. Below ~30 %
+      eyes and airways dry out and static builds up. Above ~60 % for long periods, mould and dust mites thrive. In
+      cold climates, ventilation <em>dries</em> buildings in winter: −10 °C outdoor air at 80 % RH holds about
+      1.4 g/kg of water. Warmed to 21 °C, that is under 10 % RH. Section 11.7 explains why.</p>
+
+    <h3>VOC and particles</h3>
+    <p><strong>VOC sensors</strong> (metal-oxide, MOX) react to a broad mix of gases: solvents, cleaning products,
+      cooking, body odour. They do not give a true concentration of any one gas. They usually output a relative
+      "air quality index" or a "CO₂-equivalent" estimate, and they self-calibrate against the cleanest air they have
+      seen recently. They are good for rooms where people are not the main source: toilets, kitchens, print rooms.
+      <strong>PM sensors</strong> (optical, PM2.5/PM10) watch particles, mostly from outdoors or from cooking.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Sensor</th><th>Principle</th><th>Accuracy, typical</th><th>Use</th></tr>
+      <tr><td>CO₂</td><td>NDIR (infrared absorption at 4.26 µm)</td><td>±(30–50 ppm + 3 %)</td><td>Occupancy-driven DCV in offices, schools, halls</td></tr>
+      <tr><td>RH / temperature</td><td>Capacitive polymer / thermistor</td><td>±2–3 % RH, ±0.3 K</td><td>Comfort, humidification, condensation risk</td></tr>
+      <tr><td>VOC</td><td>Heated metal-oxide</td><td>Relative only</td><td>Toilets, kitchens, odour-driven boost</td></tr>
+      <tr><td>PM2.5</td><td>Laser scattering</td><td>±10–15 µg/m³ or ±10–15 %</td><td>Filter performance, outdoor pollution events</td></tr>
+    </table></div>
+
+    <div class="callout warn">Many cheap NDIR sensors use "automatic baseline correction": they assume the lowest
+      reading in a week is 400 ppm. In a room that is occupied 24/7 (a hospital ward, a server room with staff) that
+      assumption is false and the sensor drifts low. Dual-channel NDIR sensors avoid this. Check the datasheet.</div>
+
+    <div class="callout example">A 60-seat lecture room is designed for 8 L/s per person, 480 L/s. On a typical day it
+      holds 15 students. With CO₂ control at 900 ppm the supply drops to around 150 L/s. Fan power falls by much more
+      than that, because power scales with the cube of speed (section 11.4).</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">20 people, 200 L/s outdoor air, outdoor 420 ppm. What is the approximate steady-state CO₂?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That ignores the 420 ppm already in outdoor air.">500 ppm</button>
+        <button class="opt" data-opt="b" data-why="20 × 0.005 ÷ 200 × 10⁶ = 500 ppm above outdoor, so about 920 ppm.">About 920 ppm</button>
+        <button class="opt" data-opt="c" data-why="That would need about 5 L/s per person.">About 1 420 ppm</button>
+        <button class="opt" data-opt="d" data-why="Volume sets the speed, not the final value.">It depends on the room volume</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>CO₂ is a proxy for people. Steady state = outdoor + n·G/Q. Volume only sets the speed (τ = V/Q).</li>
+      <li>10 L/s per person gives roughly 500 ppm above outdoor.</li>
+      <li>Keep RH roughly 30–60 %. Winter ventilation dries the building.</li>
+      <li>VOC sensors are relative; use them where people are not the main source.</li>
+    </ul>
+  </section>
+
+  <!-- 11.2 -->
+  <section class="lesson" id="s2" data-num="11.2">
+    <h2>11.2 AHU components: fans, filters, coils, dampers</h2>
+    <p>An <strong>air handling unit (AHU)</strong> is a box of sections in series. Outdoor air enters, is filtered,
+      tempered by heat recovery, heated or cooled, sometimes humidified, and pushed into the supply duct. A second
+      airstream takes air back from the rooms, passes the heat recovery, and leaves as exhaust. Click a component.</p>
+
+    <div class="explorer">
+      <svg class="ahu" viewBox="0 0 640 300" aria-label="AHU cross-section with clickable components">
+        <defs><marker id="va" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect x="40" y="40" width="560" height="220" rx="6" class="fill-surface" style="stroke:var(--text);stroke-width:1.5"/>
+        <line x1="40" y1="150" x2="600" y2="150" style="stroke:var(--text);stroke-width:1.5"/>
+        <text class="small" x="20" y="105" text-anchor="middle">ODA</text>
+        <text class="small" x="620" y="105" text-anchor="middle">SUP</text>
+        <text class="small" x="620" y="210" text-anchor="middle">ETA</text>
+        <text class="small" x="20" y="210" text-anchor="middle">EHA</text>
+        <path class="arrow" d="M8,120 L38,120" marker-end="url(#va)"/>
+        <path class="arrow" d="M602,120 L632,120" marker-end="url(#va)"/>
+        <path class="arrow" d="M632,230 L602,230" marker-end="url(#va)"/>
+        <path class="arrow" d="M38,230 L8,230" marker-end="url(#va)"/>
+        <g class="layer" role="button" tabindex="0" data-target="c-damper" aria-label="Dampers">
+          <rect x="50" y="60" width="34" height="76" rx="4" class="box"/>
+          <line x1="58" y1="80" x2="76" y2="70" class="stroke" stroke-width="2"/><line x1="58" y1="104" x2="76" y2="94" class="stroke" stroke-width="2"/><line x1="58" y1="128" x2="76" y2="118" class="stroke" stroke-width="2"/>
+          <rect x="50" y="164" width="34" height="76" rx="4" class="box"/>
+          <line x1="58" y1="184" x2="76" y2="174" class="stroke" stroke-width="2"/><line x1="58" y1="208" x2="76" y2="198" class="stroke" stroke-width="2"/><line x1="58" y1="232" x2="76" y2="222" class="stroke" stroke-width="2"/>
+          <text class="small" x="67" y="54" text-anchor="middle">damper</text>
+        </g>
+        <g class="layer" role="button" tabindex="0" data-target="c-filter" aria-label="Filters">
+          <rect x="94" y="60" width="44" height="76" rx="4" class="box"/>
+          <path d="M100,64 L132,72 L100,80 L132,88 L100,96 L132,104 L100,112 L132,120 L100,128" class="muted-s" fill="none" stroke-width="1.5"/>
+          <rect x="94" y="164" width="44" height="76" rx="4" class="box"/>
+          <path d="M100,168 L132,176 L100,184 L132,192 L100,200 L132,208 L100,216 L132,224 L100,232" class="muted-s" fill="none" stroke-width="1.5"/>
+          <text class="small" x="116" y="54" text-anchor="middle">filter</text>
+        </g>
+        <g class="layer" role="button" tabindex="0" data-target="c-hrc" aria-label="Heat recovery">
+          <rect x="150" y="60" width="110" height="180" rx="4" class="box"/>
+          <line x1="150" y1="60" x2="260" y2="240" class="muted-s"/><line x1="260" y1="60" x2="150" y2="240" class="muted-s"/>
+          <text x="205" y="155" text-anchor="middle" class="big">HRC</text>
+          <text class="small" x="205" y="54" text-anchor="middle">heat recovery</text>
+        </g>
+        <g class="layer" role="button" tabindex="0" data-target="c-heat" aria-label="Heating coil">
+          <rect x="274" y="60" width="44" height="76" rx="4" class="box"/>
+          <path d="M282,70 h28 v10 h-28 v10 h28 v10 h-28 v10 h28 v10 h-28" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+          <text class="small" x="296" y="54" text-anchor="middle">heat</text>
+        </g>
+        <g class="layer" role="button" tabindex="0" data-target="c-cool" aria-label="Cooling coil">
+          <rect x="328" y="60" width="44" height="76" rx="4" class="box"/>
+          <path d="M336,70 h28 v10 h-28 v10 h28 v10 h-28 v10 h28 v10 h-28" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+          <text class="small" x="350" y="54" text-anchor="middle">cool</text>
+        </g>
+        <g class="layer" role="button" tabindex="0" data-target="c-hum" aria-label="Humidifier">
+          <rect x="382" y="60" width="44" height="76" rx="4" class="box"/>
+          <circle cx="396" cy="84" r="3" class="fill-muted"/><circle cx="410" cy="98" r="3" class="fill-muted"/><circle cx="398" cy="112" r="3" class="fill-muted"/>
+          <text class="small" x="404" y="54" text-anchor="middle">humid.</text>
+        </g>
+        <g class="layer" role="button" tabindex="0" data-target="c-fan" aria-label="Fans">
+          <rect x="440" y="60" width="72" height="76" rx="4" class="box"/>
+          <circle cx="476" cy="98" r="24" class="box"/>
+          <text x="476" y="103" text-anchor="middle" class="big">M</text>
+          <rect x="440" y="164" width="72" height="76" rx="4" class="box"/>
+          <circle cx="476" cy="202" r="24" class="box"/>
+          <text x="476" y="207" text-anchor="middle" class="big">M</text>
+          <text class="small" x="476" y="54" text-anchor="middle">fans</text>
+        </g>
+        <g class="layer" role="button" tabindex="0" data-target="c-sens" aria-label="Sensors">
+          <rect x="526" y="60" width="64" height="76" rx="4" class="box"/>
+          <text x="558" y="92" text-anchor="middle">T  RH</text>
+          <text x="558" y="114" text-anchor="middle">Δp</text>
+          <rect x="526" y="164" width="64" height="76" rx="4" class="box"/>
+          <text x="558" y="196" text-anchor="middle">T  CO₂</text>
+          <text x="558" y="218" text-anchor="middle">Δp</text>
+          <text class="small" x="558" y="54" text-anchor="middle">sensors</text>
+        </g>
+        <text class="small" x="320" y="282" text-anchor="middle">top: supply side · bottom: extract side · EN 16798-3 abbreviations ODA, SUP, ETA, EHA</text>
+      </svg>
+      <div class="panel" aria-live="polite">
+        <template id="c-damper">
+          <h4>Dampers</h4>
+          <p>Blades that open or close the airway. Outdoor and exhaust dampers are shut when the unit stops, to stop
+            cold air freezing coils and to stop draughts. Some units have a <strong>recirculation (mixing)
+            damper</strong> that returns extract air to the supply.</p>
+          <ul>
+            <li>Actuator: on/off with spring return (fail closed) or modulating 0–10 V.</li>
+            <li>Typical stroke time 60–150 s. The fan MUST NOT start before the damper end switch confirms open.</li>
+            <li>Points: DO open command, DI open/closed end switch, or AO position + AI feedback.</li>
+          </ul>
+        </template>
+        <template id="c-filter">
+          <h4>Filters</h4>
+          <p>Protect the coils and heat exchanger and clean the supply air. Typical: ePM1 50–80 % (F7/F9 in old
+            terms) on outdoor air, ePM10 / coarse (M5) on extract to protect the heat recovery.</p>
+          <ul>
+            <li>Measured by a differential pressure (Δp) sensor across the filter, 0–500 Pa.</li>
+            <li>Clean ~50–100 Pa, change at ~150–300 Pa depending on design. See 11.8.</li>
+          </ul>
+        </template>
+        <template id="c-hrc">
+          <h4>Heat recovery</h4>
+          <p>Moves heat (and sometimes moisture) from the extract air to the outdoor air. Plate, rotary wheel or
+            run-around coil. Usually the biggest energy saver in the unit. See 11.3.</p>
+          <ul>
+            <li>Control: bypass damper (plate), wheel speed (rotary), pump/valve (run-around).</li>
+            <li>Needs frost protection on the exhaust side in cold climates (11.6).</li>
+          </ul>
+        </template>
+        <template id="c-heat">
+          <h4>Heating coil</h4>
+          <p>A finned-tube water coil (from a boiler circuit, often 60/40 °C or lower), an electric heater, or a
+            heat-pump condenser. It tops up the supply after heat recovery to reach the supply setpoint.</p>
+          <ul>
+            <li>Water coil: AO to a mixing valve, pump DO, frost thermostat on the return water or after the coil.</li>
+            <li>Electric heater: staged or SCR, plus a manual-reset overheat cut-out and airflow interlock.</li>
+          </ul>
+        </template>
+        <template id="c-cool">
+          <h4>Cooling coil</h4>
+          <p>Chilled water (e.g. 7/12 °C or 14/18 °C) or a direct-expansion (DX) refrigerant coil. It cools and, when
+            the coil surface is below the dew point, dehumidifies. It needs a drain pan and a trap.</p>
+          <ul>
+            <li>Water: AO to valve. DX: on/off stages or inverter request to the condensing unit.</li>
+            <li>Condensate trap MUST be sized for the fan pressure or the pan overflows.</li>
+          </ul>
+        </template>
+        <template id="c-hum">
+          <h4>Humidifier</h4>
+          <p>Optional. Steam (electrode or resistive) or adiabatic (spray, wetted media). Adiabatic cools the air
+            while adding water, so the heating coil must make up the loss.</p>
+          <ul>
+            <li>Control: AO demand from supply or extract RH, plus a high-limit RH sensor in the duct (~85–90 %).</li>
+            <li>Hygiene matters: adiabatic units are covered by rules like VDI 6022.</li>
+          </ul>
+        </template>
+        <template id="c-fan">
+          <h4>Fans</h4>
+          <p>Today usually <strong>EC plug fans</strong>: a backward-curved impeller directly on an electronically
+            commutated motor. No belt, speed set by 0–10 V or Modbus. Older units have belt-driven fans with a VFD.
+            See 11.4.</p>
+          <ul>
+            <li>Points: start, speed (AO or bus), running/fault, flow via the inlet-cone Δp.</li>
+            <li>Supply and extract are controlled to balanced flow or to duct pressure.</li>
+          </ul>
+        </template>
+        <template id="c-sens">
+          <h4>Sensors</h4>
+          <ul>
+            <li>Outdoor temperature (ODA) and supply temperature (SUP): the main loop.</li>
+            <li>Extract temperature, RH and CO₂ (ETA): represent the rooms on average.</li>
+            <li>Duct static pressure for VAV systems, airflow from fan cones.</li>
+            <li>Exhaust temperature after heat recovery (EHA) for frost detection and efficiency.</li>
+            <li>Smoke detector in the duct: stops the unit via the fire system (chapter 16).</li>
+          </ul>
+        </template>
+      </div>
+    </div>
+
+    <h3>The basic sequence</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Step</th><th>Action</th><th>Why</th></tr>
+      <tr><td>1</td><td>Start heating pump, pre-open heating valve if cold outside</td><td>Warm the coil before cold air arrives</td></tr>
+      <tr><td>2</td><td>Open outdoor and exhaust dampers, wait for end switches</td><td>Fans must not run against closed dampers</td></tr>
+      <tr><td>3</td><td>Start extract fan, then supply fan, ramp up</td><td>Avoid over-pressurising the building</td></tr>
+      <tr><td>4</td><td>Release the supply temperature loop</td><td>Sequence: heat recovery → heating coil, or heat recovery → cooling</td></tr>
+      <tr><td>5</td><td>Monitor: fan feedback, filter Δp, frost, smoke</td><td>Alarm or trip on fault</td></tr>
+    </table></div>
+    <p>The supply temperature loop is a <strong>split-range sequence</strong>: one controller output from 0 to 100 %
+      is split across actuators. For example 0–33 % cooling valve (inverted), 33–66 % heat recovery, 66–100 % heating
+      valve. Chapter 2 covers the control theory. The supply setpoint itself is often reset from extract temperature
+      (cascade) or from outdoor temperature.</p>
+
+    <h3>Exercise: what does each part do?</h3>
+    <div class="classify" data-cats="Move air,Clean air,Change temperature,Control flow">
+      <div class="item" data-cat="Move air" data-why="The fan creates the pressure that pushes air through the system."><span class="label">EC plug fan</span></div>
+      <div class="item" data-cat="Clean air" data-why="Filters capture particles."><span class="label">ePM1 70 % bag filter</span></div>
+      <div class="item" data-cat="Change temperature" data-why="Heat recovery moves heat between airstreams."><span class="label">Rotary heat exchanger</span></div>
+      <div class="item" data-cat="Control flow" data-why="A VAV box's damper throttles flow to one zone."><span class="label">VAV box damper</span></div>
+      <div class="item" data-cat="Change temperature" data-why="A coil heats or cools the air."><span class="label">Chilled water coil</span></div>
+      <div class="item" data-cat="Control flow" data-why="An outdoor air damper opens or shuts the intake."><span class="label">Outdoor air damper</span></div>
+    </div>
+
+    <div class="callout warn">A fan that starts before its dampers are open can collapse ducts or blow
+      flexible connections off. Interlock it in the controller <em>and</em> use end switches, not timers alone.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Where is the frost thermostat of a water heating coil normally placed?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The intake does not tell you if the coil water is freezing.">At the outdoor air intake</button>
+        <button class="opt" data-opt="b" data-why="The room is far too late.">In the room</button>
+        <button class="opt" data-opt="c" data-why="Return water temperature and a capillary just after the coil are the earliest signs of freezing.">On the coil's return water and/or in the air just after the coil</button>
+        <button class="opt" data-opt="d" data-why="The exhaust stream has nothing to do with the heating coil.">In the exhaust air</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Supply side: damper → filter → heat recovery → heat → cool → humidify → fan.</li>
+      <li>Extract side: damper → filter → heat recovery → fan.</li>
+      <li>Start order matters: valves and pumps, dampers, extract fan, supply fan, then loops.</li>
+      <li>The supply temperature loop is a split-range sequence over recovery and coils.</li>
+    </ul>
+  </section>
+
+  <!-- 11.3 -->
+  <section class="lesson" id="s3" data-num="11.3">
+    <h2>11.3 Heat recovery: plate, rotary, run-around</h2>
+    <p>Ventilation air in winter is a big heat load. 1 m³/s of air heated by 20 K needs about
+      <code>1.2 kg/m³ × 1.005 kJ/kgK × 1 m³/s × 20 K ≈ 24 kW</code>. Heat recovery takes most of that back from the
+      warm extract air. It is described by the <strong>temperature efficiency</strong> (EN 308):</p>
+    <p style="text-align:center"><code>η = (t<sub>sup,after</sub> − t<sub>out</sub>) ÷ (t<sub>extract</sub> − t<sub>out</sub>)</code></p>
+    <p>η = 0.8 with −10 °C outside and 22 °C extract gives −10 + 0.8 × 32 = 15.6 °C after the exchanger. The heating
+      coil only has to add 4–5 K instead of 30 K.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>Typical η (dry)</th><th>Moisture transfer</th><th>Leakage / cross-contamination</th><th>Control</th></tr>
+      <tr><td>Cross-flow plate</td><td>50–70 %</td><td>No (unless membrane)</td><td>Very low</td><td>Bypass damper</td></tr>
+      <tr><td>Counter-flow plate</td><td>75–90 %</td><td>No (unless membrane)</td><td>Very low</td><td>Bypass damper</td></tr>
+      <tr><td>Rotary wheel</td><td>70–85 %</td><td>Yes (sorption wheels a lot, condensation wheels some)</td><td>Some carry-over; needs purge sector and correct pressures</td><td>Wheel speed (≈ 0–10 rpm)</td></tr>
+      <tr><td>Run-around coil</td><td>40–60 % (high-end systems more)</td><td>No</td><td>None, airstreams fully separate</td><td>Pump speed / 3-way valve</td></tr>
+      <tr><td>Heat pipe</td><td>40–60 %</td><td>No</td><td>None</td><td>Tilt or bypass</td></tr>
+    </table></div>
+    <p>Values vary with flow, balance and manufacturer. EU Ecodesign (regulation 1253/2014) set a minimum of 73 %
+      for run-around systems and 67 % for other types in non-residential units since 2018.</p>
+
+    <figure class="viz" id="hrc">
+      <div class="controls seg" role="group" aria-label="Heat recovery type">
+        <button data-t="cross" aria-pressed="true">Cross-flow plate</button>
+        <button data-t="counter">Counter-flow plate</button>
+        <button data-t="rotary">Rotary</button>
+        <button data-t="runaround">Run-around</button>
+      </div>
+      <div class="v-grid">
+        <label>Outdoor <output id="hrToO">-10</output> °C
+          <input type="range" id="hrTo" min="-25" max="15" value="-10"></label>
+        <label>Extract <output id="hrTeO">22</output> °C
+          <input type="range" id="hrTe" min="16" max="28" value="22"></label>
+        <label>Airflow <output id="hrQO">10000</output> m³/h
+          <input type="range" id="hrQ" min="1000" max="40000" step="500" value="10000"></label>
+        <label>Supply setpoint <output id="hrTsO">19</output> °C
+          <input type="range" id="hrTs" min="14" max="24" value="19"></label>
+      </div>
+      <svg viewBox="0 0 600 170" role="img" aria-label="Temperature bar from outdoor to extract showing recovered and coil heat">
+        <rect x="40" y="60" width="520" height="40" rx="6" class="box"/>
+        <rect id="hrRec" x="40" y="60" height="40" rx="6" class="fill-ok" opacity=".75"/>
+        <rect id="hrCoil" y="60" height="40" class="fill-bad" opacity=".65"/>
+        <text class="small" x="40" y="120">outdoor</text>
+        <text class="small" x="560" y="120" text-anchor="end">extract</text>
+        <text id="hrL1" class="small" y="50" text-anchor="middle"></text>
+        <text id="hrL2" class="small" y="50" text-anchor="middle"></text>
+        <text class="small" x="300" y="150" text-anchor="middle">green: recovered for free · red: added by the heating coil</text>
+      </svg>
+      <div class="v-stats">
+        <div class="v-stat"><span>After recovery</span><b id="hrT2">–</b></div>
+        <div class="v-stat ok"><span>Recovered</span><b id="hrP">–</b></div>
+        <div class="v-stat"><span>Heating coil</span><b id="hrC">–</b></div>
+        <div class="v-stat"><span>Without recovery</span><b id="hrN">–</b></div>
+      </div>
+      <div class="readout" id="hrTxt" style="font-family:var(--font)"></div>
+      <figcaption>Balanced flows, dry efficiency, ρ·cp = 1.2 kJ/m³K. Real η drops at frost-protection limits and rises with lower air velocity.</figcaption>
+    </figure>
+
+    <h3>How each type works</h3>
+    <p><strong>Plate exchangers</strong> pass the two airstreams through alternating thin channels of aluminium or
+      polymer. Heat conducts through the plate. No moving parts. A <strong>bypass damper</strong> sends outdoor air
+      around the plate when recovery is not wanted, for example on a mild day when the building needs cooling.</p>
+    <p><strong>Rotary wheels</strong> are a slowly turning matrix (often 0–10 rpm, up to ~20 on some designs). Each
+      segment heats up in the extract stream and gives the heat back in the supply stream. Speed controls the
+      output: at very low speed the wheel barely transfers anything. A <strong>purge sector</strong> flushes the
+      matrix with outdoor air before it enters the supply side, and fan placement must keep supply pressure above
+      extract pressure, or extract air leaks into the supply (EATR, exhaust air transfer ratio).</p>
+    <p><strong>Run-around coils</strong> put one water–glycol coil in each airstream, connected by a pumped loop.
+      The airstreams can be in different parts of the building, fully separate. That makes them the choice for
+      hospitals, labs and retrofits where the ducts do not meet.</p>
+
+    <div class="callout example">Ecodesign-era AHUs often recover 80 % or more. At 10 000 m³/h, −10 °C outside and
+      22 °C extract that is about 85 kW back from the exhaust. Over a heating season this usually saves several
+      times the extra fan energy needed to push air through the exchanger (typically 100–200 Pa more).</div>
+    <div class="callout warn">Do not judge a plate's efficiency from temperatures while the bypass is partly open,
+      or while frost protection is active. Log the bypass position and only compute η when it is fully closed.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">A hospital wants heat recovery between an operating theatre extract and a ward supply. Which type?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A rotary wheel carries some extract air over to the supply.">Rotary wheel, it has the best efficiency</button>
+        <button class="opt" data-opt="b" data-why="Plates are tight, but the ducts must meet at one unit.">Cross-flow plate</button>
+        <button class="opt" data-opt="c" data-why="Sorption wheels also transfer moisture and odours.">Sorption wheel</button>
+        <button class="opt" data-opt="d" data-why="Separate coils, connected only by a glycol loop, so no air can cross.">Run-around coil</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>η = (t after − t out) ÷ (t extract − t out). 80 % is normal today.</li>
+      <li>Plate: tight, bypass control. Rotary: high η and moisture, but carry-over. Run-around: separate airstreams.</li>
+      <li>Heat recovered = 1.2 × Q (m³/s) × ΔT kW.</li>
+    </ul>
+  </section>
+
+  <!-- 11.4 -->
+  <section class="lesson" id="s4" data-num="11.4">
+    <h2>11.4 EC fans and pressure/flow control</h2>
+    <p>A fan raises air pressure. The duct system resists flow, and the resistance grows with the square of flow:
+      <code>Δp<sub>system</sub> = k × Q²</code>. The fan runs where its curve crosses the system curve. Change the
+      speed and the fan curve moves; the operating point slides along the system curve.</p>
+
+    <h3>Fan affinity laws</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Quantity</th><th>Law</th><th>At 50 % speed</th></tr>
+      <tr><td>Flow Q</td><td>∝ n</td><td>50 %</td></tr>
+      <tr><td>Pressure Δp</td><td>∝ n²</td><td>25 %</td></tr>
+      <tr><td>Shaft power P</td><td>∝ n³</td><td>12.5 %</td></tr>
+    </table></div>
+    <p>These hold for a fixed system curve through the origin. In real VAV systems the duct pressure is held at a
+      setpoint, so pressure does not fall to zero and power falls more like n² to n²·⁵. Motor and drive efficiency
+      also drop at low load. Still, the cube law is why <em>speed control is the single biggest fan saving</em>.</p>
+
+    <figure class="viz" id="fan">
+      <label for="fanN"><strong>Fan speed: <output id="fanNO">80</output> %</strong></label>
+      <input type="range" id="fanN" min="20" max="110" value="80" style="width:100%">
+      <svg viewBox="0 0 600 280" role="img" aria-label="Fan curves at chosen speed crossing a quadratic system curve">
+        <g id="fanGrid"></g>
+        <path id="fanSys" class="curve-m"/>
+        <path id="fanRef" class="curve-m" stroke-dasharray="4 4"/>
+        <path id="fanCur" class="curve"/>
+        <circle id="fanPt" r="7" class="fill-accent"/>
+        <text class="small" x="320" y="276" text-anchor="middle">airflow (m³/h)</text>
+        <text class="small" x="10" y="14">Δp (Pa)</text>
+      </svg>
+      <div class="v-stats">
+        <div class="v-stat"><span>Flow</span><b id="fanQ">–</b></div>
+        <div class="v-stat"><span>Pressure</span><b id="fanP">–</b></div>
+        <div class="v-stat"><span>Electrical power</span><b id="fanW">–</b></div>
+        <div class="v-stat" id="fanSfpBox"><span>SFP</span><b id="fanS">–</b></div>
+      </div>
+      <figcaption>Design point 100 %: 10 000 m³/h, 800 Pa, 3.5 kW (overall efficiency ≈ 63 %). Grey solid: system
+        curve. Grey dashed: fan curve at 100 %. SFP = P ÷ Q in kW/(m³/s).</figcaption>
+    </figure>
+
+    <h3>EC fans</h3>
+    <p>An <strong>EC (electronically commutated) motor</strong> is a permanent-magnet motor with built-in power
+      electronics. Compared with an AC induction motor on a belt: no belt losses (3–8 %), higher part-load
+      efficiency, speed control built in. Products like ebm-papst, Ziehl-Abegg or Rosenberg EC fans accept a 0–10 V
+      setpoint and many have a Modbus RTU interface reporting speed, power, temperature and alarms. Large AHUs use a
+      <strong>fan array</strong>: several small EC fans in parallel. One can fail and the others take over.</p>
+
+    <h3>What do we control?</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Mode</th><th>Measured</th><th>Typical use</th></tr>
+      <tr><td>Constant speed</td><td>Nothing</td><td>Simple CAV, commissioning only</td></tr>
+      <tr><td>Constant airflow (CAV)</td><td>Inlet-cone Δp → flow</td><td>Fixed fresh air, keeps flow as filters load</td></tr>
+      <tr><td>Constant duct pressure</td><td>Duct static pressure, e.g. 150–300 Pa</td><td>VAV systems with many boxes</td></tr>
+      <tr><td>Pressure reset / damper-optimised</td><td>Duct pressure + VAV damper positions</td><td>Best VAV energy (11.5)</td></tr>
+      <tr><td>Extract follows supply</td><td>Both flows</td><td>Keep the building slightly positive or negative</td></tr>
+    </table></div>
+    <p>Airflow from an inlet cone: <code>Q = k × √Δp</code>, where the k-factor is printed on the fan. A cone with
+      k = 240 and 400 Pa gives 240 × 20 = 4 800 m³/h. Many EC fans compute this internally and report m³/h directly.</p>
+
+    <div class="callout warn">Do not put a fan pressure loop and a VAV box loop on the same fast tuning. If both
+      react within seconds they fight and the whole system hunts. Make the fan loop clearly slower than the box
+      loops, or the boxes clearly slower than the fan.</div>
+    <div class="callout example">Specific fan power (SFP) is a common design metric. Many guides and national
+      rules aim for about 1.5–2.0 kW/(m³/s) for a supply plus extract AHU with heat recovery. EN 16798-3 defines
+      SFP classes from SFP1 to SFP7.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A fan on a fixed system curve slows from 100 % to 70 % speed. Roughly what power is left?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="0.7³ ≈ 0.34.">About 34 %</button>
+        <button class="opt" data-opt="b" data-why="That is the flow, not the power.">70 %</button>
+        <button class="opt" data-opt="c" data-why="That is the pressure (0.7² ≈ 0.49).">About 49 %</button>
+        <button class="opt" data-opt="d" data-why="Power falls with speed.">100 %, power is set by the motor size</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Q ∝ n, Δp ∝ n², P ∝ n³ on a fixed system curve.</li>
+      <li>EC fans: direct drive, efficient at part load, 0–10 V or Modbus.</li>
+      <li>Control by flow (CAV), duct pressure (VAV) or pressure reset.</li>
+      <li>Q = k√Δp across the inlet cone.</li>
+    </ul>
+  </section>
+
+  <!-- 11.5 -->
+  <section class="lesson" id="s5" data-num="11.5">
+    <h2>11.5 Demand-controlled ventilation and VAV</h2>
+    <p><strong>Demand-controlled ventilation (DCV)</strong> means the airflow follows the actual need: CO₂, VOC,
+      presence or a schedule. It can be done at two levels:</p>
+    <ul>
+      <li><strong>Unit level.</strong> One AHU serving one big space (a hall, a gym). The extract CO₂ sets the fan
+        speed. Simple and effective.</li>
+      <li><strong>Zone level, with VAV boxes.</strong> One AHU serves many rooms. Each room has a <em>variable air
+        volume</em> box: a damper, a flow sensor and a small controller. The room's CO₂ or temperature sets the
+        box's flow setpoint, between <code>Q<sub>min</sub></code> and <code>Q<sub>max</sub></code>.</li>
+    </ul>
+
+    <h3>How a VAV box works</h3>
+    <p>A VAV box is a cascade. The outer loop compares room CO₂ (or temperature) with its setpoint and outputs a
+      flow setpoint. The inner loop measures flow with a cross or orifice sensor (Δp → m³/h) and moves the damper.
+      This is <strong>pressure independent</strong>: if the duct pressure changes, the inner loop corrects the
+      damper and the room gets the same flow. Belimo, Siemens, Trox and others make compact controllers with the
+      actuator, Δp sensor and Modbus/BACnet/MP-Bus in one housing.</p>
+
+    <h3>Static pressure reset (trim and respond)</h3>
+    <p>The AHU fan holds duct pressure at a setpoint. If that setpoint is fixed and high, most dampers are
+      throttled: energy is burned as pressure drop across half-closed blades. A better strategy watches the boxes.
+      If no box is near fully open, lower the pressure setpoint a little (<em>trim</em>). If boxes report they cannot
+      reach their flow, raise it (<em>respond</em>). ASHRAE Guideline 36 standardises this.</p>
+
+    <figure class="viz" id="dcv">
+      <div class="controls seg" role="group" aria-label="Fan control strategy">
+        <button data-m="fixed" aria-pressed="true">Fixed duct pressure</button>
+        <button data-m="reset">Pressure reset</button>
+      </div>
+      <div class="zones" id="dcvZones"></div>
+      <svg viewBox="0 0 600 190" role="img" aria-label="AHU fan feeding a duct with four VAV boxes">
+        <rect x="20" y="60" width="80" height="60" rx="6" class="box"/>
+        <circle cx="60" cy="90" r="20" class="box"/><text x="60" y="95" text-anchor="middle">M</text>
+        <rect x="100" y="80" width="480" height="20" class="duct"/>
+        <g id="dcvBoxes"></g>
+        <text id="dcvSp" class="small" x="110" y="74"></text>
+      </svg>
+      <div class="v-stats">
+        <div class="v-stat"><span>Total airflow</span><b id="dcvQ">–</b></div>
+        <div class="v-stat"><span>Duct setpoint</span><b id="dcvDp">–</b></div>
+        <div class="v-stat"><span>Fan power</span><b id="dcvW">–</b></div>
+        <div class="v-stat ok"><span>vs. constant volume</span><b id="dcvS">–</b></div>
+      </div>
+      <figcaption>Four zones, 1 000 m³/h each at full design, minimum 20 %. Fan total pressure = 450 Pa duct and AHU
+        losses at design flow (∝ Q²) + duct setpoint. Overall fan efficiency 60 %. Simplified.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Control input</th><th>Best for</th><th>Watch out</th></tr>
+      <tr><td>CO₂</td><td>Meeting rooms, classrooms, halls</td><td>Slow (minutes); does not see building emissions</td></tr>
+      <tr><td>Presence (PIR)</td><td>Small offices, toilets</td><td>Only on/off; a minimum airflow is still needed for materials</td></tr>
+      <tr><td>VOC</td><td>Toilets, kitchens, changing rooms</td><td>Relative values; can react to perfume or cleaning</td></tr>
+      <tr><td>Schedule / booking system</td><td>Rooms with bookings</td><td>Empty-but-booked rooms waste air; pre-ventilate before the meeting</td></tr>
+      <tr><td>Temperature</td><td>All-air cooling (VAV cooling)</td><td>Can starve a room of fresh air if it is cool but full</td></tr>
+    </table></div>
+
+    <div class="callout warn">If the main AHU fan is supply-flow controlled while the boxes change their flows,
+      the extract side must follow. Otherwise rooms with closed supply boxes go strongly negative and doors whistle.
+      Pair each supply VAV box with an extract box, or control the extract fan to a building pressure.</div>
+    <div class="callout example">An office floor with 30 VAV-controlled meeting rooms typically averages 30–50 %
+      of design airflow over the day. With pressure reset, fan energy often falls to 15–30 % of a constant-volume
+      design. The exact figure depends heavily on occupancy patterns.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">What does "pressure independent" mean for a VAV box?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The box still needs duct pressure to push air.">It works without any duct pressure</button>
+        <button class="opt" data-opt="b" data-why="An inner flow loop corrects the damper when duct pressure changes.">It measures flow and keeps the setpoint even when duct pressure changes</button>
+        <button class="opt" data-opt="c" data-why="That would be a fixed-position damper.">The damper position is fixed and ignores pressure</button>
+        <button class="opt" data-opt="d" data-why="No, that is unrelated.">It has no pressure sensor at all</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>DCV: airflow follows CO₂, VOC, presence or schedule.</li>
+      <li>VAV box: room loop → flow setpoint → flow loop → damper.</li>
+      <li>Static pressure reset keeps the most-open damper nearly open and saves fan energy.</li>
+      <li>Extract must follow supply, zone by zone or by building pressure.</li>
+    </ul>
+  </section>
+
+  <!-- 11.6 -->
+  <section class="lesson" id="s6" data-num="11.6">
+    <h2>11.6 Frost protection and defrost</h2>
+    <p>Two different things freeze in an AHU, and they need different protection:</p>
+    <ol>
+      <li><strong>The water heating coil.</strong> If cold air passes a coil with stagnant water, the water freezes,
+        expands and splits the tubes. This is a damage event, often a flood.</li>
+      <li><strong>The heat recovery exhaust side.</strong> Warm, humid extract air cools down in the exchanger. Below
+        its dew point, water condenses. Below 0 °C on the surface, it freezes. Ice blocks the channels, airflow drops
+        and recovery fails.</li>
+    </ol>
+
+    <h3>Heating coil frost protection</h3>
+    <figure class="viz stepper" id="frostSeq">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">◀</button>
+        <button class="btn" data-act="next" aria-label="Next step">▶</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 600 120" role="img" aria-label="Frost protection timeline">
+        <line x1="30" y1="60" x2="570" y2="60" class="arrow"/>
+        <g id="frostDots"></g>
+      </svg>
+      <div class="st-text" id="frostTxt" aria-live="polite"></div>
+      <figcaption>A common sequence. Thresholds vary by project and coil design.</figcaption>
+    </figure>
+    <p>The frost thermostat is often a <strong>capillary</strong> (several metres of sensing tube) laid across the
+      whole coil face just after the coil. It trips if any 30–50 cm section drops below its set point (typically
+      5 °C). Hardware frost thermostats are usually wired directly into the fan and damper circuits so they work
+      even if the controller fails. Many systems also keep a minimum valve opening and run the heating pump whenever
+      it is below about 3–5 °C outside, even with the AHU off.</p>
+
+    <h3>Heat recovery frost</h3>
+    <p>For balanced flow, the exhaust leaves the exchanger at about
+      <code>t<sub>EHA</sub> = t<sub>ETA</sub> − η × (t<sub>ETA</sub> − t<sub>ODA</sub>)</code>. With 22 °C extract,
+      η = 0.85 and −15 °C outside that is 22 − 0.85 × 37 ≈ −9 °C: frost is certain if the extract air is humid.
+      The drier the extract air, the colder it can go before frost starts. Counter-flow plates freeze earliest,
+      because they are the most efficient. Rotary wheels resist frost better, and sorption wheels best.</p>
+
+    <figure class="viz" id="frost">
+      <div class="controls seg" role="group" aria-label="Defrost strategy">
+        <button data-s="none" aria-pressed="true">No protection</button>
+        <button data-s="bypass">Bypass</button>
+        <button data-s="preheat">Preheater</button>
+        <button data-s="reduce">Reduce supply</button>
+      </div>
+      <div class="v-grid">
+        <label>Outdoor <output id="frToO">-15</output> °C
+          <input type="range" id="frTo" min="-30" max="10" value="-15"></label>
+        <label>Extract RH at 22 °C <output id="frRhO">35</output> %
+          <input type="range" id="frRh" min="10" max="60" value="35"></label>
+      </div>
+      <svg viewBox="0 0 600 140" role="img" aria-label="Temperature scale showing exhaust leaving temperature against frost limit">
+        <g id="frAxis"></g>
+        <rect id="frZone" y="40" height="40" class="fill-bad" opacity=".15"/>
+        <line id="frDew" y1="30" y2="90" class="muted-s" stroke-dasharray="4 4"/>
+        <text id="frDewL" class="small" y="24" text-anchor="middle">extract dew point</text>
+        <circle id="frDot" cy="60" r="9" class="fill-accent"/>
+        <text id="frDotL" class="small" y="110" text-anchor="middle">exhaust leaving</text>
+      </svg>
+      <div class="v-stats">
+        <div class="v-stat" id="frStateBox"><span>Exchanger</span><b id="frState">–</b></div>
+        <div class="v-stat"><span>Exhaust leaving</span><b id="frEha">–</b></div>
+        <div class="v-stat"><span>Supply after HRC</span><b id="frSup">–</b></div>
+      </div>
+      <div class="readout" id="frTxt" style="font-family:var(--font)"></div>
+      <figcaption>Counter-flow plate, η = 0.85. Simplified rule used here: frost if the exhaust leaves below −1 °C
+        and below the extract dew point. Real limits depend on the exchanger and are set by the manufacturer.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Strategy</th><th>How</th><th>Cost</th></tr>
+      <tr><td>Bypass / face-and-bypass</td><td>Send part of the outdoor air around the plate</td><td>Less recovery, more coil heat</td></tr>
+      <tr><td>Section defrost</td><td>Close one section at a time to melt it with extract air</td><td>Small loss, more dampers</td></tr>
+      <tr><td>Electric or hydronic preheater</td><td>Warm outdoor air to about −5 … −3 °C before the plate</td><td>Energy, but keeps full flow</td></tr>
+      <tr><td>Reduce supply flow</td><td>Less cold air, so the exhaust side stays warmer</td><td>Building goes negative; not allowed everywhere</td></tr>
+      <tr><td>Rotary: lower wheel speed</td><td>Less heat transfer, exhaust stays warmer</td><td>Less recovery</td></tr>
+      <tr><td>Run-around: glycol temperature limit</td><td>Valve keeps the extract coil inlet above ~−1 °C</td><td>Less recovery</td></tr>
+    </table></div>
+    <p>Frost is detected by an exhaust temperature sensor after the exchanger, or better by the pressure drop across
+      the extract side of the exchanger: ice raises Δp quickly.</p>
+
+    <div class="callout warn">A frost alarm that stops the whole AHU is not protection, it is a failure. On a cold
+      night the building then has no ventilation and the heating coil is exposed. Defrost strategies should keep the
+      unit running at reduced recovery; a full stop is the last step.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">The heating coil frost thermostat trips. What should the AHU do first?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That pulls even more cold air across the coil.">Increase fan speed to move the cold air through</button>
+        <button class="opt" data-opt="b" data-why="Closing the valve makes freezing faster.">Close the heating valve to save energy</button>
+        <button class="opt" data-opt="c" data-why="Stop the cold air and maximise hot water flow through the coil.">Stop fans, close outdoor damper, open heating valve fully, run pump</button>
+        <button class="opt" data-opt="d" data-why="Recovery bypass does not protect the heating coil.">Open the heat recovery bypass</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Two frost risks: the water coil (damage) and the exhaust side of heat recovery (ice, blocked flow).</li>
+      <li>Coil frost: hardwired thermostat, fans off, damper shut, valve open, pump on.</li>
+      <li>Recovery frost: bypass, preheat, reduce flow or slow the wheel, detected by temperature or Δp.</li>
+    </ul>
+  </section>
+
+  <!-- 11.7 -->
+  <section class="lesson" id="s7" data-num="11.7">
+    <h2>11.7 Psychrometrics basics</h2>
+    <p>Psychrometrics is the physics of moist air. Every air handling process can be drawn as a line on a
+      <strong>psychrometric chart</strong> (or its European cousin, the Mollier h–x diagram, which is the same data
+      rotated). Only a few quantities matter:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Quantity</th><th>Symbol, unit</th><th>Meaning</th></tr>
+      <tr><td>Dry-bulb temperature</td><td>t, °C</td><td>What a normal thermometer reads</td></tr>
+      <tr><td>Absolute humidity (humidity ratio)</td><td>x, g water / kg dry air</td><td>How much water is actually there. Unchanged by heating or cooling without condensation</td></tr>
+      <tr><td>Relative humidity</td><td>φ, %</td><td>Vapour pressure ÷ saturation pressure at that temperature</td></tr>
+      <tr><td>Dew point</td><td>t<sub>d</sub>, °C</td><td>Temperature at which this air would reach 100 % RH</td></tr>
+      <tr><td>Enthalpy</td><td>h, kJ/kg</td><td>Total heat content: sensible + latent (h ≈ 1.006 t + x(2501 + 1.86 t)/1000)</td></tr>
+    </table></div>
+    <p>The key fact: warm air can hold much more water. Saturation is about 3.8 g/kg at 0 °C, 7.6 g/kg at 10 °C,
+      14.7 g/kg at 20 °C and 27 g/kg at 30 °C (at sea level). So heating air <em>lowers</em> RH without changing x,
+      and cooling raises RH until it hits 100 %, then water condenses out.</p>
+
+    <figure class="viz" id="psy">
+      <div class="controls seg" role="group" aria-label="Process">
+        <button data-p="none" aria-pressed="true">Just a point</button>
+        <button data-p="heat">Heat to 21 °C</button>
+        <button data-p="cool">Cool coil 12 °C</button>
+        <button data-p="adia">Adiabatic humidifier</button>
+      </div>
+      <div class="v-grid">
+        <label>Temperature <output id="psTO">5</output> °C
+          <input type="range" id="psT" min="-10" max="38" value="5"></label>
+        <label>Relative humidity <output id="psRO">80</output> %
+          <input type="range" id="psR" min="5" max="100" value="80"></label>
+      </div>
+      <svg viewBox="0 0 600 320" role="img" aria-label="Simplified psychrometric chart with temperature on the x axis and absolute humidity on the y axis">
+        <defs><clipPath id="psClip"><rect x="50" y="20" width="520" height="270"/></clipPath>
+          <marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <g id="psGrid"></g>
+        <g clip-path="url(#psClip)" id="psCurves"></g>
+        <path id="psProc" class="curve" marker-end="url(#pa)"/>
+        <circle id="psPt2" r="6" class="fill-ok"/>
+        <circle id="psPt" r="7" class="fill-accent"/>
+        <text class="small" x="310" y="316" text-anchor="middle">dry-bulb temperature (°C)</text>
+        <text class="small" x="590" y="14" text-anchor="end">x (g/kg)</text>
+      </svg>
+      <div class="v-stats">
+        <div class="v-stat"><span>Absolute humidity</span><b id="psX">–</b></div>
+        <div class="v-stat"><span>Dew point</span><b id="psD">–</b></div>
+        <div class="v-stat"><span>Enthalpy</span><b id="psH">–</b></div>
+        <div class="v-stat"><span>After process</span><b id="psA">–</b></div>
+      </div>
+      <div class="readout" id="psTxt" style="font-family:var(--font)"></div>
+      <figcaption>Curves: 20, 40, 60, 80 % RH and saturation (100 %). Magnus formula, 1 013 hPa. Accurate to a few
+        percent, which is plenty for building work.</figcaption>
+    </figure>
+
+    <h3>Processes in an AHU</h3>
+    <ul>
+      <li><strong>Heating</strong>: horizontal line to the right. x constant, RH falls.</li>
+      <li><strong>Heat recovery</strong> (plate): also horizontal, unless the exhaust side condenses, which only
+        affects the exhaust stream.</li>
+      <li><strong>Cooling above dew point</strong>: horizontal to the left. <strong>Cooling below dew
+        point</strong>: the air follows down towards the coil's apparatus dew point and loses water.</li>
+      <li><strong>Steam humidification</strong>: almost vertical up. <strong>Adiabatic</strong>: along a line of
+        constant enthalpy (≈ wet-bulb), so the air cools as water evaporates.</li>
+      <li><strong>Mixing</strong> two airstreams: the result lies on the straight line between them, weighted by mass
+        flow.</li>
+    </ul>
+    <p>The energy of a process is <code>P = ṁ × Δh</code>. Cooling 1 kg/s of 28 °C, 60 % air (h ≈ 64 kJ/kg) to
+      13 °C saturated (h ≈ 37 kJ/kg) takes ~27 kW. Only ~15 kW of that is the temperature drop; the rest is latent,
+      condensing water. This is why dehumidification is expensive.</p>
+
+    <div class="callout example">Condensation on cold surfaces is a psychrometric question. A chilled ceiling at
+      16 °C in a room at 26 °C and 60 % RH (dew point ≈ 17.6 °C) will drip. Chilled-beam controllers therefore watch a
+      dew-point or condensation sensor and raise the water temperature or close the valve.</div>
+    <div class="callout warn">Never control humidity by RH alone in a space where temperature swings. RH can rise
+      just because the room cooled down. Compute dew point or absolute humidity in the controller when you need a
+      stable moisture signal.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Outdoor air at 0 °C and 90 % RH is heated to 21 °C. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="x stays ~3.4 g/kg; at 21 °C saturation is ~15.6 g/kg, so RH ≈ 22 %.">x stays the same and RH drops to about 22 %</button>
+        <button class="opt" data-opt="b" data-why="Heating does not remove water.">x drops, RH stays at 90 %</button>
+        <button class="opt" data-opt="c" data-why="Heating moves away from saturation, not towards it.">Water condenses in the heating coil</button>
+        <button class="opt" data-opt="d" data-why="RH falls because saturation pressure rises with temperature.">RH stays at 90 %</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Absolute humidity x is the real amount of water; RH depends on temperature.</li>
+      <li>Heating: horizontal right. Cooling below dew point: down-left, water out.</li>
+      <li>Energy = mass flow × enthalpy difference; latent load is often half of cooling.</li>
+    </ul>
+  </section>
+
+  <!-- 11.8 -->
+  <section class="lesson" id="s8" data-num="11.8">
+    <h2>11.8 Filters and maintenance</h2>
+    <p>Filters are the part of an AHU that changes the most over time. A clean filter has a low pressure drop. As
+      it collects dust, Δp rises, slowly at first and then faster as the media clogs. The fan must work harder to
+      keep the same airflow, or the airflow falls if the fan is not flow-controlled.</p>
+
+    <h3>Filter classes</h3>
+    <div class="table-wrap"><table>
+      <tr><th>ISO 16890 group</th><th>Measures</th><th>Old EN 779 class (approx.)</th><th>Typical use</th></tr>
+      <tr><td>ISO Coarse</td><td>Arrestance of coarse dust</td><td>G3–G4</td><td>Pre-filter, grease, insects</td></tr>
+      <tr><td>ISO ePM10 ≥ 50 %</td><td>Particles 0.3–10 µm</td><td>M5–M6</td><td>Extract air, heat recovery protection</td></tr>
+      <tr><td>ISO ePM2.5 ≥ 50 %</td><td>Particles 0.3–2.5 µm</td><td>M6–F7</td><td>Supply in cleaner areas</td></tr>
+      <tr><td>ISO ePM1 ≥ 50–80 %</td><td>Particles 0.3–1 µm</td><td>F7–F9</td><td>Supply air in offices, schools</td></tr>
+      <tr><td>EPA / HEPA (EN 1822, ISO 29463)</td><td>MPPS efficiency 85 % … 99.995 %</td><td>E10–H14</td><td>Hospitals, cleanrooms</td></tr>
+    </table></div>
+    <p>The EN 779 to ISO 16890 mapping is not exact because the tests differ. Use it as orientation only.</p>
+
+    <h3>When to change</h3>
+    <p>The common rule: change at the manufacturer's recommended <strong>final pressure drop</strong>, or at a fixed
+      interval (e.g. 12 months for the supply filter, VDI 6022 has hygiene-based intervals), whichever comes first.
+      Changing too early wastes filters. Changing too late wastes fan energy, and very high Δp can damage the media.
+      The best point balances filter cost against fan energy.</p>
+
+    <figure class="viz" id="filt">
+      <div class="v-grid">
+        <label>Dust load <output id="fiDO">medium</output>
+          <input type="range" id="fiD" min="0" max="2" value="1"></label>
+        <label>Change at <output id="fiLO">200</output> Pa
+          <input type="range" id="fiL" min="120" max="350" step="10" value="200"></label>
+        <label>Airflow <output id="fiQO">10000</output> m³/h
+          <input type="range" id="fiQ" min="2000" max="40000" step="1000" value="10000"></label>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Filter pressure drop over 24 months with sawtooth replacement">
+        <g id="fiGrid"></g>
+        <path id="fiLim" class="curve-b"/>
+        <path id="fiPath" class="curve"/>
+        <text class="small" x="320" y="256" text-anchor="middle">months</text>
+        <text class="small" x="10" y="14">Δp (Pa)</text>
+      </svg>
+      <div class="v-stats">
+        <div class="v-stat"><span>Changes / 2 years</span><b id="fiN">–</b></div>
+        <div class="v-stat"><span>Average Δp</span><b id="fiA">–</b></div>
+        <div class="v-stat"><span>Filter fan energy / year</span><b id="fiE">–</b></div>
+      </div>
+      <figcaption>Supply ePM1 bag filter, initial 70 Pa, 12-month maximum interval, fan efficiency 60 %, 4 000 h/year.
+        The rise is modelled as exponential; real curves depend on media and dust.</figcaption>
+    </figure>
+    <p>Filter energy: <code>P = Q × Δp ÷ η</code>. At 10 000 m³/h (2.78 m³/s), 150 Pa average and η = 0.6 that is
+      ~0.7 kW, ~2 800 kWh over 4 000 hours. Across a building with ten AHUs this is real money.</p>
+
+    <h3>Maintenance points a BMS should watch</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Point</th><th>Alarm logic</th></tr>
+      <tr><td>Filter Δp</td><td>Warning at final Δp, a second "very dirty" level; also a "too low" alarm (missing or burst filter)</td></tr>
+      <tr><td>Fan runtime hours</td><td>Service interval reminders</td></tr>
+      <tr><td>Fan power vs. airflow</td><td>Rising SFP: dirty coils, slipping belt, blocked intake</td></tr>
+      <tr><td>Heat recovery efficiency</td><td>Falling η with bypass closed: fouling, broken wheel belt, leaking seals</td></tr>
+      <tr><td>Supply temperature deviation</td><td>Valve stuck, pump failed, coil fouled</td></tr>
+      <tr><td>Damper end switches</td><td>Commanded open but not open after stroke time</td></tr>
+    </table></div>
+
+    <div class="callout warn">A Δp that suddenly drops is not good news. It usually means a filter bag tore, a
+      frame was left open after service, or the sensor hose came off. Alarm on low Δp too.</div>
+    <div class="callout example">Wheel drive belts on rotary exchangers are a classic silent failure: the
+      motor runs, the BMS shows "rotor on", but the wheel stands still. A rotation sensor (a magnet and a reed switch
+      on the wheel rim) catches it. Without one, only a sudden drop in recovery efficiency gives it away.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">The supply filter Δp falls from 180 Pa to 40 Pa overnight. Most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Filters do not clean themselves.">The filter cleaned itself in the rain</button>
+        <button class="opt" data-opt="b" data-why="A flow drop would lower Δp somewhat, but not by 75 % without other alarms.">Normal seasonal change</button>
+        <button class="opt" data-opt="c" data-why="Higher flow would increase Δp.">Fan speed was increased</button>
+        <button class="opt" data-opt="d" data-why="A torn bag or a disconnected hose removes the resistance the sensor sees.">A filter bag burst or the sensor hose came off</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>ISO 16890 classes by ePM1, ePM2.5, ePM10 and Coarse.</li>
+      <li>Change at final Δp or maximum interval, whichever comes first.</li>
+      <li>Filter energy = Q × Δp ÷ η. Too late is expensive.</li>
+      <li>Alarm on high and low Δp; watch SFP and recovery efficiency for hidden faults.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. A room's CO₂ rises slowly and never seems to level off during a 30-minute meeting. Why?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Steady state does not depend on the sensor.">The sensor is broken</button>
+        <button class="opt" data-opt="b" data-why="Steady state depends on people and airflow, not on time.">Steady state is always above 2 000 ppm</button>
+        <button class="opt" data-opt="c" data-why="τ = V/Q. A large room with modest flow can take longer than the meeting to approach steady state.">The time constant V/Q is long compared with the meeting</button>
+        <button class="opt" data-opt="d" data-why="Outdoor CO₂ is nearly constant.">Outdoor CO₂ is rising</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">2. Outdoor −5 °C, extract 21 °C, air after heat recovery 15.8 °C. What is η?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="(15.8 + 5) ÷ 26 is not 0.6.">60 %</button>
+        <button class="opt" data-opt="b" data-why="(15.8 − (−5)) ÷ (21 − (−5)) = 20.8 ÷ 26 = 0.8.">80 %</button>
+        <button class="opt" data-opt="c" data-why="Check the denominator: 21 − (−5) = 26.">75 %</button>
+        <button class="opt" data-opt="d" data-why="That would need 21 °C after recovery.">100 %</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. A VAV system holds duct pressure at a fixed 400 Pa while most boxes sit at 30 % open. Best improvement?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Lowering the setpoint until the most-open box is nearly open removes wasted throttling.">Static pressure reset (trim and respond)</button>
+        <button class="opt" data-opt="b" data-why="That wastes even more energy.">Raise the duct setpoint so boxes react faster</button>
+        <button class="opt" data-opt="c" data-why="That removes demand control.">Fix all boxes at 100 % open</button>
+        <button class="opt" data-opt="d" data-why="Filter change does not fix a too-high setpoint.">Change the filters</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. Which situation is most likely to freeze a counter-flow plate exchanger?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Low efficiency keeps the exhaust warmer.">Mild outdoor air and dry extract</button>
+        <button class="opt" data-opt="b" data-why="A bypass reduces the risk.">Bypass damper 50 % open</button>
+        <button class="opt" data-opt="c" data-why="A preheater raises the air entering the plate.">Preheater active</button>
+        <button class="opt" data-opt="d" data-why="High η plus cold outdoor air plus moisture pushes the exhaust below freezing and below dew point.">−20 °C outside and humid extract air</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. Why is controlling a humidifier by RH alone risky in a room whose temperature swings?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="RH sensors are fine in most rooms.">RH sensors do not work above 20 °C</button>
+        <button class="opt" data-opt="b" data-why="RH changes with temperature even when the water content stays the same.">RH rises and falls with temperature even if moisture is unchanged</button>
+        <button class="opt" data-opt="c" data-why="Enthalpy is not the issue here.">Humidifiers change enthalpy</button>
+        <button class="opt" data-opt="d" data-why="Dew point is the more stable signal, not the problem.">Dew point changes with temperature</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="10-hydronics.html">← Chapter 10</a>
+    <a class="btn" href="12-cooling-heat-pumps.html">Chapter 12 →</a>
+  </nav>
+</div>
+</main>
+</div>
+<script src="../assets/course.js"></script>
+<script>
+// Shared helpers.
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 0) => v.toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+const segBind = (root, attr, cb) => {
+  const btns = root.querySelectorAll(`[data-${attr}]`);
+  btns.forEach((b) => b.addEventListener("click", () => {
+    btns.forEach((x) => x.setAttribute("aria-pressed", x === b));
+    cb(b.dataset[attr]);
+  }));
+};
+const gridSvg = (g, X, Y, xs, ys, x0, x1, y0, y1) => {
+  g.innerHTML =
+    xs.map((v) => `<line class="grid-l" x1="${X(v)}" y1="${Y(y0)}" x2="${X(v)}" y2="${Y(y1)}"/><text class="small" x="${X(v)}" y="${Y(y0) + 16}" text-anchor="middle">${v}</text>`).join("") +
+    ys.map((v) => `<line class="grid-l" x1="${X(x0)}" y1="${Y(v)}" x2="${X(x1)}" y2="${Y(v)}"/><text class="small" x="${X(x0) - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`).join("");
+};
+
+// 11.1 CO2 dilution model.
+(() => {
+  const X = (t) => 60 + t * (500 / 180), Y = (c) => 230 - ((c - 400) / 2100) * 210;
+  gridSvg($("co2grid"), X, Y, [0, 30, 60, 90, 120, 150, 180], [400, 800, 1200, 1600, 2000, 2500], 0, 180, 400, 2500);
+  $("co2lim").setAttribute("d", `M${X(0)},${Y(1000)} L${X(180)},${Y(1000)}`);
+  const OUT = 420, G = 0.005;
+  const draw = () => {
+    const n = +$("co2n").value, q = +$("co2q").value, v = +$("co2v").value;
+    $("co2nO").textContent = n; $("co2qO").textContent = q; $("co2vO").textContent = v;
+    let c = OUT, d = "", peak = OUT, t1000 = null;
+    const dt = 0.25; // minutes
+    for (let t = 0; t <= 180; t += dt) {
+      d += `${t ? "L" : "M"}${X(t).toFixed(1)},${Y(Math.min(c, 2500)).toFixed(1)} `;
+      const gen = t < 90 ? n * G : 0;
+      // dC/dt in ppm per second, times 60 s per minute.
+      c += ((gen * 1e6 + q * (OUT - c)) / (v * 1000)) * 60 * dt;
+      if (t < 90) peak = Math.max(peak, c);
+      if (t1000 === null && c >= 1000) t1000 = t;
+    }
+    $("co2path").setAttribute("d", d);
+    const ss = q > 0 ? OUT + (n * G / q) * 1e6 : Infinity;
+    $("co2pp").textContent = `${fmt(q / n, 1)} L/s`;
+    $("co2ss").textContent = isFinite(ss) ? `${fmt(ss)} ppm` : "no limit";
+    $("co2ssBox").className = "v-stat " + (ss > 1000 ? "bad" : "ok");
+    $("co2pk").textContent = `${fmt(peak)} ppm`;
+    $("co2t").textContent = t1000 === null ? "never" : `${fmt(t1000)} min`;
+  };
+  ["co2n", "co2q", "co2v"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 11.3 Heat recovery calculator.
+(() => {
+  const ETA = { cross: [0.6, "Cross-flow plate: compact and tight, moderate efficiency."], counter: [0.85, "Counter-flow plate: highest dry efficiency, but freezes first in cold climates."], rotary: [0.78, "Rotary wheel: high efficiency and some moisture recovery; watch carry-over and keep the purge sector working."], runaround: [0.5, "Run-around coil: lowest efficiency, but airstreams can be far apart and fully separate."] };
+  let type = "cross";
+  const fig = $("hrc");
+  const draw = () => {
+    const to = +$("hrTo").value, te = +$("hrTe").value, q = +$("hrQ").value, ts = +$("hrTs").value;
+    $("hrToO").textContent = to; $("hrTeO").textContent = te; $("hrQO").textContent = fmt(q); $("hrTsO").textContent = ts;
+    const [eta, txt] = ETA[type];
+    let t2 = to + eta * (te - to);
+    // Bypass limits recovery to the setpoint when heat is not needed.
+    const bypass = t2 > ts && to < ts;
+    if (bypass) t2 = ts;
+    if (to >= ts) t2 = to;
+    const k = 1.2 * q / 3600; // kW per K
+    const rec = Math.max(0, k * (t2 - to)), coil = Math.max(0, k * (ts - t2)), none = Math.max(0, k * (ts - to));
+    const span = te - to || 1, W = 520;
+    const px = (t) => 40 + Math.max(0, Math.min(1, (t - to) / span)) * W;
+    $("hrRec").setAttribute("width", Math.max(0, px(t2) - 40));
+    $("hrCoil").setAttribute("x", px(t2)); $("hrCoil").setAttribute("width", Math.max(0, px(ts) - px(t2)));
+    $("hrL1").setAttribute("x", Math.max(70, Math.min(530, px(t2)))); $("hrL1").textContent = `${fmt(t2, 1)} °C`;
+    $("hrL2").setAttribute("x", Math.max(70, Math.min(530, px(ts)))); $("hrL2").setAttribute("y", 140 - 10);
+    $("hrL2").textContent = `setpoint ${ts} °C`;
+    $("hrT2").textContent = `${fmt(t2, 1)} °C`;
+    $("hrP").textContent = `${fmt(rec, 1)} kW`;
+    $("hrC").textContent = `${fmt(coil, 1)} kW`;
+    $("hrN").textContent = `${fmt(none, 1)} kW`;
+    $("hrTxt").textContent = `η = ${Math.round(eta * 100)} %. ${txt}` + (bypass ? " Recovery is throttled (bypass / lower speed) so the supply does not overshoot." : "") + (to >= ts ? " Outdoor air is already warm enough: no recovery needed." : "");
+  };
+  segBind(fig, "t", (t) => { type = t; draw(); });
+  ["hrTo", "hrTe", "hrQ", "hrTs"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 11.4 Fan laws with fan and system curves.
+(() => {
+  const Q0 = 10000, P0 = 800, W0 = 3.5;
+  const X = (q) => 60 + (q / 14000) * 520, Y = (p) => 250 - (p / 1400) * 230;
+  gridSvg($("fanGrid"), X, Y, [0, 2000, 4000, 6000, 8000, 10000, 12000, 14000], [0, 200, 400, 600, 800, 1000, 1200, 1400], 0, 14000, 0, 1400);
+  const fanCurve = (s) => {
+    let d = "";
+    for (let q = 0; q <= 14000; q += 200) {
+      const p = 1100 * s * s - 300 * (q / Q0) ** 2;
+      if (p < 0) break;
+      d += `${q ? "L" : "M"}${X(q).toFixed(1)},${Y(p).toFixed(1)} `;
+    }
+    return d;
+  };
+  let sys = "";
+  for (let q = 0; q <= 14000; q += 200) {
+    const p = P0 * (q / Q0) ** 2;
+    if (p > 1400) break;
+    sys += `${q ? "L" : "M"}${X(q).toFixed(1)},${Y(p).toFixed(1)} `;
+  }
+  $("fanSys").setAttribute("d", sys);
+  $("fanRef").setAttribute("d", fanCurve(1));
+  const draw = () => {
+    const s = +$("fanN").value / 100;
+    $("fanNO").textContent = Math.round(s * 100);
+    $("fanCur").setAttribute("d", fanCurve(s));
+    // Fan curve meets system curve where q/Q0 = s.
+    const q = Q0 * s, p = P0 * s * s, w = W0 * s ** 3;
+    $("fanPt").setAttribute("cx", X(q)); $("fanPt").setAttribute("cy", Y(p));
+    $("fanQ").textContent = `${fmt(q)} m³/h`;
+    $("fanP").textContent = `${fmt(p)} Pa`;
+    $("fanW").textContent = `${fmt(w, 2)} kW (${fmt(s ** 3 * 100)} %)`;
+    const sfp = w / (q / 3600);
+    $("fanS").textContent = `${fmt(sfp, 2)}`;
+    $("fanSfpBox").className = "v-stat " + (sfp > 1.25 ? "bad" : "ok");
+  };
+  $("fanN").addEventListener("input", draw);
+  draw();
+})();
+
+// 11.5 VAV with fixed vs reset duct pressure.
+(() => {
+  const fig = $("dcv"), zbox = $("dcvZones");
+  const NAMES = ["Meeting A", "Meeting B", "Open office", "Classroom"];
+  const LV = { empty: [0.2, "Empty"], half: [0.55, "Half"], full: [1, "Full"] };
+  const occ = ["full", "empty", "half", "empty"];
+  let mode = "fixed";
+  zbox.innerHTML = NAMES.map((n, i) => `<div class="zone"><b>${n}</b><div class="seg" role="group" aria-label="${n} occupancy">${Object.keys(LV).map((k) => `<button data-z="${i}" data-o="${k}" aria-pressed="${occ[i] === k}">${LV[k][1]}</button>`).join("")}</div></div>`).join("");
+  zbox.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    occ[+b.dataset.z] = b.dataset.o;
+    zbox.querySelectorAll(`[data-z="${b.dataset.z}"]`).forEach((x) => x.setAttribute("aria-pressed", x === b));
+    draw();
+  }));
+  segBind(fig, "m", (m) => { mode = m; draw(); });
+  const DES = 1000, SP_FIX = 300, LOSS = 450, ETA = 0.6;
+  const draw = () => {
+    const f = occ.map((o) => LV[o][0]);
+    const q = f.reduce((a, b) => a + b, 0) * DES;
+    const fmax = Math.max(...f);
+    // Reset: lower setpoint until the most-open box sits near 90 %.
+    const sp = mode === "fixed" ? SP_FIX : Math.max(75, SP_FIX * fmax * fmax);
+    const pFan = LOSS * (q / (4 * DES)) ** 2 + sp;
+    const w = (q / 3600) * pFan / ETA / 1000;
+    const wCav = (4 * DES / 3600) * (LOSS + SP_FIX) / ETA / 1000;
+    // Damper opening needed to pass the flow at this duct pressure (orifice law, normalised to fixed design).
+    const open = f.map((fi) => Math.min(1, fi * Math.sqrt(SP_FIX / sp) * 0.9));
+    $("dcvBoxes").innerHTML = f.map((fi, i) => {
+      const x = 160 + i * 115, ang = (1 - open[i]) * 80;
+      const rad = (ang * Math.PI) / 180, dx = 14 * Math.cos(rad), dy = 14 * Math.sin(rad);
+      return `<rect x="${x}" y="100" width="30" height="40" class="duct"/>
+        <line x1="${x + 15 - dx}" y1="${120 - dy}" x2="${x + 15 + dx}" y2="${120 + dy}" stroke="var(--accent)" stroke-width="3"/>
+        <rect x="${x - 25}" y="140" width="80" height="30" rx="4" class="box"/>
+        <text class="small" x="${x + 15}" y="159" text-anchor="middle">${fmt(fi * DES)} m³/h</text>
+        <text class="small" x="${x + 15}" y="186" text-anchor="middle">damper ${Math.round(open[i] * 100)} %</text>`;
+    }).join("");
+    $("dcvSp").textContent = `duct static pressure ${fmt(sp)} Pa`;
+    $("dcvQ").textContent = `${fmt(q)} m³/h`;
+    $("dcvDp").textContent = `${fmt(sp)} Pa`;
+    $("dcvW").textContent = `${fmt(w, 2)} kW`;
+    $("dcvS").textContent = `−${fmt((1 - w / wCav) * 100)} %`;
+  };
+  draw();
+})();
+
+// 11.6 Heating coil frost protection stepper.
+(() => {
+  const STEPS = [
+    ["Normal", "AHU running. Supply 19 °C, heating valve 35 %, return water 28 °C. Frost thermostat set at 5 °C."],
+    ["Pump fails", "Cold night, −12 °C. The heating pump trips. Water in the coil stops moving and starts cooling quickly."],
+    ["Warning", "Return water falls below ~12 °C, or air after the coil below ~8 °C. The controller opens the valve further and raises an early warning."],
+    ["Trip", "Capillary frost thermostat sees 5 °C on part of the coil. Hardwired: supply and extract fans stop, outdoor damper closes."],
+    ["Protect", "Heating valve forced 100 % open, pump commanded on (standby pump if fitted). Alarm to the operator."],
+    ["Recover", "Coil warms above the reset point. Restart is manual or delayed, with a warm-up period before fans run again."],
+  ];
+  const fig = $("frostSeq");
+  let i = 0;
+  const X = (k) => 50 + k * (500 / (STEPS.length - 1));
+  const render = () => {
+    $("frostDots").innerHTML = STEPS.map(([n], k) => `<circle cx="${X(k)}" cy="60" r="10" class="${k <= i ? (k >= 3 ? "fill-bad" : "fill-accent") : "fill-surface"}" style="stroke:var(--border);stroke-width:2"/><text class="small" x="${X(k)}" y="${k % 2 ? 96 : 36}" text-anchor="middle">${n}</text>`).join("");
+    $("frostTxt").innerHTML = `<strong>Step ${i + 1} · ${STEPS[i][0]}.</strong> ${STEPS[i][1]}`;
+  };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(STEPS.length - 1, i + 1); render(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(0, i - 1); render(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { i = 0; render(); });
+  render();
+})();
+
+// 11.6 Heat recovery frost risk.
+(() => {
+  const fig = $("frost"), ETA = 0.85, TE = 22;
+  const X = (t) => 40 + ((t + 30) / 55) * 520;
+  $("frAxis").innerHTML = `<line x1="40" y1="60" x2="560" y2="60" class="arrow"/>` +
+    [-30, -20, -10, 0, 10, 20].map((t) => `<line x1="${X(t)}" y1="54" x2="${X(t)}" y2="66" class="arrow"/><text class="small" x="${X(t)}" y="134" text-anchor="middle">${t} °C</text>`).join("");
+  const psat = (t) => 6.112 * Math.exp((17.62 * t) / (243.12 + t));
+  const dew = (pv) => { const a = Math.log(pv / 6.112); return (243.12 * a) / (17.62 - a); };
+  let strat = "none";
+  const draw = () => {
+    const to = +$("frTo").value, rh = +$("frRh").value;
+    $("frToO").textContent = to; $("frRhO").textContent = rh;
+    const td = dew(psat(TE) * rh / 100);
+    let ti = to, etaS = ETA, ratio = 1, note = "";
+    if (strat === "preheat") { ti = Math.max(to, -4); note = to < -4 ? `Preheater lifts outdoor air to −4 °C (${fmt(1.2 * (-4 - to), 1)} kW per m³/s).` : "Preheater not needed at this temperature."; }
+    let eha = TE - ETA * ratio * (TE - ti);
+    const frosting = (e) => e < -1 && e < td;
+    if (strat === "bypass" && frosting(eha)) {
+      // Find the bypass share that keeps the exhaust at the limit.
+      let b = 0;
+      while (b < 1 && frosting(TE - ETA * (1 - b) * (TE - ti))) b += 0.01;
+      etaS = ETA * (1 - b); eha = TE - etaS * (TE - ti);
+      note = `Bypass ${Math.round(b * 100)} % of outdoor air around the plate.`;
+    }
+    if (strat === "reduce" && frosting(eha)) {
+      let r = 1;
+      while (r > 0.3 && frosting(TE - ETA * r * (TE - ti))) r -= 0.01;
+      ratio = r; eha = TE - ETA * r * (TE - ti);
+      note = `Supply flow reduced to ${Math.round(r * 100)} % of extract. The building goes negative.`;
+    }
+    const sup = ti + etaS * (TE - ti);
+    const risk = frosting(eha);
+    const lim = Math.min(-1, td);
+    $("frZone").setAttribute("x", 40); $("frZone").setAttribute("width", Math.max(0, X(lim) - 40));
+    $("frDew").setAttribute("x1", X(td)); $("frDew").setAttribute("x2", X(td));
+    $("frDewL").setAttribute("x", Math.max(60, Math.min(540, X(td))));
+    $("frDewL").textContent = `extract dew point ${fmt(td, 1)} °C`;
+    $("frDot").setAttribute("cx", X(Math.max(-30, eha)));
+    $("frDot").setAttribute("class", risk ? "fill-bad" : "fill-ok");
+    $("frDotL").setAttribute("x", Math.max(60, Math.min(540, X(eha))));
+    $("frState").textContent = risk ? "Frosting" : "OK";
+    $("frStateBox").className = "v-stat " + (risk ? "bad" : "ok");
+    $("frEha").textContent = `${fmt(eha, 1)} °C`;
+    $("frSup").textContent = `${fmt(sup, 1)} °C`;
+    $("frTxt").textContent = note || (risk ? "Ice will build up on the exhaust side. Choose a strategy." : "No frost risk at these conditions.");
+  };
+  segBind(fig, "s", (s) => { strat = s; draw(); });
+  ["frTo", "frRh"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 11.7 Simplified psychrometric chart.
+(() => {
+  const fig = $("psy"), P = 1013.25;
+  const X = (t) => 50 + ((t + 10) / 50) * 520, Y = (x) => 290 - (x / 25) * 270;
+  const psat = (t) => 6.112 * Math.exp((17.62 * t) / (243.12 + t));
+  const xOf = (t, rh) => { const pv = psat(t) * rh / 100; return 622 * pv / (P - pv); };
+  const rhOf = (t, x) => { const pv = (x * P) / (622 + x); return Math.min(100, (pv / psat(t)) * 100); };
+  const dewOf = (x) => { const pv = (x * P) / (622 + x), a = Math.log(pv / 6.112); return (243.12 * a) / (17.62 - a); };
+  const hOf = (t, x) => 1.006 * t + (x / 1000) * (2501 + 1.86 * t);
+  gridSvg($("psGrid"), X, Y, [-10, 0, 10, 20, 30, 40], [0, 5, 10, 15, 20, 25], -10, 40, 0, 25);
+  $("psCurves").innerHTML = [20, 40, 60, 80, 100].map((rh) => {
+    let d = "";
+    for (let t = -10; t <= 40; t += 0.5) d += `${t > -10 ? "L" : "M"}${X(t).toFixed(1)},${Y(xOf(t, rh)).toFixed(1)} `;
+    const lt = rh === 100 ? 26 : 36, lx = X(lt) + 4, ly = Y(xOf(lt, rh)) - 4;
+    return `<path d="${d}" class="${rh === 100 ? "curve" : "curve-m"}" ${rh === 100 ? "" : 'stroke-width="1"'}/>` + (ly > 24 ? `<text class="small" x="${lx}" y="${ly}">${rh} %</text>` : "");
+  }).join("");
+  let proc = "none";
+  const draw = () => {
+    const t = +$("psT").value, rh = +$("psR").value;
+    $("psTO").textContent = t; $("psRO").textContent = rh;
+    const x = xOf(t, rh), td = dewOf(x), h = hOf(t, x);
+    $("psPt").setAttribute("cx", X(t)); $("psPt").setAttribute("cy", Y(x));
+    $("psX").textContent = `${fmt(x, 1)} g/kg`;
+    $("psD").textContent = `${fmt(td, 1)} °C`;
+    $("psH").textContent = `${fmt(h, 1)} kJ/kg`;
+    let t2 = t, x2 = x, msg = "";
+    if (proc === "heat") {
+      t2 = Math.max(t, 21);
+      msg = t >= 21 ? "Already at or above 21 °C." : `Heating: x stays ${fmt(x, 1)} g/kg, RH falls to ${fmt(rhOf(t2, x2))} %. Δh = ${fmt(hOf(t2, x2) - h, 1)} kJ/kg.`;
+    } else if (proc === "cool") {
+      // Coil leaving air approximated as 12 °C, saturated if the entry dew point is above 12 °C.
+      t2 = Math.min(t, 12);
+      x2 = Math.min(x, xOf(t2, 95));
+      msg = t <= 12 ? "Air is already colder than the coil." : (x2 < x ? `Dehumidifying: ${fmt(x - x2, 1)} g/kg of water condenses. Δh = ${fmt(h - hOf(t2, x2), 1)} kJ/kg, of which latent ≈ ${fmt(((x - x2) / 1000) * 2501, 1)}.` : `Sensible cooling only: dew point ${fmt(td, 1)} °C is below the coil, no water removed.`);
+    } else if (proc === "adia") {
+      // Along constant enthalpy to 90 % RH.
+      let tt = t;
+      while (tt > -10) {
+        const xx = (h - 1.006 * tt) / (2501 + 1.86 * tt) * 1000;
+        if (rhOf(tt, xx) >= 90) { t2 = tt; x2 = xx; break; }
+        tt -= 0.1;
+      }
+      msg = `Evaporation at constant enthalpy: air cools to ${fmt(t2, 1)} °C and gains ${fmt(x2 - x, 1)} g/kg.`;
+    }
+    const show = proc !== "none" && (t2 !== t || Math.abs(x2 - x) > 0.01);
+    $("psProc").setAttribute("d", show ? `M${X(t)},${Y(x)} L${X(t2)},${Y(x2)}` : "");
+    $("psPt2").setAttribute("cx", X(t2)); $("psPt2").setAttribute("cy", Y(x2));
+    $("psPt2").style.display = show ? "" : "none";
+    $("psA").textContent = show ? `${fmt(t2, 1)} °C · ${fmt(rhOf(t2, x2))} %` : "–";
+    $("psTxt").textContent = msg || `At ${t} °C and ${rh} % RH the air holds ${fmt(x, 1)} g/kg. Cool it below ${fmt(td, 1)} °C and water condenses.`;
+  };
+  segBind(fig, "p", (p) => { proc = p; draw(); });
+  ["psT", "psR"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 11.8 Filter pressure drop sawtooth.
+(() => {
+  const X = (m) => 60 + (m / 24) * 520, Y = (p) => 230 - (p / 400) * 210;
+  gridSvg($("fiGrid"), X, Y, [0, 3, 6, 9, 12, 15, 18, 21, 24], [0, 100, 200, 300, 400], 0, 24, 0, 400);
+  const LOADS = [["low", 0.12], ["medium", 0.2], ["high city", 0.32]];
+  const P0 = 70, A = 25, MAXM = 12, ETA = 0.6, HOURS = 4000;
+  const draw = () => {
+    const [name, k] = LOADS[+$("fiD").value], lim = +$("fiL").value, q = +$("fiQ").value;
+    $("fiDO").textContent = name; $("fiLO").textContent = lim; $("fiQO").textContent = fmt(q);
+    $("fiLim").setAttribute("d", `M${X(0)},${Y(lim)} L${X(24)},${Y(lim)}`);
+    let d = `M${X(0)},${Y(P0)} `, age = 0, n = 0, sum = 0, cnt = 0;
+    const dt = 0.05;
+    for (let m = 0; m <= 24 + 1e-9; m += dt) {
+      const p = P0 + A * (Math.exp(k * age) - 1);
+      sum += Math.min(p, lim); cnt++;
+      d += `L${X(m).toFixed(1)},${Y(Math.min(p, 400)).toFixed(1)} `;
+      age += dt;
+      if (p >= lim || age >= MAXM) { age = 0; n++; d += `L${X(m).toFixed(1)},${Y(P0).toFixed(1)} `; }
+    }
+    $("fiPath").setAttribute("d", d);
+    const avg = sum / cnt;
+    const kwh = (q / 3600) * avg / ETA / 1000 * HOURS;
+    $("fiN").textContent = n;
+    $("fiA").textContent = `${fmt(avg)} Pa`;
+    $("fiE").textContent = `${fmt(kwh)} kWh`;
+  };
+  ["fiD", "fiL", "fiQ"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+</script>
+</body>
+</html>

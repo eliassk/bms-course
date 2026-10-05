@@ -1,0 +1,1137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lighting Control</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .lc-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .lc-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .lc-row input[type=range] { width: 100%; }
+  .lc-sel, .lc-in { font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; width: 100%; min-width: 0; }
+  .lc-check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; margin-right: 12px; }
+  .seg { flex-wrap: wrap; }
+  .lum-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  .lum { border: 1px solid var(--border); border-radius: 10px; padding: 8px 4px; text-align: center; background: var(--surface); font: 12px var(--mono); min-width: 0; overflow-wrap: anywhere; }
+  .lum .bulb { width: 34px; height: 34px; margin: 0 auto 4px; border-radius: 50%; border: 2px solid var(--accent); background: var(--accent); }
+  .lum .g { color: var(--muted); }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-top: 10px; }
+  .kv div { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+  .kv b { display: block; font: 600 16px var(--mono); }
+  .kv .bad { color: var(--bad); } .kv .ok { color: var(--ok); }
+  .faders { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 64px), 1fr)); gap: 6px; margin-top: 10px; }
+  .fader { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 6px 4px; text-align: center; font: 11px var(--mono); min-width: 0; }
+  .fader input { width: 100%; }
+  .fader .fx { color: var(--muted); overflow-wrap: anywhere; }
+  .uni { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 1px; margin-top: 10px; }
+  .uni span { aspect-ratio: 1; background: var(--surface-2); border-radius: 1px; }
+  .uni span.p { background: var(--accent-soft); }
+  .uni span.on { background: var(--accent); }
+  .frame { font: 12px/1.6 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 10px; overflow-wrap: anywhere; }
+  .swatch { height: 90px; border-radius: 12px; border: 1px solid var(--border); margin-top: 10px; display: grid; place-items: center; font: 600 15px var(--mono); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  svg .ln-accent { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+  svg .ln-ex { stroke: var(--example); stroke-width: 2.5; fill: none; }
+  svg .ln-ok { stroke: var(--ok); stroke-width: 2.5; fill: none; }
+  svg .ln-bad { stroke: var(--bad); stroke-width: 2; fill: none; stroke-dasharray: 5 4; }
+  svg .ln-muted { stroke: var(--muted); stroke-width: 1.5; fill: none; stroke-dasharray: 3 4; }
+  svg .grid-l { stroke: var(--border); stroke-width: 1; }
+  svg .band { fill: var(--ok-soft); }
+  svg .band-bad { fill: var(--bad-soft); }
+  svg .fill-ex { fill: var(--example); }
+  svg .area-accent { fill: var(--accent-soft); stroke: none; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="13">
+<div class="content">
+  <div class="kicker">Chapter 13</div>
+  <h1>Lighting control</h1>
+  <p class="lead">Lighting is the system people notice first and forgive last. This chapter covers the ideas
+    every lighting control system shares, then DALI in depth, the platforms built on it, DMX for stage work,
+    sensors that save energy, emergency lighting that must be tested, and colour temperature control.</p>
+
+  <!-- 13.1 -->
+  <section class="lesson" id="s1" data-num="13.1">
+    <h2>13.1 Lighting control concepts: groups, scenes, fades</h2>
+    <p>Almost every lighting control system, from a two-room DALI install to a stadium, is built from the same
+      four ideas. Learn them once and every product's configuration tool starts to look familiar.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Concept</th><th>What it is</th><th>Typical example</th></tr>
+      <tr><td><strong>Channel / address</strong></td><td>The smallest thing you can control on its own. One driver, one DALI short address, one DMX slot.</td><td>Downlight driver A12</td></tr>
+      <tr><td><strong>Group</strong></td><td>A named set of channels that receive one command together.</td><td>"Window row", "All corridor"</td></tr>
+      <tr><td><strong>Scene</strong></td><td>A stored snapshot: a level for each channel. Recalling it moves every member to its own level.</td><td>"Presentation": front 20 %, rest 60 %</td></tr>
+      <tr><td><strong>Fade</strong></td><td>How long the change takes. Applies to scene recalls and level changes.</td><td>3 s to scene, 60 s to off</td></tr>
+    </table></div>
+
+    <h3>Why scenes beat direct levels</h3>
+    <p>Sending "go to scene 3" is one message. Sending twelve individual levels is twelve messages, and
+      they arrive at slightly different times, so the room visibly ripples. On DALI, scene levels are stored
+      <em>inside each driver</em>. A single broadcast "go to scene 3" makes every driver look up its own value
+      and fade there in sync. The controller does not even need to know the levels.</p>
+    <p>A channel can sit in several groups at once. A window-row downlight might be in "Window row", "Zone A"
+      and "All lights". Groups overlap; scenes do not need to cover every channel. On DALI a channel can also
+      be told to <em>ignore</em> a scene (stored value 255, "MASK"), so it stays where it is when that scene is
+      recalled.</p>
+
+    <h3>Fades and the human eye</h3>
+    <p>Fast changes feel abrupt. Slow fades feel calm and hide the moment of switching. Rules of thumb used by
+      lighting designers:</p>
+    <ul>
+      <li>0–1 s for a manual button press. People expect a response.</li>
+      <li>2–4 s for scene changes in meeting rooms and restaurants.</li>
+      <li>30–90 s for automatic changes the occupant did not ask for, such as daylight dimming or a
+        presence sensor dimming down after a timeout.</li>
+      <li>Very long fades (minutes) for theatre house lights and circadian transitions.</li>
+    </ul>
+
+    <h3>Try it: groups, scenes and fades</h3>
+    <figure class="viz" id="scenes">
+      <div class="controls seg" role="group" aria-label="Scene">
+        <button data-scene="off" aria-pressed="true">Off</button>
+        <button data-scene="full">Full</button>
+        <button data-scene="meet">Meeting</button>
+        <button data-scene="pres">Presentation</button>
+        <button data-scene="clean">Cleaning</button>
+      </div>
+      <div class="lc-row">
+        <label>Fade time <select class="lc-sel" id="scFade">
+          <option value="0">0 s (snap)</option><option value="0.7">0.7 s</option><option value="2" selected>2 s</option>
+          <option value="4">4 s</option><option value="8">8 s</option></select></label>
+        <label>Group command <select class="lc-sel" id="scGroup">
+          <option value="">(scene recall)</option><option value="0">G0 Front</option><option value="1">G1 Window</option>
+          <option value="2">G2 Corridor side</option></select></label>
+        <label>Group level: <output id="scLvlOut">50 %</output><input type="range" id="scLvl" min="0" max="100" value="50"></label>
+      </div>
+      <div class="lum-grid" id="scGrid"></div>
+      <div class="readout" id="scText" aria-live="polite"></div>
+      <figcaption>Twelve luminaires in three groups. The "Presentation" scene leaves the corridor side untouched (MASK).
+        Pick a group to send a level to it instead of recalling a scene.</figcaption>
+    </figure>
+
+    <div class="callout example">A typical conference room has a wall keypad with four buttons: "Full", "Meeting",
+      "Presentation" and "Off". The AV system can recall the same "Presentation" scene when the projector turns on.
+      The keypad and the AV processor send the same scene number. Neither needs to know the individual levels.</div>
+
+    <div class="callout warn">Scene numbering drift is a classic commissioning bug. If one floor uses scene 3 for
+      "Presentation" and another uses scene 3 for "Cleaning", a building-wide recall from the BMS does strange
+      things. Agree a scene table for the whole building before programming starts.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Why does a DALI scene recall look smoother than sending each luminaire its level one by one?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Scene recalls use the same bus speed.">Scene commands are sent at a higher baud rate</button>
+        <button class="opt" data-opt="b" data-why="Each driver stores its own scene level, so one broadcast starts every fade at the same moment.">Levels are stored in the drivers, so one message starts all fades together</button>
+        <button class="opt" data-opt="c" data-why="Scenes do not change the dimming curve.">Scenes use a linear dimming curve</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Channel, group, scene, fade: four ideas behind every lighting system.</li>
+      <li>Scenes are snapshots stored close to the light; one command recalls many levels.</li>
+      <li>Fade time is a design choice. Automatic changes should be slow.</li>
+    </ul>
+  </section>
+
+  <!-- 13.2 -->
+  <section class="lesson" id="s2" data-num="13.2">
+    <h2>13.2 DALI system design: addressing, PSUs, limits</h2>
+    <p><strong>DALI</strong> (Digital Addressable Lighting Interface) is the international standard IEC 62386
+      for digital lighting control. <strong>DALI-2</strong> is the current generation, with certified
+      interoperability and standard parts for input devices (buttons, sensors). The DALI Alliance runs the
+      certification programme.</p>
+
+    <h3>The bus</h3>
+    <ul>
+      <li>Two wires, <strong>polarity-free</strong> at the devices. Any topology: line, star, tree. No termination resistors.</li>
+      <li>The bus is idle at about 16 V (allowed roughly 9.5–22.5 V). A device signals by shorting it low.</li>
+      <li>Speed: <strong>1200 bit/s</strong>, Manchester (bi-phase) coded. A forward frame from the controller is
+        16 bits (address byte + command byte), with 24-bit frames for input devices. A reply ("backward frame") is 8 bits.</li>
+      <li>One <strong>bus power supply</strong> per line, limited to <strong>250 mA</strong>.</li>
+      <li>Voltage drop on the cable MUST stay under <strong>2 V</strong>. In practice this gives about
+        <strong>300 m</strong> with 1.5 mm² cable.</li>
+      <li>The DALI pair may run in the same cable as mains (it is usually treated as basic-insulated, not SELV),
+        which saves cabling. Check local wiring rules.</li>
+    </ul>
+
+    <h3>Addresses and limits per line</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Item</th><th>Limit per DALI line</th><th>Note</th></tr>
+      <tr><td>Control gear (drivers)</td><td>64 short addresses (0–63)</td><td>Many drivers can share one address, but then you cannot tell them apart.</td></tr>
+      <tr><td>Control devices (DALI-2 inputs)</td><td>64 more addresses</td><td>Buttons, presence and light sensors; separate address space.</td></tr>
+      <tr><td>Groups</td><td>16 (0–15)</td><td>Membership stored in each driver.</td></tr>
+      <tr><td>Scenes</td><td>16 (0–15)</td><td>Level per scene stored in each driver.</td></tr>
+      <tr><td>Bus current</td><td>250 mA</td><td>Each device draws about 2 mA (up to ~6 mA for some input devices).</td></tr>
+    </table></div>
+
+    <p>Addresses are assigned during commissioning. The controller tells all unaddressed drivers to pick a
+      random 24-bit number, then runs a binary search ("compare, withdraw") to find them one at a time and give
+      each a short address. This is why a fresh line takes a minute or two to address and why you then have to
+      <em>identify</em> which address is which physical light (flash it and note the location).</p>
+
+    <h3>The logarithmic dimming curve</h3>
+    <p>DALI levels ("arc power") run from 0 to 254. Level 0 is off. Level 255 is reserved for "MASK". The
+      standard curve is <em>logarithmic</em>: level 1 is 0.1 % light, level 254 is 100 %, and every 3 % step in
+      level is roughly the same <em>perceived</em> step. The formula is:</p>
+    <p style="font-family:var(--mono)">light % = 10 ^ ((level − 1) × 3 / 253 − 1)</p>
+    <p>The eye responds to light roughly logarithmically, so equal level steps look like equal brightness steps.
+      Halving the level does not halve the light: level 127 is only about 3 %. A linear curve (also selectable on
+      many DT6 LED drivers) gives far too little control at the bottom end.</p>
+
+    <figure class="viz" id="curve">
+      <div class="lc-row">
+        <label>DALI arc level: <output id="cvOut">200</output><input type="range" id="cvLvl" min="0" max="254" value="200"></label>
+      </div>
+      <svg viewBox="0 0 620 260" role="img" aria-label="Logarithmic and linear dimming curves from level 0 to 254">
+        <g id="cvGrid"></g>
+        <path id="cvLog" class="ln-accent"/>
+        <path id="cvLin" class="ln-muted"/>
+        <line id="cvV" class="ln-ex" x1="0" y1="20" x2="0" y2="220"/>
+        <circle id="cvDot" r="6" class="fill-accent"/>
+        <circle id="cvDot2" r="5" class="fill-muted"/>
+      </svg>
+      <div class="legend"><span><i style="background:var(--accent)"></i>DALI logarithmic</span><span><i style="background:var(--muted)"></i>Linear</span></div>
+      <div class="kv" id="cvKv"></div>
+      <figcaption>Drag the slider. Notice how much of the slider range the logarithmic curve spends below 10 %:
+        that is where the eye is most sensitive.</figcaption>
+    </figure>
+
+    <h3>Device types</h3>
+    <p>IEC 62386 parts 2xx define extra features per device type (DT). The most common:</p>
+    <div class="table-wrap"><table>
+      <tr><th>DT</th><th>Part</th><th>Device</th></tr>
+      <tr><td>DT1</td><td>202</td><td>Self-contained emergency lighting (test commands, battery status)</td></tr>
+      <tr><td>DT6</td><td>207</td><td>LED driver</td></tr>
+      <tr><td>DT8</td><td>209</td><td>Colour control: tunable white (Tc), RGBWAF, xy</td></tr>
+      <tr><td>—</td><td>303 / 304</td><td>DALI-2 occupancy sensor / light sensor (input devices)</td></tr>
+      <tr><td>D4i</td><td>250–253</td><td>Luminaire-mounted sensors and data: energy, diagnostics, luminaire info</td></tr>
+    </table></div>
+
+    <h3>Try it: size a DALI line</h3>
+    <figure class="viz" id="budget">
+      <div class="lc-row">
+        <label>Drivers: <output id="bgDrvOut">40</output><input type="range" id="bgDrv" min="1" max="80" value="40"></label>
+        <label>Input devices: <output id="bgInOut">6</output><input type="range" id="bgIn" min="0" max="40" value="6"></label>
+        <label>Cable length to farthest device: <output id="bgLenOut">200 m</output><input type="range" id="bgLen" min="10" max="500" step="10" value="200"></label>
+        <label>Conductor <select class="lc-sel" id="bgCs"><option value="0.5">0.5 mm²</option><option value="0.75">0.75 mm²</option><option value="1">1.0 mm²</option><option value="1.5" selected>1.5 mm²</option><option value="2.5">2.5 mm²</option></select></label>
+        <label>Bus PSU <select class="lc-sel" id="bgPsu"><option value="250" selected>250 mA</option><option value="150">150 mA</option><option value="64">64 mA</option></select></label>
+      </div>
+      <div class="kv" id="bgKv"></div>
+      <figcaption>Assumes 2 mA per driver, 6 mA per input device and worst case: the full PSU current flowing to
+        the far end. Copper resistivity 0.0175 Ω·mm²/m, two conductors.</figcaption>
+    </figure>
+
+    <div class="callout example">An open-plan office floor of 1,200 m² might have 180 LED panels. Designers
+      typically split that into four lines of about 45 drivers each, leaving room for later additions and for a
+      few DALI-2 sensors per line, each line with its own 250 mA supply.</div>
+
+    <div class="callout warn">Plan for no more than about 50 drivers per line in a new design. Hitting exactly 64
+      leaves no spare addresses for a replacement driver, a later tenant change or an extra sensor. Also do not
+      add a second bus PSU to the same line unless both supplies are designed for it: currents add and can exceed
+      the 250 mA the standard allows.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A DALI line has 58 drivers on one PSU and 380 m of 1.5 mm² cable to the farthest driver. What is the most likely problem?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="58 is under the 64 limit, though it leaves little spare.">Too many short addresses</button>
+        <button class="opt" data-opt="b" data-why="DALI is polarity-free at the devices.">Reversed polarity at some drivers</button>
+        <button class="opt" data-opt="c" data-why="At 250 mA, 380 m of 1.5 mm² drops about 2.2 V, above the 2 V limit. Expect intermittent communication at the far end.">Voltage drop above 2 V at the far end</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>One line: 64 drivers, 64 input devices, 16 groups, 16 scenes, 250 mA, 2 V drop, ~300 m.</li>
+      <li>1200 bit/s: DALI is for commands, not for streaming effects.</li>
+      <li>The logarithmic curve maps 254 levels to 0.1–100 % light in equal perceived steps.</li>
+    </ul>
+  </section>
+
+  <!-- 13.3 -->
+  <section class="lesson" id="s3" data-num="13.3">
+    <h2>13.3 Helvar and other DALI platforms</h2>
+    <p>A single DALI line is a small, slow island. Real buildings have dozens of lines. A <strong>lighting
+      control platform</strong> ties them together: routers or controllers with two or more DALI outputs, an
+      Ethernet backbone between them, configuration software, and an integration interface for the BMS.</p>
+
+    <h3>Common architecture</h3>
+    <figure class="viz">
+      <svg viewBox="0 0 640 270" role="img" aria-label="BMS connects over Ethernet to DALI routers, each driving two DALI lines with drivers and sensors">
+        <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="230" y="10" width="180" height="44" rx="8"/>
+        <text x="320" y="30" text-anchor="middle">BMS / supervisory</text>
+        <text class="small" x="320" y="46" text-anchor="middle">BACnet, Modbus, vendor TCP API, MQTT</text>
+        <line class="wire stroke" x1="40" y1="90" x2="600" y2="90"/>
+        <text class="small" x="44" y="84">Ethernet backbone (lighting VLAN)</text>
+        <path class="arrow" d="M320,56 L320,88" marker-end="url(#ah3)"/>
+        <g id="rtrs"></g>
+      </svg>
+      <figcaption>Routers keep running scenes, sensor logic and schedules locally. The BMS sends high-level
+        commands (recall scene 2 in area "Hall") and reads status (lamp failure, energy).</figcaption>
+    </figure>
+
+    <h3>Helvar as a worked example</h3>
+    <p>Helvar (Finland) is a common example of this architecture. Its DALI routers (for example the 9xx series)
+      each drive two DALI lines and connect over Ethernet. Programming is done in the Designer software. Routers
+      are addressed with a four-part address of the form <em>cluster.router.subnet.device</em>, so
+      <code>1.2.1.15</code> means cluster 1, router 2, DALI line 1, device 15. Logic is organised around
+      <em>groups</em> and <em>scenes</em> that span routers: the routers exchange group commands over the
+      network so one button press can move lights on several lines.</p>
+    <p>For integration, Helvar documents a TCP/UDP text protocol called HelvarNet (commands such as "recall
+      scene", "direct level", "query load status"). Gateways from several vendors, and open-source integrations,
+      use it. Treat exact command syntax and port numbers as something to check against the current vendor
+      documentation for the firmware in front of you.</p>
+
+    <h3>Other platforms</h3>
+    <div class="explorer">
+      <div class="layers">
+        <button class="layer" data-target="pf-tri">Tridonic / Zumtobel</button>
+        <button class="layer" data-target="pf-dyn">Philips Dynalite</button>
+        <button class="layer" data-target="pf-lut">Lutron</button>
+        <button class="layer" data-target="pf-knx">KNX and PLC gateways</button>
+        <button class="layer" data-target="pf-wl">Wireless (Casambi, Zigbee)</button>
+      </div>
+      <div class="panel" aria-live="polite">
+        <template id="pf-tri"><h4>Tridonic / Zumtobel</h4><p>Large driver makers with their own DALI controllers and
+          building-level systems (for example Zumtobel LITECOM, Tridonic net4more and successors). Strong on DALI-2 and D4i
+          drivers. Integration usually through BACnet or a REST/IP interface.</p></template>
+        <template id="pf-dyn"><h4>Philips (Signify) Dynalite</h4><p>Its own RS-485 network, DyNet, links load controllers
+          and DALI gateways. Common in hotels and auditoria. Scenes are called "presets"; areas and channels form the
+          hierarchy. IP gateways connect DyNet to the BMS.</p></template>
+        <template id="pf-lut"><h4>Lutron</h4><p>Mostly proprietary wired and wireless links (for example Quantum, Athena,
+          HomeWorks), with DALI and 0–10 V interfaces to drivers. Integration through a documented text protocol over Telnet
+          or newer IP APIs, or BACnet gateways. Common in high-end residential and commercial.</p></template>
+        <template id="pf-knx"><h4>KNX and PLC gateways</h4><p>Where KNX runs the building, a KNX–DALI gateway (ABB, MDT,
+          Siemens, Gira and many others) maps DALI groups and addresses to KNX group objects. PLC vendors (Wago, Beckhoff,
+          Loytec controllers) offer DALI terminal modules so lighting logic lives in the same controller as HVAC.</p></template>
+        <template id="pf-wl"><h4>Wireless</h4><p>Bluetooth mesh systems such as Casambi, and Zigbee-based products, avoid
+          a control cable. Good for retrofits. Gateways often expose DALI-like groups and scenes. Weigh this against radio
+          reliability, gateway dependency and the update path.</p></template>
+      </div>
+    </div>
+
+    <h3>What to ask of any platform</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Question</th><th>Why it matters</th></tr>
+      <tr><td>Does it run locally if the server and network fail?</td><td>Wall buttons and sensors must still work.</td></tr>
+      <tr><td>Is the integration protocol documented and open?</td><td>Avoids a single integrator lock-in.</td></tr>
+      <tr><td>Can it report lamp and driver failures per address?</td><td>Maintenance needs to know which fitting failed.</td></tr>
+      <tr><td>Can I export the project file?</td><td>Without it, nobody else can change the system.</td></tr>
+      <tr><td>Are drivers DALI-2 certified?</td><td>Lets you mix driver brands.</td></tr>
+    </table></div>
+
+    <h3>Sort these features</h3>
+    <div class="classify" data-cats="DALI line,Router / platform,BMS">
+      <div class="item" data-cat="DALI line" data-why="Group membership and scene levels live inside each driver."><span class="label">Stores the level for scene 5</span></div>
+      <div class="item" data-cat="Router / platform" data-why="Cross-line groups need a device that sees several lines."><span class="label">Makes a button on line 1 dim lights on line 4</span></div>
+      <div class="item" data-cat="BMS" data-why="Trend history and alerting are supervisory jobs."><span class="label">Sends a ticket when 3 drivers in a room fail</span></div>
+      <div class="item" data-cat="Router / platform" data-why="Time schedules should run locally so they survive a BMS outage."><span class="label">Runs the 22:00 corridor setback schedule</span></div>
+      <div class="item" data-cat="DALI line" data-why="Addressing is a bus-level process, though a router or tool runs it."><span class="label">Holds the short address 0–63</span></div>
+    </div>
+
+    <div class="callout example">A typical integration: the BMS reads "lamp failure" and "power" per area every few
+      minutes and recalls scene 1 ("Building closed") at night. Everything that must react within a second
+      (buttons, presence) stays in the lighting routers.</div>
+
+    <div class="callout warn">Do not let the BMS poll every DALI address quickly. At 1200 bit/s a query-and-reply
+      takes roughly 20–40 ms, so polling 64 devices can occupy the line for seconds and make buttons feel slow.
+      Poll slowly, prefer event reports, and query per area rather than per driver where the platform allows.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">What is the main job of a DALI router in a multi-line system?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Routers bridge lines over IP, run local logic and give the BMS one interface.">Link several DALI lines over IP, run logic locally and expose an integration interface</button>
+        <button class="opt" data-opt="b" data-why="Speed is fixed by the standard at 1200 bit/s.">Raise each line's bit rate</button>
+        <button class="opt" data-opt="c" data-why="Each line still needs its own bus power; some routers include it, but that is not their main job.">Replace the drivers' dimming curves</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Platforms = DALI lines + routers + IP backbone + software + integration API.</li>
+      <li>Keep fast logic local; the BMS sends areas and scenes, reads faults and energy.</li>
+      <li>Ask for open protocols, local fallback and exportable project files.</li>
+    </ul>
+  </section>
+
+  <!-- 13.4 -->
+  <section class="lesson" id="s4" data-num="13.4">
+    <h2>13.4 DMX for stage and events</h2>
+    <p>Where DALI is slow and smart, <strong>DMX512</strong> is fast and dumb. Defined by ANSI E1.11, it streams
+      the level of every channel, all the time, from a lighting console to the fixtures. Moving heads, LED wash
+      lights, hazers and dimmer racks all speak it.</p>
+
+    <h3>The signal</h3>
+    <ul>
+      <li>Physical layer: RS-485 differential pair, 5-pin XLR (3-pin is common but non-standard), daisy chained.</li>
+      <li>One <strong>universe</strong> = up to <strong>512 slots</strong> (channels), each 8 bits (0–255).</li>
+      <li><strong>250 kbit/s</strong>. Each slot is 11 bits (start, 8 data, 2 stop) = 44 µs.</li>
+      <li>A packet starts with a BREAK (at least 88 µs low), a mark-after-break, then a start code (0 for
+        dimmer data), then the slots.</li>
+      <li>A full 512-slot universe refreshes about <strong>44 times per second</strong>.</li>
+      <li>Up to 32 unit loads per segment; the last device MUST be terminated with 120 Ω.</li>
+    </ul>
+    <p>There is no addressing in the packet. Each fixture is set (by DIP switches or a menu) to a <em>start
+      address</em> and simply reads its block of consecutive slots. A moving head that uses 16 channels, set to
+      address 101, reads slots 101–116. Fine control uses two slots per parameter (coarse + fine), giving 16-bit
+      resolution for pan, tilt or a smooth dimmer.</p>
+
+    <h3>Try it: patch a universe</h3>
+    <figure class="viz" id="dmx">
+      <div class="lc-row">
+        <label>Moving head start address: <output id="dmxAddrOut">10</output><input type="range" id="dmxAddr" min="1" max="497" value="10"></label>
+        <label>Dimmer pack start address: <output id="dmxAddr2Out">1</output><input type="range" id="dmxAddr2" min="1" max="509" value="1"></label>
+      </div>
+      <div class="faders" id="dmxFaders"></div>
+      <div class="uni" id="dmxUni" aria-hidden="true"></div>
+      <div class="frame" id="dmxFrame"></div>
+      <div class="readout" id="dmxText" aria-live="polite"></div>
+      <figcaption>A 4-channel dimmer pack and a 7-channel moving head (dimmer, pan, pan fine, tilt, tilt fine,
+        colour, gobo) share one universe of 512 slots, drawn as a 32 × 16 grid. Move the start addresses until
+        they overlap and watch the conflict.</figcaption>
+    </figure>
+
+    <h3>Refresh rate vs universe size</h3>
+    <div class="demo">
+      <label for="slots">Slots sent: <output id="slotsOut">512</output></label>
+      <input type="range" id="slots" min="24" max="512" value="512">
+      <p id="slotsText" style="margin-bottom:0"></p>
+    </div>
+
+    <h3>DMX over IP and RDM</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Protocol</th><th>Transport</th><th>Notes</th></tr>
+      <tr><td><strong>Art-Net</strong></td><td>UDP port 6454</td><td>Very widespread. Thousands of universes over Ethernet. Older versions broadcast, so isolate it on its own VLAN.</td></tr>
+      <tr><td><strong>sACN</strong> (ANSI E1.31)</td><td>UDP port 5568, multicast 239.255.x.y per universe</td><td>Standards-based. Switches with IGMP snooping deliver each universe only to devices that join it. Has priorities for merging consoles.</td></tr>
+      <tr><td><strong>RDM</strong> (ANSI E1.20)</td><td>Same DMX cable, bidirectional</td><td>Remote device management: discover fixtures, set addresses, read lamp hours and faults. Old splitters may block it.</td></tr>
+    </table></div>
+
+    <div class="callout example">In a typical theatre the console sends 8–20 universes of sACN over a dedicated
+      lighting network. Nodes in each lighting bar convert universes back to DMX for the fixtures. House lights are
+      often DALI for daily use, with a DMX-to-DALI interface or a dimmer system that also listens to DMX so the
+      console can fade them during a show.</div>
+
+    <div class="callout warn">DMX has no error checking and no acknowledgement. Fixtures keep the last values they
+      received when the signal is lost, or go dark after a timeout, depending on their settings. Decide "hold last
+      look" vs "black out" per venue, and never use DMX alone for anything safety related, such as house lights in
+      an emergency. Those MUST be forced on by an independent path.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">A fixture uses 12 channels and is set to start address 505. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="DMX does not wrap.">It reads slots 505–512 and 1–4</button>
+        <button class="opt" data-opt="b" data-why="Nothing moves it automatically.">It is moved to the next universe automatically</button>
+        <button class="opt" data-opt="c" data-why="The console has no way to know; there is no feedback without RDM.">The console refuses to send data</button>
+        <button class="opt" data-opt="d" data-why="Only 8 slots exist after 505, so the last 4 parameters get no data. Patch must fit inside 512.">Its last 4 parameters never receive data</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>DMX512: 512 slots × 8 bits, 250 kbit/s, ~44 Hz refresh, no addressing, no error checking.</li>
+      <li>Fixtures read a block from a start address; avoid overlaps and the 512 edge.</li>
+      <li>Art-Net and sACN carry many universes over IP; RDM adds discovery and diagnostics.</li>
+    </ul>
+  </section>
+
+  <!-- 13.5 -->
+  <section class="lesson" id="s5" data-num="13.5">
+    <h2>13.5 Presence and daylight sensors</h2>
+    <p>Lighting in an office runs for thousands of hours a year. The cheapest saving is to turn it off when
+      nobody is there and to dim it when the sun does the work. Studies and standards (for example the LENI method
+      in EN 15193-1) credit occupancy and daylight control with savings in the range of 20–60 %, depending heavily
+      on the room and how it is used.</p>
+
+    <h3>Sensing technologies</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Technology</th><th>Senses</th><th>Strength</th><th>Weakness</th></tr>
+      <tr><td>Passive infrared (PIR)</td><td>Moving heat sources crossing zones</td><td>Cheap, low power, no false triggers through walls</td><td>Misses still people typing; needs line of sight</td></tr>
+      <tr><td>Microwave / radar</td><td>Doppler movement</td><td>Very sensitive, small movements</td><td>Can see through thin walls and glass; false triggers</td></tr>
+      <tr><td>Ultrasonic</td><td>Doppler in air</td><td>Fills the room, around partitions</td><td>Air movement can trigger it</td></tr>
+      <tr><td>Dual tech</td><td>PIR + ultrasonic or microwave</td><td>Switch on with both, hold with either</td><td>Cost</td></tr>
+      <tr><td>Light sensor (photocell)</td><td>Illuminance on the area below</td><td>Enables daylight dimming</td><td>Reads reflected light, needs calibration</td></tr>
+    </table></div>
+
+    <h3>Presence vs absence detection</h3>
+    <p><strong>Presence</strong> (auto-on, auto-off): lights switch on when someone enters and off after the hold
+      time. Good for corridors and toilets. <strong>Absence</strong> (manual-on, auto-off): people press a button
+      to switch on; the sensor only switches off. In daylit rooms, absence detection usually saves more, because
+      people often do not switch on at all when it is bright enough.</p>
+    <p>The <strong>hold time</strong> (time delay) is the key parameter. Too short and lights go off on people
+      sitting still. Too long and savings drop. 10–20 minutes is common in offices, with a <em>dim-to-low
+      stage</em> (for example 10 % for 5 minutes) before off in corridors, so nobody is left in the dark.</p>
+
+    <h3>Daylight harvesting</h3>
+    <p>A ceiling light sensor measures the light reflected from the desk area. A <em>closed-loop</em> controller
+      dims the luminaires until the total (daylight + artificial) matches the target, for example
+      <strong>500 lx</strong> on the work plane, the EN 12464-1 value for office desk work. Rows near the window
+      get more daylight, so they are usually a separate group with their own sensor or an offset.</p>
+
+    <h3>Try it: a day in a daylit office</h3>
+    <figure class="viz" id="day">
+      <div class="controls seg" role="group" aria-label="Control strategy">
+        <button data-mode="sched" aria-pressed="true">Schedule 7–19</button>
+        <button data-mode="pres">+ Presence</button>
+        <button data-mode="day">+ Daylight</button>
+      </div>
+      <div class="controls seg" role="group" aria-label="Weather" style="margin-top:8px">
+        <button data-wx="sun" aria-pressed="true">Sunny</button>
+        <button data-wx="cloud">Overcast</button>
+      </div>
+      <div class="lc-row">
+        <label>Hold time: <output id="dayHoldOut">15 min</output><input type="range" id="dayHold" min="5" max="60" step="5" value="15"></label>
+        <label>Time of day: <output id="dayTOut">10:00</output><input type="range" id="dayT" min="0" max="95" value="40"></label>
+      </div>
+      <svg viewBox="0 0 640 250" role="img" aria-label="Chart of daylight, artificial light output and occupancy over one day">
+        <g id="dayGrid"></g>
+        <g id="dayOcc"></g>
+        <path id="dayArt" class="area-accent"/>
+        <path id="dayArtL" class="ln-accent"/>
+        <path id="dayDl" class="ln-ex"/>
+        <line id="dayCur" class="ln-muted" y1="20" y2="210"/>
+      </svg>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Artificial output %</span><span><i style="background:var(--example)"></i>Daylight on desk (0–1000 lx)</span><span><i style="background:var(--ok-soft)"></i>Occupied</span></div>
+      <div class="kv" id="dayKv"></div>
+      <figcaption>One room, 10 luminaires of 35 W, target 500 lx. Occupancy has a lunch break and a few short
+        gaps. Compare the daily energy for each strategy.</figcaption>
+    </figure>
+
+    <div class="callout example">A typical open-plan office: dual-tech sensors in a grid every 6–8 m, each
+      controlling its own DALI group. The BMS reads each sensor's occupancy, so the same signal can also reduce
+      ventilation and heating setpoints in empty zones. One sensor, three systems.</div>
+
+    <div class="callout warn">Daylight sensors MUST be calibrated in the finished room, with furniture in place.
+      A sensor set up over a bare grey floor reads quite differently once a white desk sits under it. Also keep
+      the sensor's view away from the window itself, or direct sunlight will make it dim the room far too much.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">People in a meeting room complain the lights go off during long video calls. What is the first thing to check?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The light level target does not switch lights off.">The daylight target of 500 lx</button>
+        <button class="opt" data-opt="b" data-why="Seated people hardly move. A PIR with a short hold time loses them; lengthen it or use dual-tech.">The sensor type and hold time</button>
+        <button class="opt" data-opt="c" data-why="Fade time changes how it goes off, not whether.">The fade time</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>PIR for movement, microwave/ultrasonic for small movement, dual-tech for reliability.</li>
+      <li>Absence detection plus daylight dimming usually saves most in daylit rooms.</li>
+      <li>Hold time and calibration decide whether people love or hate the system.</li>
+    </ul>
+  </section>
+
+  <!-- 13.6 -->
+  <section class="lesson" id="s6" data-num="13.6">
+    <h2>13.6 Emergency lighting and testing</h2>
+    <p>Emergency lighting lets people leave safely when normal power fails. It is a life-safety system. It is
+      designed to standards (in Europe, EN 1838 for light levels and EN 50172 for system and testing; in the UK,
+      BS 5266-1; in the US, NFPA 101), and it MUST keep working with no BMS, no network and no mains.</p>
+
+    <h3>Types and terms</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Term</th><th>Meaning</th></tr>
+      <tr><td><strong>Escape route lighting</strong></td><td>Lights the route. EN 1838: at least 1 lx on the centre line of routes up to 2 m wide.</td></tr>
+      <tr><td><strong>Open area (anti-panic)</strong></td><td>At least 0.5 lx on the floor of larger open areas.</td></tr>
+      <tr><td><strong>High-risk task area</strong></td><td>At least 10 % of normal lighting (and not less than 15 lx) so a dangerous process can be shut down.</td></tr>
+      <tr><td><strong>Maintained</strong></td><td>The emergency lamp is on all the time (e.g. exit signs in theatres).</td></tr>
+      <tr><td><strong>Non-maintained</strong></td><td>On only when mains fails.</td></tr>
+      <tr><td><strong>Self-contained</strong></td><td>Battery in each luminaire. Most common in small and mid-size buildings.</td></tr>
+      <tr><td><strong>Central battery</strong></td><td>One battery system feeds many luminaires over fire-resistant cable.</td></tr>
+      <tr><td><strong>Rated duration</strong></td><td>Usually 1 h or 3 h. 3 h is common where people may stay after the event, or re-occupy at once.</td></tr>
+    </table></div>
+
+    <h3>Testing</h3>
+    <p>Batteries and lamps fail silently. Standards therefore require regular tests and a logbook:</p>
+    <ul>
+      <li><strong>Daily</strong> (where required): visual check of central system indicators.</li>
+      <li><strong>Monthly</strong>: a short <em>function test</em>. Simulate mains failure and check every luminaire
+        lights. Long enough to prove operation, short enough not to drain the battery much.</li>
+      <li><strong>Annually</strong>: a <em>full duration test</em>. Run on battery for the whole rated time (1 h or 3 h)
+        and check the luminaires are still lit at the end.</li>
+    </ul>
+    <p>After a full duration test the batteries need up to about <strong>24 hours</strong> to recharge. During that
+      time the building is under-protected. The usual fix is to test only half the luminaires at a time, alternating
+      neighbours, or to test when the building is empty and stays empty for the next day.</p>
+    <p>Automatic test systems do this for you. <strong>DALI DT1</strong> (IEC 62386-202) emergency drivers accept
+      "start function test" and "start duration test" commands, run them, and store the result: lamp failure,
+      battery failure, duration test failed, and the time the battery lasted. The controller collects the results
+      for the logbook.</p>
+
+    <h3>Try it: a year of tests</h3>
+    <figure class="viz" id="emerg">
+      <div class="controls seg" role="group" aria-label="Rated duration">
+        <button data-dur="1">1 h rated</button>
+        <button data-dur="3" aria-pressed="true">3 h rated</button>
+      </div>
+      <div class="lc-row">
+        <label class="lc-check"><input type="checkbox" id="emStag" checked> Stagger: test groups A and B on different days</label>
+        <label class="lc-check"><input type="checkbox" id="emFail"> Ageing battery in luminaire 7</label>
+      </div>
+      <svg viewBox="0 0 640 230" role="img" aria-label="Twelve-month emergency lighting test timeline and battery charge during the annual test">
+        <g id="emTl"></g>
+        <g id="emBat"></g>
+      </svg>
+      <div class="readout" id="emText" aria-live="polite"></div>
+      <figcaption>Top: monthly function tests and the annual duration test. Bottom: battery charge during the
+        annual test and the recharge window when protection is reduced.</figcaption>
+    </figure>
+
+    <div class="callout example">A typical office building with 300 self-contained DALI emergency luminaires runs
+      monthly function tests automatically in the early hours, and the annual duration test on two weekends: odd
+      addresses one weekend, even addresses the next. The BMS shows a red tile per failed luminaire and exports the
+      log as a PDF for the fire inspector.</div>
+
+    <div class="callout warn">A BMS view of test results is helpful, but the legal record is the logbook the
+      responsible person keeps. Also remember that a failed duration test usually means a battery replacement:
+      batteries in self-contained fittings commonly last around 4 years, so plan budget for it.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Why are annual duration tests often staggered between neighbouring luminaires?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Bus traffic is tiny; tests run inside the drivers.">To limit DALI bus traffic</button>
+        <button class="opt" data-opt="b" data-why="The test is the same length either way.">To make each test shorter</button>
+        <button class="opt" data-opt="c" data-why="Tested luminaires have flat batteries for up to a day. Their untested neighbours keep the route lit if mains fails meanwhile.">So the route stays lit by untested neighbours while tested batteries recharge</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Emergency lighting is life safety: independent of BMS and mains.</li>
+      <li>Monthly function test, annual full-duration test, logbook.</li>
+      <li>Plan for the recharge window: stagger tests or test when the building stays empty.</li>
+    </ul>
+  </section>
+
+  <!-- 13.7 -->
+  <section class="lesson" id="s7" data-num="13.7">
+    <h2>13.7 Tunable white and circadian lighting</h2>
+    <p>White LED light comes in different <strong>correlated colour temperatures (CCT)</strong>, measured in
+      kelvin. Low values are warm and yellow, high values cool and blue. A <strong>tunable white</strong> luminaire
+      has two LED channels, warm (say 2700 K) and cool (say 6500 K), and mixes them to land anywhere between.</p>
+    <div class="table-wrap"><table>
+      <tr><th>CCT</th><th>Looks like</th><th>Typical use</th></tr>
+      <tr><td>1800–2200 K</td><td>Candle, sunset</td><td>Bars, evening hospitality</td></tr>
+      <tr><td>2700–3000 K</td><td>Warm white, incandescent</td><td>Homes, hotels, restaurants</td></tr>
+      <tr><td>4000 K</td><td>Neutral white</td><td>Offices, schools, retail</td></tr>
+      <tr><td>5000–6500 K</td><td>Cool white, overcast daylight</td><td>Inspection, healthcare, some industry</td></tr>
+    </table></div>
+
+    <h3>How it is controlled</h3>
+    <ul>
+      <li><strong>DALI DT8 Tc</strong>: one address takes a level and a colour temperature. DT8 expresses colour
+        temperature in <em>mirek</em> (1,000,000 / K), so 4000 K = 250 mirek. Mirek is used because equal mirek
+        steps look roughly equally different.</li>
+      <li><strong>Two DALI DT6 addresses</strong>: one for warm, one for cool. The controller does the mixing. Simple,
+        but scenes need two values and fades can drift in colour.</li>
+      <li><strong>DMX</strong>: usually intensity + CCT channels, or raw warm/cool channels.</li>
+    </ul>
+    <p>When mixing two channels, total output is not constant: at the midpoint both run at part output, and
+      depending on the driver the luminaire may be brighter or dimmer in the middle of the range. Good DT8 drivers
+      compensate so brightness stays the same while CCT moves.</p>
+
+    <h3>Try it: mix warm and cool</h3>
+    <figure class="viz" id="cct">
+      <div class="lc-row">
+        <label>Colour temperature: <output id="cctOut">4000 K</output><input type="range" id="cctK" min="2700" max="6500" step="50" value="4000"></label>
+        <label>Level: <output id="cctLvlOut">80 %</output><input type="range" id="cctLvl" min="0" max="100" value="80"></label>
+      </div>
+      <div class="swatch" id="cctSw">4000 K</div>
+      <svg viewBox="0 0 620 70" role="img" aria-label="Warm and cool channel outputs">
+        <text x="10" y="22" class="small">Warm 2700 K</text><rect class="box" x="110" y="10" width="480" height="18" rx="4"/><rect id="cctW" class="fill-ex" x="110" y="10" width="0" height="18" rx="4"/>
+        <text x="10" y="56" class="small">Cool 6500 K</text><rect class="box" x="110" y="44" width="480" height="18" rx="4"/><rect id="cctC" class="fill-accent" x="110" y="44" width="0" height="18" rx="4"/>
+      </svg>
+      <div class="kv" id="cctKv"></div>
+      <figcaption>The swatch colour is an approximation on screen. The channel split is a simple mix in mirek; real
+        drivers use calibrated tables and colour points.</figcaption>
+    </figure>
+
+    <h3>Circadian lighting</h3>
+    <p>The eye has light-sensitive cells (ipRGCs, containing melanopsin) that are most sensitive to blue-cyan
+      light around 480–490 nm. They influence the body clock and alertness. The CIE S 026 standard defines
+      <strong>melanopic EDI</strong> (equivalent daylight illuminance) as a measure of this effect. Guidance
+      published in 2022 by a group of researchers (Brown et al.) recommends at least about 250 lx melanopic EDI at the
+      eye during the day and much less in the evening. The WELL building standard has related criteria.</p>
+    <p>A circadian schedule therefore runs higher intensity and cooler CCT in the morning and midday, and warmer,
+      dimmer light in the evening. Note that <em>intensity at the eye</em> matters at least as much as CCT: a
+      bright 3000 K room can have more melanopic effect than a dim 6500 K one. The science is active and claims
+      about health benefits should be treated with care.</p>
+
+    <figure class="viz" id="circ">
+      <svg viewBox="0 0 640 220" role="img" aria-label="Circadian schedule of colour temperature and level over a day">
+        <g id="circGrid"></g>
+        <path id="circK" class="ln-ex"/>
+        <path id="circL" class="ln-accent"/>
+        <line id="circCur" class="ln-muted" y1="20" y2="180"/>
+      </svg>
+      <div class="legend"><span><i style="background:var(--example)"></i>CCT (2700–6500 K)</span><span><i style="background:var(--accent)"></i>Level %</span></div>
+      <div class="lc-row"><label>Time: <output id="circTOut">12:00</output><input type="range" id="circT" min="0" max="95" value="48"></label></div>
+      <div class="swatch" id="circSw"></div>
+      <figcaption>A typical office circadian profile. The controller sends small CCT steps with long fades so
+        the change is never noticed.</figcaption>
+    </figure>
+
+    <div class="callout example">In a typical care home the corridor and day-room luminaires run 5000 K at
+      600 lx in the late morning and fall gradually to 2700 K at 150 lx after 19:00. Night-time paths use very
+      low, warm light so residents can find the toilet without being fully woken.</div>
+
+    <div class="callout warn">Check what the luminaire does at low levels. Many tunable white drivers cannot hold
+      an accurate CCT below a few per cent output, and cheap two-channel mixing can shift visibly green or pink
+      (a large <em>Duv</em>) in the middle of the range. Ask for colour consistency data (MacAdam steps) over the
+      full range.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">What is 5000 K expressed in mirek?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="1,000,000 / 5000 = 200 mirek.">200</button>
+        <button class="opt" data-opt="b" data-why="That would be 2000 K.">500</button>
+        <button class="opt" data-opt="c" data-why="That would be 2500 K.">400</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>CCT in kelvin; DALI DT8 uses mirek = 1,000,000 / K.</li>
+      <li>Tunable white mixes warm and cool channels; good drivers keep brightness and colour consistent.</li>
+      <li>Circadian effect depends on intensity at the eye as much as on CCT.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. How many groups and scenes does one DALI line support?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="64 is the number of short addresses.">64 groups, 64 scenes</button>
+        <button class="opt" data-opt="b" data-why="Too few.">8 groups, 8 scenes</button>
+        <button class="opt" data-opt="c" data-why="Groups 0–15 and scenes 0–15.">16 groups, 16 scenes</button>
+        <button class="opt" data-opt="d" data-why="Scenes and groups have the same count.">16 groups, 32 scenes</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">2. A DALI driver is at arc level 127. Roughly how much light does it give on the standard curve?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That would be a linear curve.">50 %</button>
+        <button class="opt" data-opt="b" data-why="10^((126×3/253)−1) ≈ 3 %. The curve is logarithmic.">About 3 %</button>
+        <button class="opt" data-opt="c" data-why="0.1 % is level 1.">0.1 %</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Why is DMX512 a poor choice for an office lighting control system?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="No feedback, no stored scenes in fixtures, constant streaming from a controller.">It has no stored scenes in fixtures and no fault feedback without RDM</button>
+        <button class="opt" data-opt="b" data-why="DMX is much faster than DALI.">It is too slow</button>
+        <button class="opt" data-opt="c" data-why="LED drivers with DMX inputs exist.">LED fixtures cannot be controlled with DMX</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. Which test needs the batteries to run for their whole rated time?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Daily checks are visual.">Daily check</button>
+        <button class="opt" data-opt="b" data-why="Monthly tests are short function tests.">Monthly function test</button>
+        <button class="opt" data-opt="c" data-why="Not a standard test term.">Weekly flash test</button>
+        <button class="opt" data-opt="d" data-why="The annual duration test runs the full 1 h or 3 h.">Annual duration test</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. In a daylit office, which combination usually saves the most energy?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Schedules alone keep lights on in empty rooms.">Time schedule only</button>
+        <button class="opt" data-opt="b" data-why="Manual-on avoids needless switch-ons; daylight dimming trims output when the sun helps.">Absence detection with daylight dimming</button>
+        <button class="opt" data-opt="c" data-why="Auto-on switches lights on even when daylight is enough.">Presence detection (auto-on) without daylight control</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="12-cooling-heat-pumps.html">← Chapter 12</a>
+    <a class="btn" href="14-audio-av.html">Chapter 14 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 13 visualizations.
+
+// 13.1 Scene, group and fade simulator.
+(() => {
+  const fig = document.getElementById("scenes");
+  const grid = fig.querySelector("#scGrid");
+  const GROUP = [0, 0, 0, 0, 1, 2, 2, 1, 1, 2, 2, 1].map((g, i) => (i < 4 ? 0 : i % 4 === 0 || i % 4 === 3 ? (i % 4 === 0 ? 1 : 2) : g));
+  const NAMES = ["Front", "Window", "Corridor side"];
+  // null = MASK: the luminaire ignores this scene.
+  const SC = {
+    off: GROUP.map(() => 0),
+    full: GROUP.map(() => 100),
+    meet: GROUP.map((g) => [70, 80, 60][g]),
+    pres: GROUP.map((g) => [10, 40, null][g]),
+    clean: GROUP.map(() => 50),
+  };
+  let cur = GROUP.map(() => 0), from = cur.slice(), to = cur.slice(), t0 = 0, dur = 0, raf = 0;
+  grid.innerHTML = GROUP.map((g, i) => `<div class="lum"><div class="bulb"></div><div>A${i}</div><div class="g">G${g}</div><div class="lv">0 %</div></div>`).join("");
+  const cells = [...grid.children];
+  const paint = () => cells.forEach((c, i) => {
+    // Opacity follows a perceptual curve so low levels remain visible.
+    c.querySelector(".bulb").style.opacity = cur[i] <= 0 ? 0.08 : 0.15 + 0.85 * Math.sqrt(cur[i] / 100);
+    c.querySelector(".lv").textContent = Math.round(cur[i]) + " %";
+  });
+  const step = (now) => {
+    const k = dur ? Math.min(1, (now - t0) / (dur * 1000)) : 1;
+    cur = from.map((f, i) => f + (to[i] - f) * k);
+    paint();
+    if (k < 1) raf = requestAnimationFrame(step);
+  };
+  const go = (target, msg) => {
+    cancelAnimationFrame(raf);
+    from = cur.slice();
+    to = target.map((v, i) => (v === null ? cur[i] : v));
+    dur = Number(fig.querySelector("#scFade").value);
+    t0 = performance.now();
+    raf = requestAnimationFrame(step);
+    fig.querySelector("#scText").textContent = msg;
+  };
+  fig.querySelectorAll("[data-scene]").forEach((b) => b.addEventListener("click", () => {
+    fig.querySelectorAll("[data-scene]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    fig.querySelector("#scGroup").value = "";
+    const masked = SC[b.dataset.scene].filter((v) => v === null).length;
+    go(SC[b.dataset.scene], `Broadcast: GO TO SCENE "${b.textContent}". One frame on the bus, ${12 - masked} drivers fade${masked ? `, ${masked} masked (unchanged)` : ""}.`);
+  }));
+  const lvl = fig.querySelector("#scLvl");
+  const sendGroup = () => {
+    fig.querySelector("#scLvlOut").textContent = lvl.value + " %";
+    const g = fig.querySelector("#scGroup").value;
+    if (g === "") return;
+    const target = GROUP.map((x, i) => (String(x) === g ? Number(lvl.value) : null));
+    fig.querySelectorAll("[data-scene]").forEach((x) => x.setAttribute("aria-pressed", false));
+    go(target, `Group ${g} (${NAMES[g]}): DIRECT ARC POWER ${lvl.value} %. Only members of G${g} react.`);
+  };
+  lvl.addEventListener("input", sendGroup);
+  fig.querySelector("#scGroup").addEventListener("change", sendGroup);
+  paint();
+  fig.querySelector("#scText").textContent = "Pick a scene. Change the fade time to feel the difference.";
+})();
+
+// 13.2 Dimming curve chart.
+(() => {
+  const fig = document.getElementById("curve");
+  const X = (l) => 60 + (l / 254) * 540, Y = (p) => 220 - (p / 100) * 200;
+  const logP = (l) => (l === 0 ? 0 : Math.pow(10, ((l - 1) * 3) / 253 - 1));
+  let g = "";
+  for (let p = 0; p <= 100; p += 25) g += `<line class="grid-l" x1="60" x2="600" y1="${Y(p)}" y2="${Y(p)}"/><text class="small" x="52" y="${Y(p) + 4}" text-anchor="end">${p}%</text>`;
+  for (let l = 0; l <= 254; l += 50) g += `<text class="small" x="${X(l)}" y="240" text-anchor="middle">${l}</text>`;
+  g += `<text class="small" x="330" y="256" text-anchor="middle">arc power level</text>`;
+  fig.querySelector("#cvGrid").innerHTML = g;
+  let dl = "", dn = "";
+  for (let l = 0; l <= 254; l++) { dl += `${l ? "L" : "M"}${X(l).toFixed(1)},${Y(logP(l)).toFixed(1)} `; }
+  dn = `M${X(0)},${Y(0)} L${X(254)},${Y(100)}`;
+  fig.querySelector("#cvLog").setAttribute("d", dl);
+  fig.querySelector("#cvLin").setAttribute("d", dn);
+  const s = fig.querySelector("#cvLvl");
+  const draw = () => {
+    const l = Number(s.value), p = logP(l), lin = (l / 254) * 100;
+    fig.querySelector("#cvOut").textContent = l;
+    const v = fig.querySelector("#cvV");
+    v.setAttribute("x1", X(l)); v.setAttribute("x2", X(l));
+    const d = fig.querySelector("#cvDot"); d.setAttribute("cx", X(l)); d.setAttribute("cy", Y(p));
+    const d2 = fig.querySelector("#cvDot2"); d2.setAttribute("cx", X(l)); d2.setAttribute("cy", Y(lin));
+    const fmt = (x) => (x < 1 ? x.toFixed(2) : x < 10 ? x.toFixed(1) : x.toFixed(0)) + " %";
+    const hex = l.toString(16).toUpperCase().padStart(2, "0");
+    fig.querySelector("#cvKv").innerHTML =
+      `<div>Logarithmic<b>${fmt(p)}</b></div><div>Linear<b>${fmt(lin)}</b></div>` +
+      `<div>Next level up<b>+${l === 0 ? "—" : l >= 254 ? "0" : ((logP(l + 1) / p - 1) * 100).toFixed(1) + " %"}</b></div>` +
+      `<div>Frame byte<b>0x${hex}${l === 255 ? " MASK" : ""}</b></div>`;
+  };
+  s.addEventListener("input", draw);
+  draw();
+})();
+
+// 13.2 DALI line budget.
+(() => {
+  const fig = document.getElementById("budget");
+  const $ = (id) => fig.querySelector("#" + id);
+  const draw = () => {
+    const drv = +$("bgDrv").value, inp = +$("bgIn").value, len = +$("bgLen").value, cs = +$("bgCs").value, psu = +$("bgPsu").value;
+    $("bgDrvOut").textContent = drv; $("bgInOut").textContent = inp; $("bgLenOut").textContent = len + " m";
+    const load = drv * 2 + inp * 6;
+    const drop = (psu / 1000) * ((2 * len * 0.0175) / cs);
+    const maxLen = (2 * cs) / ((psu / 1000) * 2 * 0.0175);
+    const c = (ok) => (ok ? "ok" : "bad");
+    $("bgKv").innerHTML =
+      `<div>Gear addresses<b class="${c(drv <= 64)}">${drv} / 64</b>${drv > 64 ? "Split the line" : drv > 50 ? "Little spare" : "OK"}</div>` +
+      `<div>Input devices<b class="${c(inp <= 64)}">${inp} / 64</b></div>` +
+      `<div>Bus current<b class="${c(load <= psu)}">${load} / ${psu} mA</b>${load > psu ? "PSU too small" : "OK"}</div>` +
+      `<div>Voltage drop<b class="${c(drop <= 2)}">${drop.toFixed(2)} V</b>limit 2 V</div>` +
+      `<div>Max length at ${cs} mm²<b>${Math.round(maxLen)} m</b></div>`;
+  };
+  fig.querySelectorAll("input,select").forEach((e) => e.addEventListener("input", draw));
+  draw();
+})();
+
+// 13.3 Router architecture drawing.
+(() => {
+  const g = document.getElementById("rtrs");
+  let s = "";
+  [110, 320, 530].forEach((x, r) => {
+    s += `<line class="wire stroke" x1="${x}" y1="90" x2="${x}" y2="112"/>`;
+    s += `<rect class="box" x="${x - 70}" y="112" width="140" height="40" rx="8"/><text x="${x}" y="137" text-anchor="middle">Router ${r + 1}</text>`;
+    [-35, 35].forEach((dx, l) => {
+      const lx = x + dx;
+      s += `<line class="wire muted-s" x1="${lx}" y1="152" x2="${lx}" y2="250"/>`;
+      s += `<text class="small" x="${lx}" y="168" text-anchor="middle">DALI ${l + 1}</text>`;
+      for (let k = 0; k < 3; k++) s += `<circle cx="${lx}" cy="${188 + k * 22}" r="7" class="fill-accent-soft stroke"/>`;
+    });
+  });
+  s += `<text class="small" x="320" y="266" text-anchor="middle">each line: up to 64 drivers + 64 input devices, own bus PSU</text>`;
+  g.innerHTML = s;
+})();
+
+// 13.4 DMX universe patch with faders.
+(() => {
+  const fig = document.getElementById("dmx");
+  const $ = (id) => fig.querySelector("#" + id);
+  const FIX = [
+    { name: "Dimmer", addr: "dmxAddr2", ch: ["Dim 1", "Dim 2", "Dim 3", "Dim 4"] },
+    { name: "Mover", addr: "dmxAddr", ch: ["Dimmer", "Pan", "Pan fine", "Tilt", "Tilt fine", "Colour", "Gobo"] },
+  ];
+  const vals = FIX.map((f) => f.ch.map(() => 0));
+  vals[1][1] = 128; vals[1][3] = 128;
+  $("dmxUni").innerHTML = Array.from({ length: 512 }, () => "<span></span>").join("");
+  const cells = [...$("dmxUni").children];
+  $("dmxFaders").innerHTML = FIX.map((f, fi) => f.ch.map((c, ci) =>
+    `<div class="fader"><div class="fx">${f.name}<br>${c}</div><input type="range" min="0" max="255" value="${vals[fi][ci]}" data-f="${fi}" data-c="${ci}" aria-label="${f.name} ${c}"><div class="sl"></div></div>`).join("")).join("");
+  const draw = () => {
+    const uni = new Array(513).fill(0), owner = new Array(513).fill(0);
+    let warn = [];
+    FIX.forEach((f, fi) => {
+      const a = +$(f.addr).value;
+      $(f.addr + "Out").textContent = a;
+      f.ch.forEach((c, ci) => {
+        const slot = a + ci;
+        const lbl = fig.querySelector(`[data-f="${fi}"][data-c="${ci}"]`).nextElementSibling;
+        if (slot > 512) { lbl.textContent = "no slot"; warn.push(`${f.name} ${c} is past slot 512`); return; }
+        lbl.textContent = `#${slot}=${vals[fi][ci]}`;
+        if (owner[slot]) warn.push(`slot ${slot} used by both fixtures`);
+        owner[slot]++;
+        uni[slot] = vals[fi][ci];
+      });
+    });
+    cells.forEach((c, i) => { c.className = uni[i + 1] > 0 ? "on" : owner[i + 1] ? "p" : ""; });
+    const first = uni.slice(1, 25).map((v) => v.toString(16).toUpperCase().padStart(2, "0")).join(" ");
+    $("dmxFrame").textContent = `BREAK · MAB · SC 00 · ${first} … (512 slots, last ${uni[512].toString(16).toUpperCase().padStart(2, "0")})`;
+    const pan = ((vals[1][1] * 256 + vals[1][2]) / 65535) * 540;
+    $("dmxText").textContent = (warn.length ? "Conflict: " + [...new Set(warn)].slice(0, 3).join("; ") + ". " : "Patch OK. ") +
+      `Pan 16-bit = ${vals[1][1] * 256 + vals[1][2]} → ${pan.toFixed(2)}° of a 540° range.`;
+  };
+  $("dmxFaders").addEventListener("input", (e) => {
+    const t = e.target; if (!t.dataset.f) return;
+    vals[t.dataset.f][t.dataset.c] = +t.value; draw();
+  });
+  fig.querySelectorAll("#dmxAddr,#dmxAddr2").forEach((e) => e.addEventListener("input", draw));
+  draw();
+})();
+
+// 13.4 DMX refresh rate.
+(() => {
+  const s = document.getElementById("slots");
+  const draw = () => {
+    const n = +s.value;
+    // BREAK 88 µs + MAB 8 µs + start code and slots at 44 µs each.
+    const us = 88 + 8 + 44 * (n + 1);
+    const hz = Math.min(1e6 / us, 830);
+    document.getElementById("slotsOut").textContent = n;
+    document.getElementById("slotsText").textContent = `Packet ≈ ${(us / 1000).toFixed(2)} ms → up to ${hz.toFixed(0)} packets/s. ` +
+      (n < 512 ? "Sending fewer slots raises the refresh rate; the standard sets a minimum packet length, which this ignores." : "A full universe refreshes about 44 times per second.");
+  };
+  s.addEventListener("input", draw);
+  draw();
+})();
+
+// 13.5 Day simulation.
+(() => {
+  const fig = document.getElementById("day");
+  const $ = (id) => fig.querySelector("#" + id);
+  const N = 96, X = (i) => 50 + (i / N) * 570, Y = (v) => 210 - v * 180;
+  // Occupied 15-min slots: 8:00–12:00 and 13:00–17:30, with short gaps.
+  const occ = Array.from({ length: N }, (_, i) => (i >= 32 && i < 48 && i !== 41) || (i >= 52 && i < 70 && i !== 60 && i !== 61));
+  let mode = "sched", wx = "sun";
+  const daylight = (i) => {
+    const h = i / 4, peak = wx === "sun" ? 900 : 300;
+    return h < 6 || h > 20 ? 0 : peak * Math.pow(Math.sin(((h - 6) / 14) * Math.PI), 1.5);
+  };
+  const out = (i, hold) => {
+    const h = i / 4;
+    if (mode === "sched") return h >= 7 && h < 19 ? 1 : 0;
+    // Lights stay on during the hold time after the last occupied slot.
+    let on = false;
+    for (let k = 0; k * 15 < hold + 1 && i - k >= 0; k++) if (occ[i - k]) { on = true; break; }
+    if (!on) return 0;
+    if (mode === "pres") return 1;
+    return Math.max(0.1, Math.min(1, (500 - daylight(i)) / 500));
+  };
+  let g = "";
+  for (let h = 0; h <= 24; h += 3) g += `<line class="grid-l" x1="${X(h * 4)}" x2="${X(h * 4)}" y1="25" y2="210"/><text class="small" x="${X(h * 4)}" y="228" text-anchor="middle">${h}:00</text>`;
+  g += `<text class="small" x="44" y="${Y(1) + 4}" text-anchor="end">100%</text><text class="small" x="44" y="214" text-anchor="end">0</text>`;
+  $("dayGrid").innerHTML = g;
+  $("dayOcc").innerHTML = occ.map((o, i) => (o ? `<rect class="band" x="${X(i)}" y="25" width="${570 / N + 0.5}" height="185"/>` : "")).join("");
+  const draw = () => {
+    const hold = +$("dayHold").value, t = +$("dayT").value;
+    $("dayHoldOut").textContent = hold + " min";
+    const hh = String(Math.floor(t / 4)).padStart(2, "0"), mm = String((t % 4) * 15).padStart(2, "0");
+    $("dayTOut").textContent = `${hh}:${mm}`;
+    const o = Array.from({ length: N }, (_, i) => out(i, hold));
+    let line = "", dl = "";
+    o.forEach((v, i) => { line += `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)} L${X(i + 1).toFixed(1)},${Y(v).toFixed(1)} `; });
+    for (let i = 0; i <= N; i++) dl += `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(Math.min(1, daylight(i) / 1000)).toFixed(1)} `;
+    $("dayArtL").setAttribute("d", line);
+    $("dayArt").setAttribute("d", `${line} L${X(N)},${Y(0)} L${X(0)},${Y(0)} Z`);
+    $("dayDl").setAttribute("d", dl);
+    $("dayCur").setAttribute("x1", X(t)); $("dayCur").setAttribute("x2", X(t));
+    // 10 × 35 W; power roughly proportional to output, plus ~0.5 W standby each.
+    const kwh = o.reduce((a, v) => a + (v * 350 + 5) * 0.25, 0) / 1000;
+    const save = mode === "sched" ? 0 : (() => { const m = mode; mode = "sched"; const b = Array.from({ length: N }, (_, i) => out(i, hold)).reduce((a, v) => a + (v * 350 + 5) * 0.25, 0) / 1000; mode = m; return (1 - kwh / b) * 100; })();
+    const dlx = daylight(t), total = dlx + o[t] * 500;
+    $("dayKv").innerHTML = `<div>Energy today<b>${kwh.toFixed(2)} kWh</b></div><div>vs schedule<b class="ok">${save ? "−" + save.toFixed(0) + " %" : "baseline"}</b></div>` +
+      `<div>At ${hh}:${mm}<b>${Math.round(o[t] * 100)} % out</b>${occ[t] ? "occupied" : "empty"}</div><div>Desk illuminance<b>${Math.round(total)} lx</b>daylight ${Math.round(dlx)} lx</div>`;
+  };
+  fig.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+    mode = b.dataset.mode; fig.querySelectorAll("[data-mode]").forEach((x) => x.setAttribute("aria-pressed", x === b)); draw();
+  }));
+  fig.querySelectorAll("[data-wx]").forEach((b) => b.addEventListener("click", () => {
+    wx = b.dataset.wx; fig.querySelectorAll("[data-wx]").forEach((x) => x.setAttribute("aria-pressed", x === b)); draw();
+  }));
+  fig.querySelectorAll("input").forEach((e) => e.addEventListener("input", draw));
+  draw();
+})();
+
+// 13.6 Emergency test timeline and battery chart.
+(() => {
+  const fig = document.getElementById("emerg");
+  const $ = (id) => fig.querySelector("#" + id);
+  let dur = 3;
+  const M = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+  const draw = () => {
+    const stag = $("emStag").checked, fail = $("emFail").checked;
+    const X = (m) => 40 + m * 48;
+    let tl = `<line class="grid-l" x1="40" x2="616" y1="50" y2="50"/>`;
+    M.forEach((m, i) => {
+      const annual = i === 2;
+      tl += `<text class="small" x="${X(i) + 24}" y="20" text-anchor="middle">${m}</text>`;
+      if (annual) {
+        tl += `<rect x="${X(i) + 6}" y="32" width="${stag ? 16 : 36}" height="36" rx="4" class="fill-accent"/>`;
+        if (stag) tl += `<rect x="${X(i) + 26}" y="32" width="16" height="36" rx="4" class="fill-accent"/><text class="small" x="${X(i) + 14}" y="82" text-anchor="middle">A</text><text class="small" x="${X(i) + 34}" y="82" text-anchor="middle">B</text>`;
+        else tl += `<text class="small" x="${X(i) + 24}" y="82" text-anchor="middle">all</text>`;
+      } else tl += `<rect x="${X(i) + 18}" y="40" width="12" height="20" rx="3" class="fill-accent-soft stroke"/>`;
+    });
+    tl += `<text class="small" x="40" y="98">■ annual ${dur} h duration test   □ monthly function test</text>`;
+    $("emTl").innerHTML = tl;
+    // Battery: 0..(dur + 26) hours, x from 40 to 616.
+    const span = dur + 26, BX = (h) => 40 + (h / span) * 576, BY = (c) => 210 - c * 90;
+    const life = fail ? dur * 0.55 : dur * 1.08;
+    let p = `M${BX(0)},${BY(1)}`;
+    const end = Math.min(life, dur);
+    p += ` L${BX(end)},${BY(1 - (end / life) * 0.92)}`;
+    if (fail) p += ` L${BX(end)},${BY(0)}`;
+    const low = fail ? 0 : 1 - (dur / life) * 0.92;
+    p += ` L${BX(dur + 24)},${BY(1)} L${BX(span)},${BY(1)}`;
+    let b = `<rect class="${stag ? "band" : "band-bad"}" x="${BX(dur)}" y="${BY(1)}" width="${BX(dur + 24) - BX(dur)}" height="90"/>`;
+    b += `<line class="grid-l" x1="40" x2="616" y1="${BY(0)}" y2="${BY(0)}"/><line class="grid-l" x1="${BX(dur)}" x2="${BX(dur)}" y1="${BY(1)}" y2="${BY(0)}"/>`;
+    b += `<path d="${p}" class="${fail ? "ln-bad" : "ln-accent"}"/>`;
+    b += `<text class="small" x="${BX(0)}" y="${BY(1) - 6}">battery charge</text><text class="small" x="${BX(dur) + 4}" y="${BY(0) - 6}">recharge ≈ 24 h${stag ? " (neighbours cover)" : " (route under-protected)"}</text>`;
+    b += `<text class="small" x="${BX(dur)}" y="226" text-anchor="middle">${dur} h</text><text class="small" x="${BX(dur + 24)}" y="226" text-anchor="middle">+24 h</text>`;
+    $("emBat").innerHTML = b;
+    $("emText").textContent = fail
+      ? `Luminaire 7 went dark after about ${(life * 60).toFixed(0)} min of a ${dur * 60} min test. Result stored: DURATION TEST FAILED. Replace the battery and retest.`
+      : `All luminaires lasted the full ${dur} h. ${stag ? "Group B is tested once group A has recharged, so every escape route keeps lit neighbours." : "Every luminaire is flat at once: schedule the test before the building stays empty for a day."}`;
+    void low;
+  };
+  fig.querySelectorAll("[data-dur]").forEach((b) => b.addEventListener("click", () => {
+    dur = +b.dataset.dur; fig.querySelectorAll("[data-dur]").forEach((x) => x.setAttribute("aria-pressed", x === b)); draw();
+  }));
+  fig.querySelectorAll("input").forEach((e) => e.addEventListener("change", draw));
+  draw();
+})();
+
+// Approximate sRGB of a blackbody colour temperature (Tanner Helland fit).
+function kelvinRgb(k) {
+  const t = k / 100;
+  const cl = (v) => Math.max(0, Math.min(255, Math.round(v)));
+  const r = t <= 66 ? 255 : cl(329.7 * Math.pow(t - 60, -0.1332));
+  const g = t <= 66 ? cl(99.47 * Math.log(t) - 161.12) : cl(288.12 * Math.pow(t - 60, -0.0755));
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : cl(138.52 * Math.log(t - 10) - 305.04);
+  return [r, g, b];
+}
+function paintSwatch(el, k, lvl) {
+  const f = 0.15 + 0.85 * lvl;
+  const [r, g, b] = kelvinRgb(k).map((v) => Math.round(v * f));
+  el.style.background = `rgb(${r},${g},${b})`;
+  // Dark text on bright swatches, light text on dim ones.
+  el.style.color = (r * 0.3 + g * 0.59 + b * 0.11) > 140 ? "rgb(20,20,20)" : "#fff";
+}
+
+// 13.7 Tunable white mixer.
+(() => {
+  const fig = document.getElementById("cct");
+  const $ = (id) => fig.querySelector("#" + id);
+  const draw = () => {
+    const k = +$("cctK").value, lvl = +$("cctLvl").value / 100;
+    const mw = 1e6 / 2700, mc = 1e6 / 6500, m = 1e6 / k;
+    const cool = (mw - m) / (mw - mc), warm = 1 - cool;
+    $("cctOut").textContent = k + " K"; $("cctLvlOut").textContent = Math.round(lvl * 100) + " %";
+    $("cctW").setAttribute("width", 480 * warm * lvl);
+    $("cctC").setAttribute("width", 480 * cool * lvl);
+    const sw = $("cctSw"); paintSwatch(sw, k, lvl); sw.textContent = `${k} K · ${Math.round(lvl * 100)} %`;
+    $("cctKv").innerHTML = `<div>Mirek<b>${Math.round(m)}</b>1,000,000 / K</div><div>Warm channel<b>${Math.round(warm * lvl * 100)} %</b></div><div>Cool channel<b>${Math.round(cool * lvl * 100)} %</b></div>`;
+  };
+  fig.querySelectorAll("input").forEach((e) => e.addEventListener("input", draw));
+  draw();
+})();
+
+// 13.7 Circadian schedule.
+(() => {
+  const fig = document.getElementById("circ");
+  const $ = (id) => fig.querySelector("#" + id);
+  // [hour, kelvin, level %] keyframes; linear between them.
+  const KF = [[0, 2700, 0], [6.5, 2700, 0], [7, 3000, 40], [9, 5000, 90], [13, 5500, 100], [16, 4000, 80], [19, 3000, 50], [21, 2700, 20], [22, 2700, 0], [24, 2700, 0]];
+  const at = (h) => {
+    for (let i = 1; i < KF.length; i++) if (h <= KF[i][0]) {
+      const [h0, k0, l0] = KF[i - 1], [h1, k1, l1] = KF[i], f = (h - h0) / (h1 - h0 || 1);
+      return [k0 + (k1 - k0) * f, l0 + (l1 - l0) * f];
+    }
+    return [2700, 0];
+  };
+  const X = (h) => 50 + (h / 24) * 570, YK = (k) => 180 - ((k - 2700) / 3800) * 160, YL = (l) => 180 - (l / 100) * 160;
+  let g = "";
+  for (let h = 0; h <= 24; h += 3) g += `<line class="grid-l" x1="${X(h)}" x2="${X(h)}" y1="20" y2="180"/><text class="small" x="${X(h)}" y="198" text-anchor="middle">${h}:00</text>`;
+  $("circGrid").innerHTML = g;
+  let pk = "", pl = "";
+  for (let i = 0; i <= 96; i++) { const h = i / 4, [k, l] = at(h); pk += `${i ? "L" : "M"}${X(h).toFixed(1)},${YK(k).toFixed(1)} `; pl += `${i ? "L" : "M"}${X(h).toFixed(1)},${YL(l).toFixed(1)} `; }
+  $("circK").setAttribute("d", pk); $("circL").setAttribute("d", pl);
+  const draw = () => {
+    const t = +$("circT").value, h = t / 4, [k, l] = at(h);
+    $("circTOut").textContent = `${String(Math.floor(h)).padStart(2, "0")}:${String((t % 4) * 15).padStart(2, "0")}`;
+    $("circCur").setAttribute("x1", X(h)); $("circCur").setAttribute("x2", X(h));
+    const sw = $("circSw"); paintSwatch(sw, k, l / 100);
+    sw.textContent = l > 0 ? `${Math.round(k / 50) * 50} K · ${Math.round(l)} % · ${Math.round(1e6 / k)} mirek` : "Off";
+  };
+  $("circT").addEventListener("input", draw);
+  draw();
+})();
+</script>
+</body>
+</html>

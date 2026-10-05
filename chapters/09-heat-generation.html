@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heat Generation</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .hg-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .hg-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .hg-row input[type=range] { width: 100%; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; margin-top: 10px; }
+  .stat { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; min-width: 0; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font: 600 18px var(--mono); overflow-wrap: anywhere; }
+  .stat.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .stat.ok { border-color: var(--ok); background: var(--ok-soft); }
+  .stat.warn { border-color: var(--example); background: var(--example-soft); }
+  .boilers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  .blr { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px; font-size: 13px; text-align: center; min-width: 0; }
+  .blr .tank { height: 90px; border-radius: 6px; background: var(--surface-2); position: relative; overflow: hidden; margin: 6px 0; }
+  .blr .tank span { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); transition: height .3s; }
+  .blr.lead { border-color: var(--accent); }
+  .blr .tag { font: 600 11px var(--mono); color: var(--muted); }
+  .blr.lead .tag { color: var(--accent); }
+  .blr.off .tank span { height: 0 !important; }
+  .blr .rt { font: 11px var(--mono); color: var(--muted); }
+  .states { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .states span { font: 600 12px var(--mono); padding: 5px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); }
+  .states span.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .states span.lock { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .states span.done { border-color: var(--ok); color: var(--ok); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="9">
+<div class="content">
+  <div class="kicker">Chapter 09</div>
+  <h1>Heat generation</h1>
+  <p class="lead">Where building heat comes from: combustion, condensing boilers, cascades, weather compensation,
+    hot water, district heating, gas safety and what happens when a boiler locks out. The BMS rarely fires a burner
+    itself, but it decides when, how hot and how many. Doing that well is most of the energy story.</p>
+
+  <!-- 9.1 -->
+  <section class="lesson" id="s1" data-num="9.1">
+    <h2>9.1 Heat and combustion basics</h2>
+    <p>Heating is an energy balance. A building loses heat through walls, windows and ventilation. The plant must
+      put the same power back in. Three quantities show up everywhere:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Quantity</th><th>Unit</th><th>Typical numbers</th></tr>
+      <tr><td><strong>Power</strong> (heat rate)</td><td>kW</td><td>Flat 5–10 kW, school 300 kW, hospital several MW</td></tr>
+      <tr><td><strong>Energy</strong></td><td>kWh, MWh, GJ</td><td>1 m³ natural gas ≈ 10–11 kWh (gross); 1 GJ = 277.8 kWh</td></tr>
+      <tr><td><strong>Temperature</strong></td><td>°C, K for differences</td><td>Radiators 55/45 °C, floor heating 35/28 °C</td></tr>
+    </table></div>
+    <p>Water carries the heat. The key equation of all hydronic work is</p>
+    <p style="text-align:center"><code>Q [kW] = ṁ [kg/s] × 4.19 [kJ/kg·K] × ΔT [K]</code></p>
+    <p>So 100 kW at a 20 K difference needs about 1.19 kg/s, roughly 4.3 m³/h. Halve ΔT and you must double the
+      flow. The pump power for that grows much faster than linearly. Remember this; it returns in condensing
+      boilers and district heating.</p>
+
+    <h3>What burns</h3>
+    <p>Natural gas is mostly methane: CH₄ + 2 O₂ → CO₂ + 2 H₂O + heat. Air is about 21 % oxygen, so one m³ of
+      methane needs roughly 9.5 m³ of air in theory. Real burners add more, because a perfect mix does not exist.
+      The ratio of actual to theoretical air is <strong>lambda (λ)</strong>. λ = 1.3 means 30 % excess air.</p>
+    <ul>
+      <li><strong>Too little air</strong> (λ near or below 1): incomplete combustion, carbon monoxide (CO), soot, unstable flame.</li>
+      <li><strong>Too much air</strong>: the extra air is heated and blown up the flue for nothing. Flue losses rise, the dew point drops, condensing gets harder.</li>
+    </ul>
+    <p>A service engineer measures the flue gas with an analyser: O₂ or CO₂, CO, flue temperature. From these the
+      analyser computes λ and the flue loss. Modern premix boilers aim for about 8.5–9.5 % CO₂ (λ ≈ 1.2–1.35) on
+      natural gas, but always check the manufacturer's table: it differs per gas family and per load.</p>
+
+    <h3>Try it: excess air</h3>
+    <figure class="viz" id="comb">
+      <label for="lam"><strong>Lambda λ: <output id="lamOut">1.30</output></strong></label>
+      <input type="range" id="lam" min="0.9" max="2" step="0.01" value="1.3" style="width:100%">
+      <svg viewBox="0 0 600 170" role="img" aria-label="Energy flow from fuel into useful heat and flue loss">
+        <rect class="box" x="10" y="55" width="120" height="60" rx="8"/>
+        <text x="70" y="82" text-anchor="middle" class="big">Fuel</text>
+        <text x="70" y="101" text-anchor="middle" class="small">100 %</text>
+        <rect class="box" x="210" y="40" width="150" height="90" rx="8"/>
+        <text x="285" y="78" text-anchor="middle" class="big">Burner + HEX</text>
+        <text x="285" y="98" text-anchor="middle" class="small" id="cAir">air 30 % excess</text>
+        <path class="arrow" d="M132,85 L208,85"/>
+        <path id="cUse" d="M362,100 L470,100" stroke="var(--accent)" fill="none" stroke-width="20"/>
+        <path id="cLoss" d="M362,60 L470,20" stroke="var(--muted)" fill="none" stroke-width="6"/>
+        <text x="478" y="105" id="cUseT">useful</text>
+        <text x="478" y="24" id="cLossT" class="small">flue loss</text>
+      </svg>
+      <div class="stats">
+        <div class="stat"><div class="k">CO₂ (dry)</div><div class="v" id="cCO2">–</div></div>
+        <div class="stat"><div class="k">O₂ (dry)</div><div class="v" id="cO2">–</div></div>
+        <div class="stat" id="cCOs"><div class="k">CO risk</div><div class="v" id="cCO">–</div></div>
+        <div class="stat"><div class="k">Flue loss at 150 °C flue</div><div class="v" id="cFL">–</div></div>
+      </div>
+      <div class="readout" id="combText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Approximation for natural gas: CO₂max ≈ 11.7 %, CO₂ ≈ 11.7 / λ, O₂ ≈ 21 (λ − 1) / λ. Flue loss uses a simplified Siegert formula, so treat numbers as indicative.</figcaption>
+    </figure>
+
+    <h3>Gross vs net calorific value</h3>
+    <p>Burning methane makes water vapour. If the vapour leaves up the flue, its latent heat is lost. The
+      <strong>net</strong> (lower, NCV, Hi) value assumes it is lost; the <strong>gross</strong> (higher, GCV, Hs)
+      value includes it. For natural gas, GCV is about 11 % higher than NCV. European boiler data has long been
+      quoted against NCV, which is why condensing boilers can claim "108 % efficiency". Against GCV the same boiler
+      is perhaps 97 %. Nothing breaks physics; the reference just moved.</p>
+    <div class="callout warn">When comparing a gas bill (usually in gross kWh) with boiler output, mixing NCV and GCV gives an apparent 10 % error. Always check which basis a datasheet, meter or bill uses.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A burner runs at λ = 1.8. What is the main effect?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="CO rises with too little air, not too much.">High CO from incomplete combustion</button>
+        <button class="opt" data-opt="b" data-why="Excess air is heated and thrown away, and the lower water vapour concentration lowers the dew point.">Higher flue losses and less condensing</button>
+        <button class="opt" data-opt="c" data-why="Extra air does not add energy.">More heat output from the same gas</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Q = ṁ · c · ΔT. Lower ΔT means more flow for the same power.</li>
+      <li>λ is the excess air ratio. Too low makes CO, too high wastes heat.</li>
+      <li>Know whether efficiency is on net or gross calorific value.</li>
+    </ul>
+  </section>
+
+  <!-- 9.2 -->
+  <section class="lesson" id="s2" data-num="9.2">
+    <h2>9.2 Condensing gas boilers</h2>
+    <p>A condensing boiler has a large, corrosion-resistant heat exchanger (stainless steel or aluminium-silicon)
+      that cools the flue gas below its <strong>dew point</strong>. The water vapour condenses on the exchanger and
+      gives up its latent heat. For natural gas at typical excess air the dew point is around 55–57 °C. The flue gas
+      can only get as cold as the water it meets, so the deciding factor is the <strong>return water temperature</strong>.</p>
+
+    <h3>Try it: return temperature vs efficiency</h3>
+    <figure class="viz" id="cond">
+      <label for="ret"><strong>Return temperature: <output id="retOut">40</output> °C</strong></label>
+      <input type="range" id="ret" min="20" max="80" step="1" value="40" style="width:100%">
+      <svg viewBox="0 0 600 260" role="img" aria-label="Seasonal efficiency curve falling steeply as return temperature approaches the dew point">
+        <rect x="80" y="20" width="0" height="200" id="condZone" class="fill-ok" opacity=".1"/>
+        <line x1="80" y1="220" x2="580" y2="220" class="arrow"/>
+        <line x1="80" y1="20" x2="80" y2="220" class="arrow"/>
+        <g id="condAxes"></g>
+        <line id="dewLine" y1="20" y2="220" class="muted-s" stroke-dasharray="5 4"/>
+        <text id="dewT" y="34" class="small">dew point ≈ 56 °C</text>
+        <path id="condCurve" fill="none" stroke="var(--accent)" stroke-width="3"/>
+        <line id="condGuide" class="muted-s" stroke-dasharray="4 4"/>
+        <circle id="condDot" r="7" class="fill-accent"/>
+        <text x="330" y="254" text-anchor="middle" class="small">return water temperature °C</text>
+        <text x="16" y="14" class="small">η % (net CV)</text>
+      </svg>
+      <div class="stats">
+        <div class="stat"><div class="k">Efficiency (net)</div><div class="v" id="cEn">–</div></div>
+        <div class="stat"><div class="k">Efficiency (gross)</div><div class="v" id="cEg">–</div></div>
+        <div class="stat" id="cMode"><div class="k">Mode</div><div class="v" id="cMv">–</div></div>
+      </div>
+      <figcaption>Illustrative curve for a modern premix boiler at part load. Real curves depend on load, λ and the exchanger. The shape matters more than the exact numbers.</figcaption>
+    </figure>
+
+    <p>Read the curve from right to left. Above the dew point the boiler is a good non-condensing boiler, about
+      96–97 % on net value. As the return drops below roughly 55 °C, condensation starts and efficiency climbs
+      steeply. At 30 °C return the boiler may reach 106–108 % net.</p>
+
+    <h3>What the BMS controls that affects this</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Lever</th><th>Effect on return temperature</th></tr>
+      <tr><td>Weather-compensated flow (9.4)</td><td>Lower flow temperature in mild weather means lower return. The biggest single win.</td></tr>
+      <tr><td>Hydraulic separation (low-loss header)</td><td>If the boiler pump moves more water than the system takes, hot flow short-circuits back into the return. Return rises.</td></tr>
+      <tr><td>Three-port valves and bypasses</td><td>Bypasses send hot water straight back. Prefer two-port valves with variable-speed pumps.</td></tr>
+      <tr><td>Balancing and TRVs</td><td>Unbalanced radiators pass too much water and return it hot.</td></tr>
+      <tr><td>DHW priority</td><td>Tank reheats need 70–80 °C flow and push return up. Keep them short.</td></tr>
+    </table></div>
+
+    <h3>Modulation and turndown</h3>
+    <p>A modulating premix burner varies its power with a fan speed and a gas valve that follows the air. Turndown
+      ratio is maximum over minimum power. 1:5 is common, 1:10 good, some boilers claim 1:20. Below the minimum
+      the burner must cycle on and off. Short cycling wastes energy (each start needs a pre-purge that cools the
+      exchanger), wears the igniter and increases emissions. A boiler that starts more than a few times an hour at
+      mild loads is a commissioning problem.</p>
+    <p>Most boilers accept a demand from the BMS in one of four ways: an on/off contact (the boiler uses its own
+      internal curve), a 0–10 V signal (flow setpoint or power), a bus (OpenTherm, Modbus, BACnet, or a vendor bus
+      through a gateway), or through the manufacturer's cascade manager.</p>
+
+    <h3>Condensate</h3>
+    <p>A 100 kW boiler in condensing mode can make several litres of condensate per hour. It is mildly acidic (pH
+      around 3–5). Codes often require a neutraliser on larger plant. A frozen or blocked condensate drain is a
+      classic winter fault: the siphon fills, the boiler detects it and locks out.</p>
+
+    <div class="callout example">A school replaced old cast-iron boilers with condensing ones but kept the 80/60 °C constant-temperature circuits and three-port mixing valves. Return water stayed at 60 °C+ and the "condensing" boilers never condensed. Adding weather compensation and converting the bypasses brought the return down to 35–45 °C most of the season and cut gas use by roughly 10 %.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A condensing boiler reports 62 °C return water all winter. What is the likely conclusion?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Condensing needs return below about 55 °C; at 62 °C it barely condenses.">It is condensing efficiently</button>
+        <button class="opt" data-opt="b" data-why="The boiler cannot cool the flue gas below the water it meets.">The boiler is faulty and must be replaced</button>
+        <button class="opt" data-opt="c" data-why="Return temperature is a property of the system: curve, bypasses and balancing.">The system hydraulics or setpoints prevent condensing</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Condensing depends on return temperature, below about 55 °C.</li>
+      <li>The BMS lowers return via weather compensation and good hydraulics.</li>
+      <li>Watch turndown and cycling: starts per hour is a key metric.</li>
+    </ul>
+  </section>
+
+  <!-- 9.3 -->
+  <section class="lesson" id="s3" data-num="9.3">
+    <h2>9.3 Cascades and lead/lag</h2>
+    <p>Large plants use several boilers instead of one big one. Reasons: redundancy (one fails, others carry the
+      load), wide turndown (four 100 kW boilers at 1:5 give 20–400 kW), and maintenance without a shutdown. A
+      <strong>cascade controller</strong> decides how many boilers run and at what power.</p>
+
+    <h3>Staging logic</h3>
+    <ol>
+      <li>The controller compares the common flow temperature (after the header) with its setpoint.</li>
+      <li>A PI loop produces a total power demand, 0–100 % of plant capacity.</li>
+      <li>The <strong>lead</strong> boiler starts first. When it has run near full power for a delay (e.g. 5–10 min)
+        and the flow is still below setpoint, the next <strong>lag</strong> boiler starts.</li>
+      <li>When demand drops, the last boiler to start stops first, after its own delay.</li>
+    </ol>
+    <p>Two strategies split the power:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Strategy</th><th>How</th><th>When it fits</th></tr>
+      <tr><td><strong>Series / sequential</strong></td><td>Fill each boiler before starting the next.</td><td>Non-condensing boilers, where high load per unit is efficient.</td></tr>
+      <tr><td><strong>Parallel / unison</strong></td><td>Start more boilers early and run them all at low modulation.</td><td>Condensing boilers. They are most efficient at low fire because the exchanger is oversized for the flow.</td></tr>
+    </table></div>
+    <p>To even out wear, the lead role <strong>rotates</strong>: every week, every N hours of runtime, or on the
+      boiler with the fewest hours. Boilers that fail or lock out are skipped and the next one is promoted.</p>
+
+    <h3>Try it: cascade simulator</h3>
+    <figure class="viz" id="cascade">
+      <div class="hg-row">
+        <label>Heat demand: <output id="cdOut">120</output> kW<input type="range" id="cd" min="0" max="400" step="5" value="120"></label>
+        <div><div class="seg" role="group" aria-label="Strategy">
+          <button data-st="series" aria-pressed="false">Series</button><button data-st="parallel" aria-pressed="true">Parallel</button>
+        </div></div>
+      </div>
+      <div class="controls">
+        <button class="btn secondary" data-act="rot">Rotate lead</button>
+        <button class="btn secondary" data-act="fail">Lock out lead</button>
+        <button class="btn secondary" data-act="run">Run 24 h</button>
+        <button class="btn secondary" data-act="reset">Reset</button>
+      </div>
+      <div class="boilers" id="blrs"></div>
+      <div class="readout" id="cascText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Four boilers of 100 kW, minimum 20 kW each (1:5). Simplified: real controllers stage with delays and hysteresis.</figcaption>
+    </figure>
+
+    <h3>Hydraulics of a cascade</h3>
+    <p>Each boiler usually has its own pump and an isolating or motorised valve, so that water does not flow
+      through idle boilers. That would cool the common flow and also waste heat through the idle boiler's casing.
+      A low-loss header or plate heat exchanger separates the boiler circuit from the system circuits.</p>
+    <div class="callout warn">If idle boilers keep their pumps running, cold water mixes into the header. The controller sees low flow temperature and starts more boilers, which makes it worse. Check that pumps and valves follow the burner state.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">For a cascade of condensing boilers, which strategy is usually more efficient?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Condensing boilers are most efficient at low fire, so sharing the load in parallel helps (above minimum modulation).">Parallel: several boilers at low modulation</button>
+        <button class="opt" data-opt="b" data-why="That suits older non-condensing boilers.">Series: fill one boiler before starting the next</button>
+        <button class="opt" data-opt="c" data-why="Without rotation one boiler wears out first.">Never rotate the lead</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Cascades give redundancy and wide turndown.</li>
+      <li>Rotate the lead boiler by time or runtime; skip faulted units.</li>
+      <li>Idle boilers MUST be isolated hydraulically.</li>
+    </ul>
+  </section>
+
+  <!-- 9.4 -->
+  <section class="lesson" id="s4" data-num="9.4">
+    <h2>9.4 Weather compensation and heating curves</h2>
+    <p>Heat loss is roughly proportional to the difference between indoor and outdoor temperature. A radiator's
+      output depends on how much hotter it is than the room. So the colder it is outside, the hotter the water must
+      be. A <strong>heating curve</strong> (weather compensation curve) maps outdoor temperature to flow
+      temperature setpoint. It is open-loop: it does not measure the room, it predicts the need.</p>
+
+    <h3>Try it: heating curve</h3>
+    <figure class="viz" id="curve">
+      <div class="hg-row">
+        <label>Slope: <output id="hsOut">1.4</output><input type="range" id="hs" min="0.3" max="2.5" step="0.1" value="1.4"></label>
+        <label>Parallel shift: <output id="hpOut">0</output> K<input type="range" id="hp" min="-10" max="10" step="1" value="0"></label>
+        <label>Outdoor now: <output id="hoOut">-5</output> °C<input type="range" id="ho" min="-20" max="20" step="1" value="-5"></label>
+      </div>
+      <svg viewBox="0 0 600 270" role="img" aria-label="Flow temperature setpoint against outdoor temperature">
+        <line x1="70" y1="230" x2="580" y2="230" class="arrow"/>
+        <line x1="70" y1="20" x2="70" y2="230" class="arrow"/>
+        <g id="hcAxes"></g>
+        <path id="hcCurve" fill="none" stroke="var(--accent)" stroke-width="3"/>
+        <line id="hcGx" class="muted-s" stroke-dasharray="4 4"/>
+        <line id="hcGy" class="muted-s" stroke-dasharray="4 4"/>
+        <circle id="hcDot" r="7" class="fill-accent"/>
+        <text x="325" y="264" text-anchor="middle" class="small">outdoor temperature °C (colder ←)</text>
+        <text x="10" y="14" class="small">flow °C</text>
+      </svg>
+      <div class="readout" id="hcText" aria-live="polite"></div>
+      <figcaption>Flow = room setpoint 20 °C + shift + slope × (20 − outdoor), with a gentle bend, clamped to 20–80 °C. Floor heating: slope 0.3–0.7. Radiators: 1.2–1.8.</figcaption>
+    </figure>
+
+    <h3>Tuning the curve</h3>
+    <ul>
+      <li><strong>Too cold only in cold weather, fine when mild:</strong> slope too low. Raise the slope.</li>
+      <li><strong>Too cold (or warm) at all outdoor temperatures:</strong> shift the curve in parallel.</li>
+      <li>Change one thing at a time and wait at least a day. Buildings, and floor heating especially, are slow.</li>
+    </ul>
+    <p>Refinements found in controllers:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Feature</th><th>What it does</th></tr>
+      <tr><td>Outdoor temperature filtering</td><td>Uses a damped value (hours) so a sunny afternoon does not drop the flow instantly. Heavy buildings need more damping.</td></tr>
+      <tr><td>Room influence</td><td>A reference room sensor corrects the curve. Turns open-loop into partly closed-loop.</td></tr>
+      <tr><td>Summer cut-off</td><td>Stops heating above an outdoor limit, e.g. 16–18 °C.</td></tr>
+      <tr><td>Optimum start</td><td>Learns how long the building takes to warm up and starts just in time before occupancy.</td></tr>
+      <tr><td>Boost and setback</td><td>Raises the curve after night setback, lowers it in unoccupied times.</td></tr>
+      <tr><td>Max/min limits</td><td>Floor heating MUST have a hard flow limit (often 45–55 °C), backed by a safety thermostat.</td></tr>
+    </table></div>
+    <div class="callout example">An office has radiators on one circuit and floor heating on another, both from one boiler. The boiler follows the highest demand (the radiator curve, e.g. 65 °C at −15 °C). The floor circuit uses a mixing valve with its own lower curve (e.g. 38 °C at −15 °C). The BMS sends the boiler the maximum of all circuit demands plus a few kelvin margin.</div>
+    <div class="callout warn">The outdoor sensor belongs on a north-facing wall, out of the sun and away from exhaust air, windows and flues. A sensor in the sun can push the curve down by 10 K and leave the building cold at noon.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">The building is fine at +5 °C outside but too cold at −10 °C. What do you change?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A parallel shift would also overheat it at +5 °C.">Shift the curve up in parallel</button>
+        <button class="opt" data-opt="b" data-why="The error grows with cold, so the slope is too low.">Increase the slope</button>
+        <button class="opt" data-opt="c" data-why="The summer cut-off is irrelevant at −10 °C.">Lower the summer cut-off</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>The heating curve predicts flow temperature from outdoor temperature.</li>
+      <li>Slope fixes errors that grow with cold; parallel shift fixes constant errors.</li>
+      <li>Lower flow temperatures mean lower returns and more condensing.</li>
+    </ul>
+  </section>
+
+  <!-- 9.5 -->
+  <section class="lesson" id="s5" data-num="9.5">
+    <h2>9.5 Domestic hot water and legionella</h2>
+    <p>Domestic hot water (DHW) is hot water for taps and showers. It is drinking water, so hygiene rules apply.
+      Common arrangements:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>How</th><th>Notes</th></tr>
+      <tr><td>Indirect storage cylinder</td><td>Boiler water flows through a coil in a tank.</td><td>Most common. Needs a tank sensor and a valve or pump for "DHW priority".</td></tr>
+      <tr><td>Instantaneous / fresh-water station</td><td>Plate heat exchanger heats water as it flows.</td><td>Little stored water, low legionella risk. Needs high peak power or a buffer tank.</td></tr>
+      <tr><td>Direct-fired / electric</td><td>Burner or element in the tank.</td><td>Simple, own controls. BMS often just monitors.</td></tr>
+    </table></div>
+
+    <h3>Why legionella matters</h3>
+    <p>Legionella bacteria grow in water at about 20–45 °C, best around 35–37 °C. They cause Legionnaires' disease
+      when contaminated water is inhaled as aerosol, for example in a shower. Heat kills them. The hotter, the faster:
+      at 50 °C it takes hours, at 60 °C a few minutes, at 70 °C seconds (figures vary between studies). Typical
+      guidance, for example in many European codes:</p>
+    <ul>
+      <li>Store hot water at <strong>60 °C</strong> or above.</li>
+      <li>Return from the circulation loop at <strong>55 °C</strong> or above (some codes accept 50 °C).</li>
+      <li>Keep cold water <strong>below 20–25 °C</strong>.</li>
+      <li>Run a <strong>thermal disinfection</strong> cycle where stored temperature is lower, e.g. 70 °C for a defined period
+        through the whole system, often weekly. The exact rules are national (e.g. DVGW W 551 in Germany,
+        HSG274/L8 in the UK). Check your local code.</li>
+    </ul>
+    <p>The stratified tank is the problem. The top may read 60 °C while the bottom, where cold water enters, sits at
+      30 °C. A destratification pump or a sensor at the bottom helps prove the whole volume was heated.</p>
+
+    <h3>Try it: a week of tank temperature</h3>
+    <figure class="viz" id="dhw">
+      <div class="controls"><div class="seg" role="group" aria-label="Strategy">
+        <button data-dh="60" aria-pressed="true">Store at 60 °C</button><button data-dh="50" aria-pressed="false">50 °C + weekly cycle</button><button data-dh="45" aria-pressed="false">45 °C, no cycle</button>
+      </div></div>
+      <svg viewBox="0 0 600 240" role="img" aria-label="Tank temperature over seven days with the legionella growth band">
+        <rect x="60" y="0" width="520" height="0" id="dhBand" class="fill-bad" opacity=".12"/>
+        <text x="66" id="dhBandT" class="small">growth band 20–45 °C</text>
+        <line x1="60" y1="200" x2="580" y2="200" class="arrow"/>
+        <line x1="60" y1="10" x2="60" y2="200" class="arrow"/>
+        <g id="dhAxes"></g>
+        <path id="dhLine" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+        <path id="dhBot" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 3"/>
+        <text x="320" y="234" text-anchor="middle" class="small">day (solid: tank top · dashed: tank bottom)</text>
+      </svg>
+      <div class="stats">
+        <div class="stat" id="dhS1"><div class="k">Hours bottom in growth band</div><div class="v" id="dhV1">–</div></div>
+        <div class="stat" id="dhS2"><div class="k">Disinfection</div><div class="v" id="dhV2">–</div></div>
+        <div class="stat"><div class="k">Relative heat loss</div><div class="v" id="dhV3">–</div></div>
+      </div>
+      <figcaption>Synthetic data: draw-offs in the morning and evening cool the bottom; reheats start when the top drops 5 K below setpoint.</figcaption>
+    </figure>
+
+    <h3>What the BMS does for DHW</h3>
+    <ul>
+      <li>Schedules the reheat and the disinfection cycle (often at night when no one showers: 70 °C water scalds).</li>
+      <li><strong>Proves</strong> the cycle: logs tank top, bottom and circulation return temperatures, raises an alarm if the target was not held for the required time.</li>
+      <li>Gives DHW priority: heating circuits pause briefly while the tank reheats.</li>
+      <li>Monitors the circulation pump and flags returns below 55 °C.</li>
+    </ul>
+    <div class="callout warn">Thermal disinfection reaches tap temperatures that scald in seconds. Thermostatic mixing valves at outlets limit the temperature delivered to users. Disinfection of the outlets themselves usually needs a controlled, supervised procedure.</div>
+    <div class="callout example">A hotel's legionella log showed the weekly 70 °C cycle "completed" every Sunday. The sensor was at the top of the tank. A second sensor at the bottom showed it never passed 52 °C because the cycle ended after 20 minutes. The fix: a destratification pump and a rule "cycle ends only when the bottom sensor has held 65 °C+ for the set time".</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Which tank strategy carries the highest legionella risk?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="60 °C storage keeps most of the tank above the growth band.">Store at 60 °C</button>
+        <button class="opt" data-opt="b" data-why="Lower storage, but a proven weekly cycle reduces risk.">Store at 50 °C with a proven weekly disinfection</button>
+        <button class="opt" data-opt="c" data-why="45 °C sits at the top of the growth band and nothing ever kills the bacteria.">Store at 45 °C with no disinfection</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Legionella grows at 20–45 °C. Store at 60 °C, circulate at 55 °C+.</li>
+      <li>Measure the tank bottom, not only the top.</li>
+      <li>The BMS schedules, logs and proves disinfection cycles.</li>
+    </ul>
+  </section>
+
+  <!-- 9.6 -->
+  <section class="lesson" id="s6" data-num="9.6">
+    <h2>9.6 District heating substations</h2>
+    <p>In district heating (DH) the heat is made centrally, at a CHP plant, waste incinerator, large heat pump or
+      boiler station, and piped to buildings. Each building has a <strong>substation</strong>. Most are
+      <strong>indirect</strong>: a plate heat exchanger separates the network (primary) from the building (secondary).
+      The building never sees network water or network pressure.</p>
+
+    <h3>Explore the substation</h3>
+    <div class="explorer">
+      <div class="layers">
+        <button class="layer" data-target="dh-pri">Primary supply / return</button>
+        <button class="layer" data-target="dh-dp">Differential pressure controller</button>
+        <button class="layer" data-target="dh-cv">Motorised control valve</button>
+        <button class="layer" data-target="dh-hex">Plate heat exchanger</button>
+        <button class="layer" data-target="dh-meter">Heat meter</button>
+        <button class="layer" data-target="dh-sec">Secondary circuits</button>
+      </div>
+      <div class="panel">
+        <template id="dh-pri"><h4>Primary side</h4><p>Network water, typically 70–120 °C supply in winter (newer low-temperature networks 50–70 °C), at 6–16 bar. Owned by the utility. Isolating valves and strainers at the building entry.</p></template>
+        <template id="dh-dp"><h4>Differential pressure controller</h4><p>Self-acting valve that keeps a constant pressure drop across the control valve, whatever the network does. Without it the control valve's authority changes with network pressure and the loop hunts. Often combined with a flow limiter set to the contracted capacity.</p></template>
+        <template id="dh-cv"><h4>Control valve</h4><p>Two-port valve on the primary return or supply. The substation controller opens it to hold the secondary flow temperature on the heating curve. Fast actuators are needed for DHW heat exchangers.</p></template>
+        <template id="dh-hex"><h4>Plate heat exchanger</h4><p>Brazed or gasketed plates. A good exchanger brings the primary return within a few kelvin of the secondary return. Fouling raises the approach temperature and the primary return.</p></template>
+        <template id="dh-meter"><h4>Heat meter</h4><p>Flow sensor plus a matched pair of temperature sensors and a calculator (EN 1434). Integrates Q = ṁ·c·ΔT into kWh or GJ. Read by the utility, often by M-Bus or wireless M-Bus. The BMS can usually read it too, via M-Bus or a pulse output.</p></template>
+        <template id="dh-sec"><h4>Secondary circuits</h4><p>The building's heating circuits and DHW, with their own pumps, expansion vessel and safety valve. Looks just like a boiler plant downstream of the exchanger.</p></template>
+      </div>
+    </div>
+
+    <figure class="viz">
+      <svg viewBox="0 0 600 230" role="img" aria-label="Indirect substation: primary through DP controller, valve and heat meter to heat exchanger; secondary to building">
+        <defs><marker id="ah9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <text x="20" y="22" class="small">PRIMARY (network)</text>
+        <text x="420" y="22" class="small">SECONDARY (building)</text>
+        <line x1="20" y1="60" x2="250" y2="60" stroke="var(--bad)" stroke-width="3" marker-end="url(#ah9)"/>
+        <line x1="250" y1="170" x2="20" y2="170" stroke="var(--accent)" stroke-width="3" marker-end="url(#ah9)"/>
+        <text x="30" y="52" class="small">supply 90 °C</text>
+        <text x="30" y="188" class="small">return 40 °C</text>
+        <rect class="box" x="70" y="150" width="60" height="40" rx="6"/><text x="100" y="175" text-anchor="middle" class="small">DP</text>
+        <rect class="box" x="150" y="150" width="50" height="40" rx="6"/><text x="175" y="175" text-anchor="middle" class="small">valve</text>
+        <rect class="box" x="140" y="40" width="70" height="40" rx="6"/><text x="175" y="65" text-anchor="middle" class="small">meter</text>
+        <rect class="box" x="255" y="40" width="90" height="150" rx="6"/>
+        <text x="300" y="110" text-anchor="middle">HEX</text>
+        <text x="300" y="128" text-anchor="middle" class="small">plates</text>
+        <line x1="345" y1="60" x2="580" y2="60" stroke="var(--bad)" stroke-width="3" marker-end="url(#ah9)"/>
+        <line x1="580" y1="170" x2="345" y2="170" stroke="var(--accent)" stroke-width="3" marker-end="url(#ah9)"/>
+        <text x="420" y="52" class="small">flow 60 °C (curve)</text>
+        <text x="420" y="188" class="small">return 37 °C</text>
+        <circle cx="500" cy="170" r="14" class="box"/><text x="500" y="174" text-anchor="middle" class="small">P</text>
+        <rect class="box" x="370" y="90" width="150" height="50" rx="6"/>
+        <text x="445" y="112" text-anchor="middle" class="small">controller</text>
+        <text x="445" y="128" text-anchor="middle" class="small">outdoor + flow sensor</text>
+        <path class="arrow" d="M370,115 C250,115 220,130 190,150" stroke-dasharray="4 3"/>
+      </svg>
+      <figcaption>Indirect substation. The controller reads the secondary flow and drives the primary valve.</figcaption>
+    </figure>
+
+    <h3>Return temperature is money</h3>
+    <p>Utilities care most about a <strong>low primary return</strong>. A low return raises network capacity (same
+      pipe, larger ΔT), cuts heat losses and lets heat pumps and flue-gas condensers at the plant work better. Many
+      tariffs include a penalty or bonus based on return temperature or "cooling" (ΔT).</p>
+    <figure class="viz" id="dhcalc">
+      <div class="hg-row">
+        <label>Building load: <output id="dlOut">300</output> kW<input type="range" id="dl" min="50" max="1000" step="10" value="300"></label>
+        <label>Primary ΔT: <output id="ddOut">40</output> K<input type="range" id="dd" min="10" max="60" step="1" value="40"></label>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">Primary flow</div><div class="v" id="dF">–</div></div>
+        <div class="stat"><div class="k">Return (at 90 °C supply)</div><div class="v" id="dR">–</div></div>
+        <div class="stat" id="dVs"><div class="k">Verdict</div><div class="v" id="dV">–</div></div>
+      </div>
+      <figcaption>Flow = Q ÷ (4.19 × ΔT). Same load, half the ΔT: double the water the network must pump.</figcaption>
+    </figure>
+
+    <div class="callout example">A residential block received a monthly penalty for a 58 °C primary return. Trend data showed a DHW circulation loop bypassing through a stuck-open valve and a heating curve set 10 K too high. After fixing both, the return dropped to about 42 °C and the penalty became a small bonus.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Why does a DH utility reward low primary return temperatures?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Customers pay per kWh delivered; return temperature does not change the meter reading directly.">It reduces the customer's meter reading</button>
+        <button class="opt" data-opt="b" data-why="Larger ΔT moves more heat per m³ and lowers network losses.">Bigger ΔT means more capacity and lower losses</button>
+        <button class="opt" data-opt="c" data-why="Pressure is managed by network pumps and DP controllers.">It raises network pressure</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Indirect substations separate network and building with a plate exchanger.</li>
+      <li>DP controller + control valve + heat meter are the core primary parts.</li>
+      <li>Low primary return is the main performance indicator.</li>
+    </ul>
+  </section>
+
+  <!-- 9.7 -->
+  <section class="lesson" id="s7" data-num="9.7">
+    <h2>9.7 Gas safety and detection</h2>
+    <p>Gas safety is a certified, hard-wired layer. The BMS watches it but never replaces it. Typical elements of a
+      gas-fired plant room:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Device</th><th>Job</th></tr>
+      <tr><td>Burner control / flame safeguard</td><td>Supervises ignition and flame (ionisation or UV), closes gas valves on flame loss. Certified to EN 298 or similar.</td></tr>
+      <tr><td>Double gas valves</td><td>Two safety shut-off valves in series on each burner, often with valve proving (leak test) before each start.</td></tr>
+      <tr><td>Main gas solenoid / safety shut-off valve</td><td>Normally closed, at the plant room entry. Closes on gas alarm, fire alarm or emergency stop.</td></tr>
+      <tr><td>Gas detectors</td><td>Catalytic or infrared sensors for methane (mounted high, it is lighter than air) or propane/LPG (low, it is heavier).</td></tr>
+      <tr><td>CO detectors</td><td>Electrochemical. Detect poor combustion or flue leaks.</td></tr>
+      <tr><td>Emergency stop buttons</td><td>At the plant room exit. Cut the boiler supply and close the gas valve.</td></tr>
+      <tr><td>Ventilation interlock</td><td>Where combustion air is fan-assisted: no fan proven, no burner.</td></tr>
+    </table></div>
+
+    <h3>LEL and alarm stages</h3>
+    <p>Flammable gas is measured as a percentage of its <strong>lower explosive limit (LEL)</strong>. Methane's LEL is
+      about 4.4–5 % by volume (sources differ: 4.4 % in IEC 60079-20-1, 5 % in older tables). 100 % LEL is a mix that
+      can ignite. Detectors alarm far below that. Thresholds are set per project and code, but a common pattern is
+      10 % LEL pre-alarm and 20 % LEL main alarm with shut-off.</p>
+    <figure class="viz" id="gas">
+      <label for="lel"><strong>Gas concentration: <output id="lelOut">0</output> % LEL</strong></label>
+      <input type="range" id="lel" min="0" max="60" step="1" value="0" style="width:100%">
+      <svg viewBox="0 0 600 150" role="img" aria-label="Detector, gas control panel, valve and fan chain">
+        <defs><marker id="ah9b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="gDet" x="10" y="50" width="100" height="50" rx="8"/><text x="60" y="80" text-anchor="middle" class="small">detector</text>
+        <rect class="box" id="gPan" x="160" y="50" width="120" height="50" rx="8"/><text x="220" y="80" text-anchor="middle" class="small">gas panel</text>
+        <rect class="box" id="gVal" x="340" y="10" width="110" height="40" rx="8"/><text x="395" y="35" text-anchor="middle" class="small">gas valve</text>
+        <rect class="box" id="gFan" x="340" y="60" width="110" height="40" rx="8"/><text x="395" y="85" text-anchor="middle" class="small">extract fan</text>
+        <rect class="box" id="gBms" x="340" y="110" width="110" height="34" rx="8"/><text x="395" y="132" text-anchor="middle" class="small">BMS (monitor)</text>
+        <rect class="box" id="gSnd" x="490" y="50" width="100" height="50" rx="8"/><text x="540" y="80" text-anchor="middle" class="small">sounder</text>
+        <path class="arrow" d="M112,75 L158,75" marker-end="url(#ah9b)"/>
+        <path class="arrow" d="M282,70 L338,30" marker-end="url(#ah9b)"/>
+        <path class="arrow" d="M282,75 L338,80" marker-end="url(#ah9b)"/>
+        <path class="arrow" d="M282,85 L338,125" stroke-dasharray="4 3" marker-end="url(#ah9b)"/>
+        <path class="arrow" d="M452,80 L488,75" marker-end="url(#ah9b)"/>
+      </svg>
+      <div class="readout" id="gasText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Example thresholds: 10 % LEL pre-alarm, 20 % LEL shut-off. The gas panel acts on its own; the BMS only receives status.</figcaption>
+    </figure>
+
+    <h3>Sort it: who owns the function?</h3>
+    <div class="classify" data-cats="Safety layer,BMS">
+      <div class="item" data-cat="Safety layer" data-why="Flame supervision is always the certified burner control."><span class="label">Close the gas valves when the flame is lost</span></div>
+      <div class="item" data-cat="BMS" data-why="Notifying people is a supervisory job."><span class="label">Send a message to the on-call engineer on gas alarm</span></div>
+      <div class="item" data-cat="Safety layer" data-why="Shut-off on detection is hard-wired through the gas panel."><span class="label">Close the main gas valve at 20 % LEL</span></div>
+      <div class="item" data-cat="BMS" data-why="Trending is monitoring."><span class="label">Trend the detector reading over months to spot drift</span></div>
+      <div class="item" data-cat="Safety layer" data-why="The fire alarm system closes the gas valve through a hard-wired interface, not through BMS software."><span class="label">Close the gas on a fire alarm</span></div>
+      <div class="item" data-cat="BMS" data-why="Scheduling calibration reminders is maintenance management."><span class="label">Remind maintenance that detectors are due for calibration</span></div>
+    </div>
+
+    <div class="callout warn">Gas detector sensors drift and age. Catalytic sensors can be poisoned by silicones. Most manufacturers require a bump test or calibration at least every 6–12 months and replacement every few years. An uncalibrated detector is a false sense of security.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Where do you mount a natural gas (methane) detector?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Methane is lighter than air and collects at the ceiling.">High, near the ceiling</button>
+        <button class="opt" data-opt="b" data-why="That is right for LPG, which is heavier than air.">Low, near the floor</button>
+        <button class="opt" data-opt="c" data-why="Height matters a lot.">Anywhere, height does not matter</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Flame safeguard, gas valves and detection are certified and hard-wired.</li>
+      <li>Alarms are in % LEL; typical stages 10 % and 20 %.</li>
+      <li>The BMS monitors, notifies and trends. It does not shut off gas.</li>
+    </ul>
+  </section>
+
+  <!-- 9.8 -->
+  <section class="lesson" id="s8" data-num="9.8">
+    <h2>9.8 Boiler faults, lockouts, servicing</h2>
+    <p>Every burner start follows a fixed sequence run by the burner control. Understanding it explains most fault
+      codes.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Step</th><th>What happens</th><th>Typical time</th></tr>
+      <tr><td>Standby</td><td>Waiting for heat demand. Safety chain checked: limit thermostat, pressure, condensate, air pressure switch.</td><td>–</td></tr>
+      <tr><td>Pre-purge</td><td>Fan blows air through the combustion chamber to clear any gas.</td><td>a few s to 30 s+</td></tr>
+      <tr><td>Ignition</td><td>Spark on, gas valves open.</td><td>–</td></tr>
+      <tr><td>Safety time</td><td>Flame must be detected within this window or gas closes.</td><td>often 3–5 s</td></tr>
+      <tr><td>Run</td><td>Flame proven, burner modulates.</td><td>–</td></tr>
+      <tr><td>Post-purge</td><td>Fan clears the chamber after the burner stops.</td><td>a few s</td></tr>
+    </table></div>
+
+    <h3>Blocking vs locking</h3>
+    <p>Faults come in two kinds, and the difference matters for the BMS:</p>
+    <ul>
+      <li><strong>Blocking</strong> (non-volatile... no: <em>self-resetting</em>) faults: a condition such as low
+        water pressure or a high flue temperature stops the burner. When the condition clears, the boiler restarts
+        on its own.</li>
+      <li><strong>Lockout</strong> faults: something unsafe happened, typically no flame after the allowed ignition
+        attempts, or a safety limit thermostat tripped. The burner control stays off until someone presses
+        <strong>reset</strong>. The lockout state survives a power cut on most modern controls.</li>
+    </ul>
+
+    <h3>Try it: the burner sequence</h3>
+    <figure class="viz" id="seq">
+      <div class="controls"><div class="seg" role="group" aria-label="Scenario">
+        <button data-sc="ok" aria-pressed="true">Normal start</button><button data-sc="noflame" aria-pressed="false">No flame</button><button data-sc="press" aria-pressed="false">Low water pressure</button>
+      </div></div>
+      <div class="states" id="seqStates"></div>
+      <div class="controls">
+        <button class="btn secondary" data-act="prev">← Back</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset">Reset</button>
+      </div>
+      <div class="readout" id="seqText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Simplified. Attempt count, purge and safety times are set by the appliance and its standard.</figcaption>
+    </figure>
+
+    <div class="callout warn">Remote reset of a lockout is a sensitive feature. A lockout means the control saw something unsafe. Some boilers and codes limit the number of resets in a period, and many operators allow remote reset only once, then require a site visit. Never automate repeated resets in BMS logic.</div>
+
+    <h3>What the BMS should read</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Point</th><th>Why</th></tr>
+      <tr><td>Common fault / lockout (volt-free contact)</td><td>Works on every boiler. The minimum.</td></tr>
+      <tr><td>Fault code (via bus)</td><td>Tells you whether to send a technician or just top up pressure.</td></tr>
+      <tr><td>Flow, return, flue temperatures</td><td>Efficiency and early warnings (rising flue temperature = dirty exchanger).</td></tr>
+      <tr><td>System water pressure</td><td>Slow loss means a leak; 1–2 bar is typical in small sealed systems.</td></tr>
+      <tr><td>Burner starts and hours</td><td>Short cycling and service intervals.</td></tr>
+      <tr><td>Modulation %</td><td>Shows oversizing and how the cascade shares load.</td></tr>
+    </table></div>
+
+    <h3>Servicing</h3>
+    <p>An annual service is typical and often a legal or warranty requirement. It covers flue gas analysis and burner
+      adjustment, cleaning the heat exchanger and condensate trap, checking electrodes, testing safety devices and
+      the expansion vessel pre-charge. BMS trends make the visit faster: the engineer sees starts per day, the flue
+      temperature trend and the fault history before opening the casing.</p>
+    <div class="callout example">A cascade's lead boiler showed 40 starts per hour at mild weather. The trend explained it: minimum output 25 kW, building load in October about 15 kW. Changing the cascade to allow a longer off-time, adding a buffer volume and lowering the heating curve brought starts below 6 per hour.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A boiler stops on low water pressure and restarts by itself after the system is topped up. This is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A lockout needs a manual reset.">A lockout</button>
+        <button class="opt" data-opt="b" data-why="It clears itself when the condition goes away.">A blocking (self-resetting) fault</button>
+        <button class="opt" data-opt="c" data-why="Purge is a normal start step, not a fault.">A pre-purge</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Start sequence: purge, ignite, prove flame within the safety time, run.</li>
+      <li>Blocking faults clear themselves; lockouts need a reset.</li>
+      <li>Read fault codes, starts and flue temperature, not just a common alarm.</li>
+    </ul>
+  </section>
+
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. 200 kW must be delivered with a 10 K ΔT instead of 20 K. The water flow must…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Q = ṁ·c·ΔT: lower ΔT needs more flow.">Halve</button>
+        <button class="opt" data-opt="b" data-why="Flow and ΔT are inversely related.">Stay the same</button>
+        <button class="opt" data-opt="c" data-why="Halving ΔT doubles the flow.">Double</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">2. Which change helps a condensing boiler condense most?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Lower flow temperature in mild weather gives lower return temperatures.">Adding weather compensation</button>
+        <button class="opt" data-opt="b" data-why="Bypasses raise the return.">Adding a three-port bypass at each circuit</button>
+        <button class="opt" data-opt="c" data-why="Higher flow raises return temperature.">Raising the flow setpoint to 80 °C</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">3. In a boiler cascade the lead boiler locks out. The controller should…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Never auto-reset in a loop.">Reset it repeatedly until it runs</button>
+        <button class="opt" data-opt="b" data-why="Skip the faulted unit, promote the next and raise an alarm.">Promote the next boiler to lead and alarm</button>
+        <button class="opt" data-opt="c" data-why="The other boilers can carry the load.">Shut down the whole plant</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">4. Which temperature range favours legionella growth?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Below 20 °C growth is very slow.">5–15 °C</button>
+        <button class="opt" data-opt="b" data-why="At 60 °C bacteria die in minutes.">55–65 °C</button>
+        <button class="opt" data-opt="c" data-why="Roughly 20–45 °C, best around 35–37 °C.">20–45 °C</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">5. A gas detector reads 25 % LEL. What closes the main gas valve?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Shut-off is hard-wired through the certified gas panel.">The gas detection panel, hard-wired</button>
+        <button class="opt" data-opt="b" data-why="The BMS only monitors and notifies.">A BMS automation rule</button>
+        <button class="opt" data-opt="c" data-why="Human response is too slow and not reliable.">The on-call engineer after a phone alert</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="08-controllers-plcs.html">← Chapter 08</a>
+    <a class="btn" href="10-hydronics.html">Chapter 10 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// 9.1 Combustion and excess air.
+(() => {
+  const r = document.getElementById("lam"), $ = (id) => document.getElementById(id);
+  const draw = () => {
+    const l = Number(r.value);
+    $("lamOut").textContent = l.toFixed(2);
+    const co2 = 11.7 / l, o2 = l >= 1 ? (21 * (l - 1)) / l : 0;
+    // Siegert, natural gas: qA = (tA - tL) * (A2 / (21 - O2) + B), A2 = 0.66, B = 0.009; air 20 °C.
+    const loss = l >= 1 ? 130 * (0.66 / (21 - o2) + 0.009) : 130 * (0.66 / 21 + 0.009);
+    $("cCO2").textContent = co2.toFixed(1) + " %";
+    $("cO2").textContent = o2.toFixed(1) + " %";
+    $("cFL").textContent = loss.toFixed(1) + " %";
+    const co = l < 1.05 ? "high" : l < 1.15 ? "rising" : "low";
+    $("cCO").textContent = co;
+    $("cCOs").className = "stat " + (co === "high" ? "bad" : co === "rising" ? "warn" : "ok");
+    $("cAir").textContent = l < 1 ? `air ${Math.round((1 - l) * 100)} % short` : `air ${Math.round((l - 1) * 100)} % excess`;
+    $("cUse").setAttribute("stroke-width", Math.max(4, (100 - loss) / 4.5));
+    $("cLoss").setAttribute("stroke-width", Math.max(2, loss / 1.2));
+    $("cUseT").textContent = `useful ≈ ${(100 - loss).toFixed(0)} %`;
+    $("cLossT").textContent = `flue loss ≈ ${loss.toFixed(1)} %`;
+    $("combText").textContent = l < 1 ? "Not enough air. Incomplete combustion makes CO and soot. Dangerous." :
+      l < 1.15 ? "Close to stoichiometric. Efficient on paper, but a small drift makes CO." :
+      l <= 1.4 ? "Typical range for a premix burner. Clean combustion with modest losses." :
+      "Lots of excess air. Clean but wasteful, and the dew point falls, so condensing gets harder.";
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 9.2 Return temperature vs efficiency.
+(() => {
+  const P = [[20, 108], [30, 106.5], [40, 104], [50, 100.5], [55, 98.2], [60, 96.8], [70, 96.2], [80, 95.6]];
+  const X = (t) => 80 + ((t - 20) / 60) * 500, Y = (e) => 220 - ((e - 94) / 16) * 200;
+  const eta = (t) => {
+    for (let i = 1; i < P.length; i++) if (t <= P[i][0]) {
+      const [a, ea] = P[i - 1], [b, eb] = P[i];
+      return ea + ((t - a) / (b - a)) * (eb - ea);
+    }
+    return P[P.length - 1][1];
+  };
+  const $ = (id) => document.getElementById(id), r = $("ret");
+  let ax = "";
+  for (let t = 20; t <= 80; t += 10) ax += `<text class="small" x="${X(t)}" y="236" text-anchor="middle">${t}</text>`;
+  for (let e = 94; e <= 110; e += 4) ax += `<text class="small" x="74" y="${Y(e) + 4}" text-anchor="end">${e}</text>`;
+  $("condAxes").innerHTML = ax;
+  let d = "";
+  for (let t = 20; t <= 80; t += 1) d += (t === 20 ? "M" : "L") + X(t).toFixed(1) + "," + Y(eta(t)).toFixed(1) + " ";
+  $("condCurve").setAttribute("d", d);
+  $("condZone").setAttribute("width", X(56) - 80);
+  ["x1", "x2"].forEach((a) => $("dewLine").setAttribute(a, X(56)));
+  $("dewT").setAttribute("x", X(56) + 6);
+  const draw = () => {
+    const t = Number(r.value), e = eta(t);
+    $("retOut").textContent = t;
+    $("condDot").setAttribute("cx", X(t)); $("condDot").setAttribute("cy", Y(e));
+    [["x1", X(t)], ["y1", 220], ["x2", X(t)], ["y2", Y(e)]].forEach(([a, v]) => $("condGuide").setAttribute(a, v));
+    $("cEn").textContent = e.toFixed(1) + " %";
+    $("cEg").textContent = (e / 1.109).toFixed(1) + " %";
+    const m = t < 50 ? ["full condensing", "ok"] : t < 57 ? ["partial", "warn"] : ["not condensing", "bad"];
+    $("cMv").textContent = m[0]; $("cMode").className = "stat " + m[1];
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 9.3 Cascade simulator.
+(() => {
+  const fig = document.getElementById("cascade"), r = document.getElementById("cd");
+  const CAP = 100, MIN = 20;
+  let order = [0, 1, 2, 3], hours = [0, 0, 0, 0], failed = [false, false, false, false], strat = "parallel";
+  const box = document.getElementById("blrs"), txt = document.getElementById("cascText");
+  const plan = (load) => {
+    const avail = order.filter((i) => !failed[i]);
+    const out = [0, 0, 0, 0];
+    if (load <= 0 || !avail.length) return { out, unmet: load };
+    let n;
+    if (strat === "series") n = Math.min(avail.length, Math.ceil(load / CAP));
+    // Parallel: as many boilers as can stay above minimum modulation.
+    else n = Math.max(1, Math.min(avail.length, Math.floor(load / MIN)));
+    const run = avail.slice(0, n);
+    if (strat === "series") {
+      let rest = load;
+      run.forEach((i) => { out[i] = Math.min(CAP, rest); rest -= out[i]; });
+      // Last boiler below minimum cycles; shown at minimum.
+    } else run.forEach((i) => { out[i] = Math.min(CAP, load / n); });
+    const total = out.reduce((a, b) => a + b, 0);
+    return { out, unmet: Math.max(0, load - total) };
+  };
+  const render = () => {
+    const load = Number(r.value);
+    document.getElementById("cdOut").textContent = load;
+    const { out, unmet } = plan(load);
+    const lead = order.find((i) => !failed[i]);
+    box.innerHTML = [0, 1, 2, 3].map((i) => {
+      const p = out[i], cyc = p > 0 && p < MIN;
+      const st = failed[i] ? "LOCKOUT" : p > 0 ? (cyc ? "cycling" : `${Math.round(p)} kW`) : "off";
+      return `<div class="blr ${i === lead ? "lead" : ""} ${p ? "" : "off"}"><b>B${i + 1}</b><div class="tag">${failed[i] ? "fault" : i === lead ? "LEAD" : "lag " + (order.filter((k) => !failed[k]).indexOf(i))}</div>
+        <div class="tank"><span style="height:${(Math.max(p, cyc ? MIN : 0) / CAP) * 100}%"></span></div><div>${st}</div><div class="rt">${hours[i]} h</div></div>`;
+    }).join("");
+    const running = out.filter((p) => p > 0).length;
+    const cyc = out.some((p) => p > 0 && p < MIN);
+    txt.textContent = `${running} boiler(s) running. ` +
+      (unmet > 0 ? `Shortfall ${Math.round(unmet)} kW: not enough healthy capacity. ` : "") +
+      (cyc ? "Load is below a boiler's 20 kW minimum, so it cycles on/off. " : "") +
+      (strat === "parallel" && running > 1 ? "All share the load at low fire, good for condensing." : "");
+    fig.querySelectorAll("[data-st]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.st === strat));
+  };
+  fig.querySelectorAll("[data-st]").forEach((b) => b.addEventListener("click", () => { strat = b.dataset.st; render(); }));
+  fig.querySelector("[data-act=rot]").addEventListener("click", () => { order = order.slice(1).concat(order[0]); render(); });
+  fig.querySelector("[data-act=fail]").addEventListener("click", () => { const l = order.find((i) => !failed[i]); if (l !== undefined) failed[l] = true; render(); });
+  fig.querySelector("[data-act=run]").addEventListener("click", () => {
+    const { out } = plan(Number(r.value));
+    out.forEach((p, i) => { if (p > 0) hours[i] += 24; });
+    // Rotate by runtime: fewest hours leads.
+    order = [0, 1, 2, 3].sort((a, b) => hours[a] - hours[b]);
+    render();
+  });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { order = [0, 1, 2, 3]; hours = [0, 0, 0, 0]; failed = [false, false, false, false]; render(); });
+  r.addEventListener("input", render); render();
+})();
+
+// 9.4 Heating curve.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const X = (t) => 70 + ((20 - t) / 40) * 510, Y = (f) => 230 - ((f - 20) / 60) * 210;
+  let ax = "";
+  for (let t = 20; t >= -20; t -= 5) ax += `<text class="small" x="${X(t)}" y="246" text-anchor="middle">${t}</text>`;
+  for (let f = 20; f <= 80; f += 10) ax += `<text class="small" x="64" y="${Y(f) + 4}" text-anchor="end">${f}</text>`;
+  $("hcAxes").innerHTML = ax;
+  const flow = (to, s, p) => Math.min(80, Math.max(20, 20 + p + s * Math.pow(Math.max(0, 20 - to), 1.08) * 0.95));
+  const draw = () => {
+    const s = Number($("hs").value), p = Number($("hp").value), to = Number($("ho").value);
+    $("hsOut").textContent = s.toFixed(1); $("hpOut").textContent = p; $("hoOut").textContent = to;
+    let d = "";
+    for (let t = 20; t >= -20; t -= 1) d += (t === 20 ? "M" : "L") + X(t).toFixed(1) + "," + Y(flow(t, s, p)).toFixed(1) + " ";
+    $("hcCurve").setAttribute("d", d);
+    const f = flow(to, s, p);
+    $("hcDot").setAttribute("cx", X(to)); $("hcDot").setAttribute("cy", Y(f));
+    [["x1", X(to)], ["y1", 230], ["x2", X(to)], ["y2", Y(f)]].forEach(([a, v]) => $("hcGx").setAttribute(a, v));
+    [["x1", 70], ["y1", Y(f)], ["x2", X(to)], ["y2", Y(f)]].forEach(([a, v]) => $("hcGy").setAttribute(a, v));
+    const ret = 20 + (f - 20) * 0.6;
+    $("hcText").textContent = `${to} °C outside → flow ${f.toFixed(1)} °C, return ≈ ${ret.toFixed(0)} °C` + (ret < 55 ? " (condensing)" : " (not condensing)");
+  };
+  ["hs", "hp", "ho"].forEach((id) => $(id).addEventListener("input", draw)); draw();
+})();
+
+// 9.5 DHW tank week.
+(() => {
+  const fig = document.getElementById("dhw"), $ = (id) => document.getElementById(id);
+  const X = (h) => 60 + (h / 168) * 520, Y = (t) => 200 - ((t - 10) / 65) * 190;
+  $("dhBand").setAttribute("y", Y(45)); $("dhBand").setAttribute("height", Y(20) - Y(45));
+  $("dhBandT").setAttribute("y", Y(45) + 14);
+  let ax = "";
+  for (let d = 0; d <= 7; d++) ax += `<text class="small" x="${X(d * 24)}" y="216" text-anchor="middle">${d}</text>`;
+  for (let t = 10; t <= 70; t += 20) ax += `<text class="small" x="54" y="${Y(t) + 4}" text-anchor="end">${t}</text>`;
+  $("dhAxes").innerHTML = ax;
+  const sim = (sp) => {
+    const top = [], bot = []; let tt = sp, tb = sp - 8, heating = false, band = 0, dis = false;
+    for (let h = 0; h <= 168; h += 0.5) {
+      const hr = h % 24, day = Math.floor(h / 24);
+      const draw = (hr >= 6.5 && hr < 8.5) || (hr >= 19 && hr < 21.5);
+      const cycle = sp === 50 && day === 6 && hr >= 2 && hr < 4;
+      const target = cycle ? 70 : sp;
+      if (draw) { tt -= 1.2; tb -= 4; }
+      tt -= 0.08; tb += (tt - tb) * 0.01;
+      if (tt < target - 5) heating = true;
+      if (heating) { tt += 4; tb += cycle ? 4 : 1.5; if (tt >= target) { tt = target; heating = false; } }
+      tb = Math.max(12, Math.min(tb, tt));
+      if (cycle && tb >= 65) dis = true;
+      if (tb >= 20 && tb <= 45) band += 0.5;
+      top.push([h, tt]); bot.push([h, tb]);
+    }
+    return { top, bot, band, dis };
+  };
+  const path = (pts) => pts.map(([h, t], i) => (i ? "L" : "M") + X(h).toFixed(1) + "," + Y(t).toFixed(1)).join(" ");
+  const render = (sp) => {
+    const s = sim(sp);
+    $("dhLine").setAttribute("d", path(s.top)); $("dhBot").setAttribute("d", path(s.bot));
+    $("dhV1").textContent = s.band + " h";
+    $("dhS1").className = "stat " + (s.band > 40 ? "bad" : s.band > 10 ? "warn" : "ok");
+    $("dhV2").textContent = sp === 50 ? (s.dis ? "bottom reached 65 °C+" : "top only") : sp === 60 ? "not needed" : "none";
+    $("dhS2").className = "stat " + (sp === 45 ? "bad" : "ok");
+    $("dhV3").textContent = { 60: "100 %", 50: "≈ 80 %", 45: "≈ 70 %" }[sp];
+    fig.querySelectorAll("[data-dh]").forEach((b) => b.setAttribute("aria-pressed", Number(b.dataset.dh) === sp));
+  };
+  fig.querySelectorAll("[data-dh]").forEach((b) => b.addEventListener("click", () => render(Number(b.dataset.dh))));
+  render(60);
+})();
+
+// 9.6 District heating flow calculator.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const draw = () => {
+    const q = Number($("dl").value), dt = Number($("dd").value);
+    $("dlOut").textContent = q; $("ddOut").textContent = dt;
+    const m3h = (q / (4.19 * dt)) * 3.6;
+    $("dF").textContent = m3h.toFixed(1) + " m³/h";
+    $("dR").textContent = (90 - dt) + " °C";
+    const v = dt >= 40 ? ["good cooling", "ok"] : dt >= 25 ? ["acceptable", "warn"] : ["poor, likely penalty", "bad"];
+    $("dV").textContent = v[0]; $("dVs").className = "stat " + v[1];
+  };
+  ["dl", "dd"].forEach((id) => $(id).addEventListener("input", draw)); draw();
+})();
+
+// 9.7 Gas detection chain.
+(() => {
+  const $ = (id) => document.getElementById(id), r = $("lel");
+  const draw = () => {
+    const v = Number(r.value);
+    $("lelOut").textContent = v;
+    const pre = v >= 10, main = v >= 20;
+    $("gDet").classList.toggle("lit", pre);
+    $("gPan").classList.toggle("lit", pre);
+    $("gFan").classList.toggle("lit", pre);
+    $("gBms").classList.toggle("lit", pre);
+    $("gSnd").classList.toggle("lit", main);
+    $("gVal").classList.toggle("lit", main);
+    $("gasText").textContent = !pre ? "Normal. The BMS logs the reading for trends." :
+      !main ? "Pre-alarm: extract fan to high speed, warning to the BMS and on-call. Gas still on." :
+      `Main alarm at ${v} % LEL: main gas valve closes, sounder and beacon on, burners stop. Manual reset required after the cause is found.`;
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 9.8 Burner sequence and lockout.
+(() => {
+  const fig = document.getElementById("seq"), box = document.getElementById("seqStates"), txt = document.getElementById("seqText");
+  const SC = {
+    ok: [
+      ["Standby", "Heat demand arrives. Safety chain is closed."],
+      ["Pre-purge", "Fan runs to clear the chamber. Air pressure switch or fan speed proven."],
+      ["Ignition", "Spark on, both gas valves open."],
+      ["Flame proven", "Ionisation current detected within the safety time."],
+      ["Run", "Burner modulates to meet the flow setpoint."],
+      ["Post-purge", "Demand gone. Gas closes, fan clears the chamber, back to standby."],
+    ],
+    noflame: [
+      ["Standby", "Heat demand arrives."],
+      ["Pre-purge", "Fan clears the chamber."],
+      ["Ignition", "Attempt 1: no flame within the safety time. Gas closes."],
+      ["Pre-purge", "Re-purge before the next attempt."],
+      ["Ignition", "Attempt 2: still no flame. Common causes: gas supply off, worn electrode, blocked condensate, wrong gas pressure."],
+      ["LOCKOUT", "Maximum attempts reached. The control locks out. Only a manual reset restarts it. The BMS gets a lockout signal and fault code."],
+    ],
+    press: [
+      ["Standby", "Heat demand arrives."],
+      ["Blocked", "Water pressure 0.4 bar, below the 0.8 bar minimum. Burner does not start. No lockout."],
+      ["Blocked", "The BMS sees the fault code and alarms. Someone tops up the system."],
+      ["Standby", "Pressure back to 1.5 bar. Block clears on its own."],
+      ["Pre-purge", "The normal sequence continues without any reset."],
+    ],
+  };
+  let sc = "ok", i = 0;
+  const render = () => {
+    const s = SC[sc];
+    box.innerHTML = s.map(([n], k) => `<span class="${k < i ? "done" : k === i ? (n === "LOCKOUT" ? "lock" : "on") : ""}">${n}</span>`).join("");
+    txt.textContent = `${i + 1}/${s.length} · ${s[i][1]}`;
+    fig.querySelectorAll("[data-sc]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.sc === sc));
+  };
+  fig.querySelectorAll("[data-sc]").forEach((b) => b.addEventListener("click", () => { sc = b.dataset.sc; i = 0; render(); }));
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(SC[sc].length - 1, i + 1); render(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(0, i - 1); render(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { i = 0; render(); });
+  render();
+})();
+</script>
+</body>
+</html>

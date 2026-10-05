@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BMS Software Platforms</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .bp-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .bp-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .bp-sel, .bp-in {
+    font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0;
+  }
+  .bp-log {
+    font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; max-height: 240px; overflow: auto; margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .bp-log .ok { color: var(--ok); } .bp-log .bad { color: var(--bad); } .bp-log .ex { color: var(--example); } .bp-log .mu { color: var(--muted); }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; white-space: pre; }
+  .viz pre.code { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .kv { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 4px 12px; font-size: 14px; margin-top: 8px; }
+  .kv dt { font-weight: 600; color: var(--muted); overflow-wrap: anywhere; }
+  .kv dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+  .tree { list-style: none; padding-left: 0; margin: 8px 0 0; }
+  .tree ul { list-style: none; padding-left: 18px; margin: 0; border-left: 1px dashed var(--border); }
+  .tree button { font: 13px var(--mono); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; margin: 3px 0; cursor: pointer; text-align: left; max-width: 100%; overflow-wrap: anywhere; }
+  .tree button[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .tree .tag { font: 11px var(--font); color: var(--muted); margin-left: 6px; }
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; min-width: 0; }
+  .card h4 { margin: 0 0 6px; font-size: 14px; }
+  .lane { position: relative; height: 34px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin: 6px 0; overflow: hidden; }
+  .lane .run { position: absolute; top: 5px; height: 22px; border-radius: 4px; background: var(--accent); color: #fff; font: 11px/22px var(--mono); padding: 0 4px; overflow: hidden; white-space: nowrap; }
+  .lane .run.cut { background: var(--bad-soft); color: var(--bad); border: 1px dashed var(--bad); }
+  .lane .tick { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--example); }
+  .lane-label { font-size: 12px; color: var(--muted); }
+  .bars { display: grid; gap: 6px; margin-top: 10px; }
+  .bar { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr) minmax(0, 6em); gap: 8px; align-items: center; font-size: 13px; }
+  .bar .track { height: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .bar .track span { display: block; height: 100%; background: var(--accent); }
+  .bar .track span.warnfill { background: var(--bad); }
+  .bar b { font-family: var(--mono); font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+  .reqs { display: grid; gap: 6px; margin: 8px 0; }
+  .reqs label { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+  .fit { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 8px; margin-top: 10px; }
+  .fit div { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; font-size: 13px; min-width: 0; }
+  .fit div b { display: block; font-size: 14px; }
+  .fit div.good { border-color: var(--ok); background: var(--ok-soft); }
+  .fit div.poor { border-color: var(--bad); background: var(--bad-soft); }
+  .pill { display: inline-block; font: 600 11px var(--font); padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
+  svg .dim { opacity: .25; }
+  svg .soft { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  svg .ex-s { fill: var(--example-soft); stroke: var(--example); stroke-width: 1.5; }
+  svg .dash { stroke-dasharray: 5 4; }
+  svg g[role=button]:hover rect { stroke: var(--accent); }
+  svg g[aria-pressed=true] rect { stroke: var(--accent); fill: var(--accent-soft); }
+  svg g[role=button]:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="19">
+<div class="content">
+  <div class="kicker">Chapter 19</div>
+  <h1>BMS software platforms</h1>
+  <p class="lead">Controllers keep the building running. The supervisory platform is where people see it, change it,
+    get alarmed by it and learn from its history. This chapter compares the big commercial platforms, the SCADA ideas
+    they all share, and Home Assistant as an open-source alternative, down to its entity model, automation engine and
+    data storage. It ends with an honest look at where open source stops being enough.</p>
+
+  <!-- 19.1 -->
+  <section class="lesson" id="s1" data-num="19.1">
+    <h2>19.1 Commercial BMS: Desigo, Niagara, EcoStruxure</h2>
+    <p>Three platforms dominate many commercial tenders in Europe and beyond: <strong>Siemens Desigo CC</strong>,
+      <strong>Tridium Niagara</strong> and <strong>Schneider Electric EcoStruxure Building Operation</strong> (EBO).
+      Others matter too: Honeywell, Johnson Controls Metasys, Priva, Sauter, Beckhoff-based systems and many regional
+      vendors. The three are worth studying because they represent three different philosophies.</p>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Desigo CC</th><th>Niagara 4</th><th>EcoStruxure Building Operation</th></tr>
+      <tr><td><strong>Philosophy</strong></td><td>One vendor's integrated management station for HVAC, fire, security, power.</td><td>Vendor-neutral software framework, sold and branded by many OEMs.</td><td>Vendor ecosystem with one database model from field server to enterprise.</td></tr>
+      <tr><td><strong>Server side</strong></td><td>Windows server, Microsoft SQL Server for history and configuration.</td><td>Java "station" runs on a Supervisor PC/VM or on an embedded JACE controller.</td><td>Enterprise Server (Windows) and optional Enterprise Central above it.</td></tr>
+      <tr><td><strong>Edge</strong></td><td>Desigo PX / PXC controllers, plus third-party BACnet, Modbus, OPC.</td><td>JACE 8000/9000 and OEM controllers running the same station software.</td><td>SpaceLogic / Automation Server (AS-P, AS-B) running the same server software.</td></tr>
+      <tr><td><strong>Engineering tool</strong></td><td>Desigo CC client in engineering mode, plus ABT for controllers.</td><td>Workbench: wire sheets, component tree, tagging.</td><td>WorkStation; WebStation for operators.</td></tr>
+      <tr><td><strong>Typical licence</strong></td><td>Per data point / per subsystem package.</td><td>Per device and point count, via the OEM.</td><td>Per server, per point / per client.</td></tr>
+    </table></div>
+    <p>Licensing details change between versions and resellers, so always ask for a current quote. What stays stable is
+      the architecture. Explore the three below.</p>
+
+    <h3>Try it: three architectures side by side</h3>
+    <figure class="viz" id="arch">
+      <div class="controls seg" role="group" aria-label="Platform">
+        <button data-p="desigo" aria-pressed="true">Desigo CC</button>
+        <button data-p="niagara">Niagara</button>
+        <button data-p="ebo">EcoStruxure BO</button>
+      </div>
+      <svg viewBox="0 0 640 300" role="img" aria-label="Layered architecture of the selected platform"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Top: clients. Middle: server tier. Bottom: field controllers and protocols. Accent boxes run the platform's own software.</figcaption>
+    </figure>
+
+    <h3>Niagara in a little more depth</h3>
+    <p>Niagara is the most common one to meet as a software engineer, because it is a framework, not a product.
+      A <strong>station</strong> is a tree of <strong>components</strong>. Each component has slots: properties,
+      actions and topics. Logic is built by linking slots on a <em>wire sheet</em>. Drivers (BACnet, Modbus, KNX,
+      LON and many more) appear as components that expose remote points as local ones. Stations talk to each other
+      with the <strong>Fox</strong> protocol (TCP 1911, or 4911 for the TLS variant <code>foxs</code>). Points
+      carry <strong>tags</strong> (Niagara's own and Project Haystack) that drive queries, navigation and
+      templates.</p>
+    <p>Because many OEMs (Honeywell, Distech Controls, Johnson Controls and others) ship Niagara under their own
+      brand, the same skills transfer. The catch: each OEM licence is often "branded", so a JACE bought from one
+      vendor may not open a station licensed for another.</p>
+
+    <div class="callout example">A 25,000 m² office building on Niagara might run eight JACEs, one per plant room and
+      riser, each with 300 to 1,500 points over BACnet MS/TP and Modbus. A Supervisor VM aggregates histories and
+      alarms from all of them, serves HTML5 graphics to operators, and exports trends to an energy platform. The same
+      building on Desigo CC would have PXC controllers per plant, a Desigo CC server with SQL Server, and the fire
+      panels (Cerberus) shown on the same station.</div>
+
+    <div class="callout warn">"Open protocol" is not the same as "open platform". A system can speak BACnet perfectly
+      and still lock you in through proprietary graphics, engineering tools, licences tied to a dealer, or controller
+      programs only one integrator can edit. Ask who owns the engineering files and the licence keys at handover.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">What best describes Niagara's position compared with Desigo CC?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Niagara runs on a Java runtime; the Supervisor can be on Windows or Linux depending on the release and OEM.">It only runs on Windows with SQL Server</button>
+        <button class="opt" data-opt="b" data-why="Tridium sells the framework through many OEMs; the same station software runs on edge JACEs and Supervisors.">A vendor-neutral framework sold through many OEMs, same software at edge and supervisor</button>
+        <button class="opt" data-opt="c" data-why="Niagara supports BACnet, Modbus, KNX, LON and more through drivers.">A proprietary protocol that replaces BACnet</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Desigo CC: integrated single-vendor management station. Niagara: OEM framework. EBO: one software model from edge server to enterprise.</li>
+      <li>All three follow the same layers: clients, server, edge controllers, field protocols.</li>
+      <li>Lock-in hides in tools, licences and engineering files, not in the field protocol.</li>
+    </ul>
+  </section>
+
+  <!-- 19.2 -->
+  <section class="lesson" id="s2" data-num="19.2">
+    <h2>19.2 SCADA concepts</h2>
+    <p><strong>SCADA</strong> (Supervisory Control and Data Acquisition) comes from utilities and industry, but every
+      BMS supervisory layer is a SCADA system in disguise. The core building blocks are the same in Desigo CC, Niagara,
+      Ignition, WinCC or a home-grown front end:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Block</th><th>Job</th><th>Concrete numbers</th></tr>
+      <tr><td><strong>Driver / I/O server</strong></td><td>Talks the field protocol. Polls or subscribes.</td><td>Modbus poll every 1–10 s; BACnet COV with 0.2 K increment.</td></tr>
+      <tr><td><strong>Tag (point) database</strong></td><td>One record per value: address, type, units, scaling, quality, timestamp.</td><td>5,000–50,000 tags for a large building.</td></tr>
+      <tr><td><strong>Alarm engine</strong></td><td>Evaluates limits and states, tracks acknowledge and return to normal.</td><td>High limit 26 °C, deadband 0.5 K, delay 300 s.</td></tr>
+      <tr><td><strong>Historian</strong></td><td>Stores time series, often with deadband or swinging-door compression.</td><td>1,000 tags × 1 value/min ≈ 525 million values/year.</td></tr>
+      <tr><td><strong>HMI</strong></td><td>Graphics, trends, alarm lists, operator commands.</td><td>Screen update 1–2 s; command round trip under 2 s.</td></tr>
+      <tr><td><strong>Scheduler and logic</strong></td><td>Time programs, calendars, supervisory sequences.</td><td>Weekly schedule, holiday calendar, optimum start.</td></tr>
+    </table></div>
+    <p>Every tag value carries three things: <strong>value</strong>, <strong>timestamp</strong> and
+      <strong>quality</strong> (good, uncertain, bad; OPC UA has a full status-code system). Quality is what makes
+      SCADA honest: a dead Modbus gateway turns 400 tags "bad" instead of leaving the last value on screen looking
+      fine.</p>
+
+    <h3>Try it: follow one value through a SCADA stack</h3>
+    <figure class="viz" id="scada">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+        <span class="seg" role="group" aria-label="Field link">
+          <button data-link="up" aria-pressed="true">Link up</button>
+          <button data-link="down">Gateway dead</button>
+        </span>
+      </div>
+      <svg viewBox="0 0 640 270" role="img" aria-label="SCADA pipeline from sensor to operator">
+        <defs><marker id="ah19a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="sc0" x="10" y="110" width="90" height="56" rx="8"/><text x="55" y="134" text-anchor="middle">Sensor</text><text class="small" x="55" y="152" text-anchor="middle" id="scv0">Modbus reg</text>
+        <rect class="box" id="sc1" x="130" y="110" width="90" height="56" rx="8"/><text x="175" y="134" text-anchor="middle">Driver</text><text class="small" x="175" y="152" text-anchor="middle">poll 5 s</text>
+        <rect class="box" id="sc2" x="250" y="110" width="110" height="56" rx="8"/><text x="305" y="134" text-anchor="middle">Tag DB</text><text class="small" x="305" y="152" text-anchor="middle" id="scv2">value·time·quality</text>
+        <rect class="box" id="sc3" x="400" y="20" width="110" height="50" rx="8"/><text x="455" y="42" text-anchor="middle">Alarm engine</text><text class="small" x="455" y="58" text-anchor="middle" id="scv3">limit 26 °C</text>
+        <rect class="box" id="sc4" x="400" y="113" width="110" height="50" rx="8"/><text x="455" y="135" text-anchor="middle">Historian</text><text class="small" x="455" y="151" text-anchor="middle" id="scv4">deadband 0.2</text>
+        <rect class="box" id="sc5" x="400" y="206" width="110" height="50" rx="8"/><text x="455" y="228" text-anchor="middle">Logic</text><text class="small" x="455" y="244" text-anchor="middle">schedule</text>
+        <rect class="box" id="sc6" x="540" y="110" width="90" height="56" rx="8"/><text x="585" y="134" text-anchor="middle">HMI</text><text class="small" x="585" y="152" text-anchor="middle" id="scv6">—</text>
+        <path class="arrow" id="scw1" d="M100,138 L128,138" marker-end="url(#ah19a)"/>
+        <path class="arrow" id="scw2" d="M220,138 L248,138" marker-end="url(#ah19a)"/>
+        <path class="arrow" id="scw3" d="M360,130 L398,52" marker-end="url(#ah19a)"/>
+        <path class="arrow" id="scw4" d="M360,138 L398,138" marker-end="url(#ah19a)"/>
+        <path class="arrow" id="scw5" d="M360,146 L398,226" marker-end="url(#ah19a)"/>
+        <path class="arrow" id="scw6" d="M510,45 L560,108" marker-end="url(#ah19a)"/>
+        <path class="arrow" id="scw7" d="M510,138 L538,138" marker-end="url(#ah19a)"/>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>The automation pyramid, again</h3>
+    <p>The ISA-95 / Purdue levels from Chapter 01 map directly: level 0 sensors and actuators, level 1 controllers,
+      level 2 supervisory (SCADA/BMS server and HMI), level 3 site operations (energy management, maintenance), level 4
+      enterprise IT. A healthy design keeps <em>control</em> at levels 1 and below. Level 2 supervises: it changes
+      setpoints and schedules but never closes a fast loop over the network.</p>
+
+    <div class="callout example">A district heating substation PLC runs its own PID loops in 100 ms cycles. The SCADA
+      server polls it every 5 s, historises supply and return temperatures with a 0.2 K deadband, and raises a
+      "supply below 55 °C for 10 min" alarm. When the server is down for a Windows update, heat still flows; only the
+      graphics and history pause.</div>
+
+    <div class="callout warn">Polling cost grows quietly. 20,000 Modbus registers at 1 s across slow serial gateways
+      will not fit: at 9,600 baud a single Modbus RTU read of 10 registers takes roughly 30–40 ms including turnaround.
+      Group registers into block reads and give each tag a scan class that matches how fast it really changes.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A Modbus gateway dies. What should a correct SCADA show for its 400 tags?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is exactly the dangerous failure: stale values that look healthy.">The last values, unchanged</button>
+        <button class="opt" data-opt="b" data-why="Zero is a valid reading; it would cause false alarms and wrong trends.">Zero for every tag</button>
+        <button class="opt" data-opt="c" data-why="Quality marks the data as untrustworthy while keeping the last value visible for context.">The last values flagged with bad quality, plus a communication alarm</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Driver, tag database, alarms, historian, HMI, logic: every BMS has them.</li>
+      <li>Every value is value + timestamp + quality. Quality prevents stale data from lying.</li>
+      <li>Supervise from level 2; control at level 1.</li>
+    </ul>
+  </section>
+
+  <!-- 19.3 -->
+  <section class="lesson" id="s3" data-num="19.3">
+    <h2>19.3 Home Assistant as a BMS</h2>
+    <p><strong>Home Assistant</strong> (HA) is an open-source home automation platform written in Python, with
+      a release every month and thousands of integrations. It was built for homes, but its core is a general
+      event-driven state engine. That makes it usable as a light supervisory layer for small commercial buildings,
+      as long as you understand what it is and what it is not.</p>
+    <p>The core has three central objects:</p>
+    <ul>
+      <li><strong>Event bus</strong>. Everything that happens is an event: <code>state_changed</code>,
+        <code>call_service</code>, <code>automation_triggered</code>, <code>homeassistant_start</code>.</li>
+      <li><strong>State machine</strong>. The current state of every entity, kept in memory. Writing a new state
+        fires a <code>state_changed</code> event.</li>
+      <li><strong>Service (action) registry</strong>. Named operations such as <code>light.turn_on</code> or
+        <code>climate.set_temperature</code>. In 2024 the user-facing name changed from "services" to "actions";
+        the concept is the same.</li>
+    </ul>
+    <p>Around the core sit <strong>integrations</strong> (drivers), the <strong>recorder</strong> (history database),
+      the <strong>automation engine</strong>, and the <strong>frontend</strong>, which talks to the core through a
+      WebSocket API. A REST API also exists. On Home Assistant OS, a <strong>Supervisor</strong> manages the core
+      container plus add-ons (apps) such as an MQTT broker, Node-RED or a database.</p>
+
+    <h3>Try it: what each block does</h3>
+    <div class="explorer" id="haArch">
+      <svg viewBox="0 0 300 330" aria-label="Home Assistant architecture">
+        <g class="layer" role="button" tabindex="0" data-target="ha-fe" aria-label="Frontend"><rect class="box" x="60" y="6" width="180" height="40" rx="8"/><text x="150" y="31" text-anchor="middle">Frontend / apps</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="ha-api" aria-label="APIs"><rect class="box" x="60" y="56" width="180" height="34" rx="8"/><text x="150" y="78" text-anchor="middle">WebSocket / REST API</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="ha-bus" aria-label="Event bus"><rect class="box" x="10" y="102" width="280" height="36" rx="8"/><text x="150" y="125" text-anchor="middle">Event bus</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="ha-sm" aria-label="State machine"><rect class="box" x="10" y="148" width="135" height="46" rx="8"/><text x="77" y="176" text-anchor="middle">State machine</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="ha-svc" aria-label="Action registry"><rect class="box" x="155" y="148" width="135" height="46" rx="8"/><text x="222" y="176" text-anchor="middle">Action registry</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="ha-auto" aria-label="Automations"><rect class="box" x="10" y="204" width="135" height="46" rx="8"/><text x="77" y="232" text-anchor="middle">Automations</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="ha-rec" aria-label="Recorder"><rect class="box" x="155" y="204" width="135" height="46" rx="8"/><text x="222" y="232" text-anchor="middle">Recorder</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="ha-int" aria-label="Integrations"><rect class="box" x="10" y="260" width="280" height="40" rx="8"/><text x="150" y="285" text-anchor="middle">Integrations (Modbus, KNX, MQTT…)</text></g>
+        <text class="small" x="150" y="320" text-anchor="middle">devices and networks below</text>
+      </svg>
+      <div class="panel">
+        <template id="ha-fe"><h4>Frontend</h4><p>A web app (Lit-based web components) and mobile apps. Dashboards are YAML or UI-edited "Lovelace" views of cards. It holds no logic: it subscribes to state changes and calls actions.</p><ul><li>A custom front end can do exactly the same through the WebSocket API.</li></ul></template>
+        <template id="ha-api"><h4>WebSocket and REST API</h4><p>The WebSocket API authenticates with a token, then lets a client <code>subscribe_events</code>, <code>get_states</code> and <code>call_service</code>. Long-lived access tokens are created per user. This is the integration point for external dashboards and tools.</p></template>
+        <template id="ha-bus"><h4>Event bus</h4><p>An in-process publish/subscribe bus. Every state write, action call and automation run is an event with a <code>context</code> (id, parent_id, user_id), so you can trace who or what caused a change.</p></template>
+        <template id="ha-sm"><h4>State machine</h4><p>An in-memory map from <code>entity_id</code> to a State object: state string, attributes, timestamps, context. It is the live picture of the building. It is not persistent by itself; the recorder writes the history.</p></template>
+        <template id="ha-svc"><h4>Action registry</h4><p>Integrations register actions such as <code>climate.set_temperature</code> with a schema. Automations, scripts, the UI and the API all go through the same registry, so permissions and logging are uniform.</p></template>
+        <template id="ha-auto"><h4>Automation engine</h4><p>Triggers listen on the bus; conditions read the state machine; actions call the registry. Each run produces a trace (19.5).</p></template>
+        <template id="ha-rec"><h4>Recorder</h4><p>Subscribes to the bus and writes states and events to SQL (SQLite by default; MariaDB or PostgreSQL possible). Also computes long-term statistics (19.6).</p></template>
+        <template id="ha-int"><h4>Integrations</h4><p>Python packages that turn a protocol or cloud API into entities and actions. Quality varies: the integration quality scale ranges from bronze to platinum, and many community integrations (via HACS) have no rating at all.</p></template>
+      </div>
+    </div>
+
+    <h3>Where it fits as a BMS</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Strength</th><th>Weakness</th></tr>
+      <tr><td>Thousands of integrations, including Modbus, KNX, MQTT, BACnet (community), many vendor APIs.</td><td>No certified BACnet workstation profile; BACnet support is community-maintained.</td></tr>
+      <tr><td>Free, local-first, runs on a small VM (2 vCPU, 4 GB RAM is plenty for a few thousand entities).</td><td>Monthly releases with breaking changes need planned upgrades.</td></tr>
+      <tr><td>Powerful automation engine, templates, a modern UI and an open API.</td><td>Basic role model (admin / non-admin users), no fine-grained operator permissions out of the box.</td></tr>
+      <tr><td>Easy to integrate AV, IoT and consumer devices that commercial BMS ignore.</td><td>No built-in alarm acknowledge workflow in the SCADA sense.</td></tr>
+    </table></div>
+
+    <div class="callout example">A boutique hotel with 30 rooms uses KNX for lighting and room heating, a Modbus heat
+      pump, an MQTT-based energy meter gateway and a networked audio system. Home Assistant on a small VM integrates all
+      four, runs schedules and occupancy logic, and serves a custom tablet UI. Safety-related functions (fire, heat pump
+      protection, frost protection) stay in their own controllers.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Where does Home Assistant keep the current value of <code>sensor.room_101_temperature</code>?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The state machine is the in-memory live picture; the recorder only stores history.">In the in-memory state machine</button>
+        <button class="opt" data-opt="b" data-why="The recorder writes history; the live value is read from memory.">Only in the SQLite database</button>
+        <button class="opt" data-opt="c" data-why="The frontend displays states but does not own them.">In the frontend's local storage</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>HA core = event bus + state machine + action registry.</li>
+      <li>Integrations are drivers; the recorder is the historian; the frontend is just a client of the API.</li>
+      <li>It fits small supervisory roles well. Control and safety stay in field controllers.</li>
+    </ul>
+  </section>
+
+  <!-- 19.4 -->
+  <section class="lesson" id="s4" data-num="19.4">
+    <h2>19.4 HA: entities, integrations, templates, helpers</h2>
+    <p>The data model is the part you must understand precisely, because everything else hangs on it.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Object</th><th>What it is</th><th>Example</th></tr>
+      <tr><td><strong>Integration</strong></td><td>Code for one protocol or product (a domain like <code>modbus</code>, <code>knx</code>, <code>mqtt</code>).</td><td><code>modbus</code></td></tr>
+      <tr><td><strong>Config entry</strong></td><td>One configured instance of an integration (one gateway, one account).</td><td>"Heat pump gateway 10.0.20.15"</td></tr>
+      <tr><td><strong>Device</strong></td><td>A physical or logical device in the device registry: manufacturer, model, firmware.</td><td>"Heat pump HP-1"</td></tr>
+      <tr><td><strong>Entity</strong></td><td>One value or control. Has an <code>entity_id</code> (<code>domain.object_id</code>) and a stable <code>unique_id</code>.</td><td><code>sensor.hp1_flow_temperature</code></td></tr>
+      <tr><td><strong>Area / floor</strong></td><td>Where things are. Devices and entities can be assigned to areas; areas to floors.</td><td>"Plant room", floor "Basement"</td></tr>
+      <tr><td><strong>Label</strong></td><td>Free tags across everything, for grouping and targeting.</td><td>"critical", "energy"</td></tr>
+    </table></div>
+    <p>A <strong>state object</strong> has a <code>state</code> string (maximum 255 characters), a dictionary of
+      <code>attributes</code> and three timestamps: <code>last_changed</code> (state string changed),
+      <code>last_updated</code> (state or attributes changed) and <code>last_reported</code> (any write, even
+      identical). States are always strings: <code>"21.4"</code>, <code>"on"</code>, <code>"unavailable"</code>,
+      <code>"unknown"</code>. Numbers become numbers only when you convert them.</p>
+
+    <h3>Try it: entity model explorer</h3>
+    <figure class="viz" id="model">
+      <div class="split">
+        <div><div class="lane-label">Registry tree (click a node)</div><ul class="tree"></ul></div>
+        <div class="card"><h4 id="mdTitle">—</h4><dl class="kv" id="mdKv"></dl>
+          <div class="controls" style="margin-top:10px">
+            <button class="btn secondary" data-act="change">New reading</button>
+            <button class="btn secondary" data-act="attr">Attribute only</button>
+            <button class="btn secondary" data-act="same">Same value again</button>
+            <button class="btn secondary" data-act="dead">Gateway offline</button>
+          </div>
+        </div>
+      </div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Integration → config entry → device → entities, with areas assigned. Buttons show which timestamps move.</figcaption>
+    </figure>
+
+    <h3>Templates</h3>
+    <p>Templates are Jinja2 expressions evaluated against the state machine. They appear in template entities,
+      conditions, action data and notifications.</p>
+    <pre class="code">{# average of two room sensors, ignoring dead ones #}
+{% set vals = ['sensor.r101_temp', 'sensor.r102_temp']
+   | map('states') | reject('in', ['unknown','unavailable'])
+   | map('float') | list %}
+{{ (vals | sum / vals | count) | round(1) if vals else none }}</pre>
+    <p>Useful functions: <code>states('sensor.x')</code> (returns <code>"unknown"</code> rather than failing),
+      <code>is_state('switch.pump', 'on')</code>, <code>state_attr('climate.r101', 'temperature')</code>,
+      <code>float(default)</code>, <code>has_value('sensor.x')</code>, <code>now()</code>,
+      <code>area_entities('Plant room')</code>. A template entity re-renders when an entity it references changes.</p>
+
+    <h3>Helpers</h3>
+    <p>Helpers are entities you create, not ones a device provides. They hold operator settings and derived
+      values.</p>
+    <div class="classify" data-cats="Helper,Template,Integration">
+      <div class="item" data-cat="Helper" data-why="input_number holds an operator-editable value, persisted across restarts."><span class="label">Comfort setpoint the facility manager can change (input_number)</span></div>
+      <div class="item" data-cat="Template" data-why="A derived value computed from other entities."><span class="label">"Heat pump COP" calculated from heat and electrical power</span></div>
+      <div class="item" data-cat="Integration" data-why="It comes from a device through a protocol driver."><span class="label">Outdoor temperature read from a KNX weather station</span></div>
+      <div class="item" data-cat="Helper" data-why="schedule is a built-in helper with weekly time blocks."><span class="label">Weekly occupancy schedule for the conference room</span></div>
+      <div class="item" data-cat="Helper" data-why="utility_meter is a helper that resets on a cycle, e.g. monthly."><span class="label">Monthly energy counter that resets on the 1st</span></div>
+      <div class="item" data-cat="Template" data-why="A template binary sensor with a delay_on derives a state from conditions."><span class="label">"Any window open on floor 2" binary sensor</span></div>
+    </div>
+
+    <div class="callout warn">Every entity can become <code>unavailable</code> or <code>unknown</code>. A template
+      like <code>{{ states('sensor.a') | float + 1 }}</code> fails when the sensor is unavailable, because
+      <code>float</code> without a default raises an error. Always give defaults or test <code>has_value()</code>
+      first, and decide what an automation should do when its input is missing.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A sensor sends the same 21.4 °C twice. Which timestamp moves?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="last_changed only moves when the state string changes.">last_changed</button>
+        <button class="opt" data-opt="b" data-why="last_updated moves when state or attributes change; neither did.">last_updated</button>
+        <button class="opt" data-opt="c" data-why="last_reported records any write, even with an identical value.">last_reported only</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Integration → config entry → device → entity; areas, floors and labels organise them.</li>
+      <li>States are strings with attributes and three timestamps. Treat <code>unavailable</code> as normal.</li>
+      <li>Helpers hold operator settings; templates derive values; integrations bring device data.</li>
+    </ul>
+  </section>
+
+  <!-- 19.5 -->
+  <section class="lesson" id="s5" data-num="19.5">
+    <h2>19.5 HA: automations, scripts, traces</h2>
+    <p>An <strong>automation</strong> is three lists: <strong>triggers</strong> (when to start), <strong>conditions</strong>
+      (whether to continue) and <strong>actions</strong> (what to do). A <strong>script</strong> is just an action
+      sequence with a name, callable from anywhere. Both are YAML, edited in the UI or in files.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Part</th><th>Common types</th><th>Notes</th></tr>
+      <tr><td>Triggers</td><td><code>state</code>, <code>numeric_state</code>, <code>time</code>, <code>time_pattern</code>, <code>event</code>, <code>mqtt</code>, <code>sun</code>, <code>template</code>, <code>homeassistant</code> (start)</td><td>A trigger fires on an <em>edge</em>. <code>numeric_state</code> fires when the value crosses the threshold, not while it stays above.</td></tr>
+      <tr><td>Conditions</td><td><code>state</code>, <code>numeric_state</code>, <code>time</code>, <code>template</code>, <code>and</code>/<code>or</code>/<code>not</code></td><td>Evaluated once, at trigger time.</td></tr>
+      <tr><td>Actions</td><td>call an action, <code>delay</code>, <code>wait_for_trigger</code>, <code>choose</code>, <code>if</code>, <code>repeat</code>, <code>parallel</code>, <code>variables</code></td><td>Long waits make the run "alive" for minutes; that is where modes matter.</td></tr>
+    </table></div>
+
+    <h3>Try it: build an automation</h3>
+    <figure class="viz" id="builder">
+      <div class="bp-row">
+        <label>Trigger <select class="bp-sel" data-k="t">
+          <option value="co2">CO₂ above 1000 ppm for 2 min</option>
+          <option value="door">Plant room door opened</option>
+          <option value="time">Every weekday at 06:30</option>
+        </select></label>
+        <label>Condition <select class="bp-sel" data-k="c">
+          <option value="none">None</option>
+          <option value="occ">Room is occupied</option>
+          <option value="hours">Between 07:00 and 19:00</option>
+        </select></label>
+        <label>Action <select class="bp-sel" data-k="a">
+          <option value="fan">Set ventilation to 80 %</option>
+          <option value="notify">Notify facility manager</option>
+          <option value="heat">Set heating to comfort 21 °C</option>
+        </select></label>
+      </div>
+      <pre class="code" aria-live="polite"></pre>
+      <figcaption>Generated YAML in the current syntax (2024.10 and later use <code>triggers:</code>/<code>actions:</code> and <code>trigger:</code> instead of <code>platform:</code>; the old form still works).</figcaption>
+    </figure>
+
+    <h3>Modes: what happens when it triggers again while running</h3>
+    <p>Imagine an automation "door opened → light on → wait 5 min → light off". The door opens again at minute 2.
+      The <code>mode</code> decides:</p>
+    <figure class="viz" id="modes">
+      <div class="controls seg" role="group" aria-label="Mode">
+        <button data-m="single" aria-pressed="true">single</button>
+        <button data-m="restart">restart</button>
+        <button data-m="queued">queued</button>
+        <button data-m="parallel">parallel</button>
+      </div>
+      <div class="lane-label">Triggers (minutes 0–15). Click the lane to add a trigger.</div>
+      <div class="lane" id="mdTrig" role="button" tabindex="0" aria-label="Trigger lane, click to add a trigger"></div>
+      <div class="lane-label">Runs (each takes 5 min)</div>
+      <div id="mdRuns"></div>
+      <div class="controls"><button class="btn secondary" data-act="clear">Reset to 0, 2, 9</button></div>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+    <div class="table-wrap"><table>
+      <tr><th>Mode</th><th>Behaviour</th><th>Good for</th></tr>
+      <tr><td><code>single</code> (default)</td><td>New trigger ignored while running; a warning is logged.</td><td>One-shot reactions.</td></tr>
+      <tr><td><code>restart</code></td><td>Stops the current run, starts again.</td><td>Motion-style "keep the light on" timers.</td></tr>
+      <tr><td><code>queued</code></td><td>Runs one after another (default max 10).</td><td>Sequenced commands to a slow device.</td></tr>
+      <tr><td><code>parallel</code></td><td>Runs simultaneously (default max 10).</td><td>Independent per-trigger work, e.g. per-room notifications.</td></tr>
+    </table></div>
+
+    <h3>Traces</h3>
+    <p>Every run stores a <strong>trace</strong>: which trigger fired, the trigger variables, each condition's result,
+      each action's result and timing, and the context chain. By default the last 5 traces per automation are kept
+      (<code>trace: stored_traces:</code> changes this). Traces are the first place to look when "the automation did
+      not run": usually it did run, and a condition said no.</p>
+
+    <div class="callout example">An office has "CO₂ above 1000 ppm for 2 min → ventilation 80 %". A trace shows that
+      at 10:14 the trigger fired, but the condition "room occupied" was false because the presence sensor was
+      <code>unavailable</code>. The fix is not in the automation logic; it is a dead Zigbee sensor.</div>
+
+    <div class="callout warn">A <code>numeric_state</code> trigger fires once when crossing the threshold. If Home
+      Assistant restarts while CO₂ is already at 1,400 ppm, nothing fires. Robust automations add a
+      <code>homeassistant: start</code> trigger and re-check the condition, or use a template binary sensor and
+      act on its state.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A "motion → light on, wait 3 min, light off" automation should keep the light on while motion continues. Which mode?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="single ignores new motion; the light turns off 3 min after the first trigger.">single</button>
+        <button class="opt" data-opt="b" data-why="restart cancels the pending wait and starts a fresh 3-minute timer.">restart</button>
+        <button class="opt" data-opt="c" data-why="queued runs complete cycles one after another, flicking the light off between them.">queued</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Triggers are edges; conditions are checked once; actions may wait.</li>
+      <li>Choose the mode deliberately: single, restart, queued, parallel.</li>
+      <li>Read the trace before changing the logic.</li>
+    </ul>
+  </section>
+
+  <!-- 19.6 -->
+  <section class="lesson" id="s6" data-num="19.6">
+    <h2>19.6 Time-series data: recorder, InfluxDB, Grafana</h2>
+    <p>Home Assistant's <strong>recorder</strong> writes every state change and most events to a SQL database
+      (SQLite file <code>home-assistant_v2.db</code> by default). It keeps <strong>10 days</strong> by default
+      (<code>purge_keep_days</code>) and purges nightly. It is built for the History panel and debugging, not for
+      years of trend analysis.</p>
+    <p>On top, HA computes <strong>statistics</strong> for entities with a <code>state_class</code>
+      (<code>measurement</code>, <code>total</code>, <code>total_increasing</code>): 5-minute short-term statistics
+      (purged with the states) and <strong>hourly long-term statistics</strong> (mean, min, max, or sum) kept
+      indefinitely. The Energy dashboard reads these. They are compact: one row per entity per hour.</p>
+
+    <h3>Data flow</h3>
+    <figure class="viz" id="tsflow">
+      <div class="controls seg" role="group" aria-label="Path">
+        <button data-p="rec" aria-pressed="true">Recorder</button>
+        <button data-p="stats">Statistics</button>
+        <button data-p="influx">InfluxDB + Grafana</button>
+      </div>
+      <svg viewBox="0 0 640 230" role="img" aria-label="Data flow from state machine to storage and dashboards">
+        <defs><marker id="ah19b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="tf-sm" x="10" y="90" width="110" height="50" rx="8"/><text x="65" y="112" text-anchor="middle">State machine</text><text class="small" x="65" y="128" text-anchor="middle">state_changed</text>
+        <rect class="box" id="tf-rec" x="170" y="20" width="120" height="50" rx="8"/><text x="230" y="42" text-anchor="middle">Recorder</text><text class="small" x="230" y="58" text-anchor="middle">states, events</text>
+        <rect class="box" id="tf-st" x="170" y="160" width="120" height="50" rx="8"/><text x="230" y="182" text-anchor="middle">Statistics</text><text class="small" x="230" y="198" text-anchor="middle">5 min, 1 h</text>
+        <rect class="box" id="tf-db" x="340" y="90" width="120" height="50" rx="8"/><text x="400" y="112" text-anchor="middle">SQL DB</text><text class="small" x="400" y="128" text-anchor="middle">SQLite / MariaDB</text>
+        <rect class="box" id="tf-ix" x="340" y="10" width="120" height="50" rx="8"/><text x="400" y="32" text-anchor="middle">InfluxDB</text><text class="small" x="400" y="48" text-anchor="middle">retention policy</text>
+        <rect class="box" id="tf-ui" x="510" y="160" width="120" height="50" rx="8"/><text x="570" y="182" text-anchor="middle">HA History</text><text class="small" x="570" y="198" text-anchor="middle">Energy, graphs</text>
+        <rect class="box" id="tf-gr" x="510" y="10" width="120" height="50" rx="8"/><text x="570" y="32" text-anchor="middle">Grafana</text><text class="small" x="570" y="48" text-anchor="middle">dashboards</text>
+        <path class="arrow" id="tw1" d="M120,105 L168,52" marker-end="url(#ah19b)"/>
+        <path class="arrow" id="tw2" d="M120,125 L168,180" marker-end="url(#ah19b)"/>
+        <path class="arrow" id="tw3" d="M290,52 L338,105" marker-end="url(#ah19b)"/>
+        <path class="arrow" id="tw4" d="M290,180 L338,125" marker-end="url(#ah19b)"/>
+        <path class="arrow" id="tw5" d="M460,125 L508,180" marker-end="url(#ah19b)"/>
+        <path class="arrow" id="tw6" d="M120,95 C200,0 280,10 338,32" marker-end="url(#ah19b)"/>
+        <path class="arrow" id="tw7" d="M460,35 L508,35" marker-end="url(#ah19b)"/>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>Try it: storage estimator</h3>
+    <figure class="viz" id="store">
+      <div class="bp-row">
+        <label>Recorded entities: <output data-o="n">800</output><input type="range" min="100" max="5000" step="100" value="800" data-k="n"></label>
+        <label>Changes per entity per hour: <output data-o="r">12</output><input type="range" min="1" max="360" value="12" data-k="r"></label>
+        <label>Recorder days: <output data-o="d">10</output><input type="range" min="1" max="365" value="10" data-k="d"></label>
+        <label>Years in InfluxDB: <output data-o="y">5</output><input type="range" min="1" max="10" value="5" data-k="y"></label>
+      </div>
+      <div class="bars"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Rough planning figures: about 250 bytes per recorder state row including indexes and attributes, about 3 bytes per compressed InfluxDB value, about 100 bytes per long-term statistics row. Real numbers vary widely with attributes and data shape.</figcaption>
+    </figure>
+
+    <p><strong>InfluxDB</strong> is a dedicated time-series database. The HA InfluxDB integration writes each state
+      change as a point in line protocol, for example
+      <code>°C,entity_id=r101_temp value=21.4 1728111600000000000</code> (by default the measurement is the unit).
+      InfluxDB 1.x is queried with InfluxQL, 2.x with Flux or InfluxQL, and 3.x with SQL. Columnar compression makes
+      a slowly varying float cost a few bytes. <strong>Grafana</strong> sits on top: dashboards, heatmaps, alerting,
+      and it can also read PostgreSQL/TimescaleDB, Prometheus and others. Commercial BMS do the same internally: Desigo CC
+      keeps trends in SQL Server; Niagara keeps histories per station and can export them.</p>
+
+    <div class="callout example">A school with 1,200 entities changes about 15 times per hour each. That is
+      roughly 430,000 rows per day. The recorder with 10 days needs on the order of 1 GB. The same data for five years
+      in InfluxDB is a few gigabytes. The facility team keeps the HA recorder short, excludes noisy entities, and uses
+      Grafana on InfluxDB for multi-year energy reports.</div>
+
+    <div class="callout warn">SQLite on an SD card with a high write rate wears the card and corrupts databases on power
+      loss. Exclude chatty entities (signal strength, uptime, per-second power) from the recorder with
+      <code>exclude</code> filters, use an SSD, and back up the database while HA is stopped or via HA's own backup.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">You need hourly average room temperature for the last three years in HA's own UI. What provides it without extra databases?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The recorder keeps raw states only for purge_keep_days, 10 by default.">Raw recorder states</button>
+        <button class="opt" data-opt="b" data-why="Hourly long-term statistics are kept indefinitely for entities with a state_class.">Long-term statistics, if the sensor has a state_class</button>
+        <button class="opt" data-opt="c" data-why="Traces store automation runs, not sensor history.">Automation traces</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Recorder: raw history, short retention, for debugging and the History view.</li>
+      <li>Long-term statistics: hourly aggregates, kept forever, needs <code>state_class</code>.</li>
+      <li>InfluxDB/TimescaleDB + Grafana for years of raw trends and analysis.</li>
+    </ul>
+  </section>
+
+  <!-- 19.7 -->
+  <section class="lesson" id="s7" data-num="19.7">
+    <h2>19.7 Limits of open-source platforms in commercial buildings</h2>
+    <p>Open-source platforms are technically capable. The limits in commercial buildings are mostly about
+      <strong>accountability</strong>, <strong>certification</strong> and <strong>operations over 15–25 years</strong>,
+      not about features.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Requirement</th><th>Commercial BMS</th><th>Home Assistant / open source</th></tr>
+      <tr><td>Tender compliance (e.g. "BTL-listed B-OWS", EN ISO 16484)</td><td>Listed products, documented.</td><td>Generally not certified.</td></tr>
+      <tr><td>Operator roles, audit trail of commands</td><td>Fine-grained rights per area and point; audit log standard.</td><td>Admin / user only; logbook shows changes but is not a tamper-resistant audit trail.</td></tr>
+      <tr><td>Alarm management (priorities, acknowledge, shelving)</td><td>Built in, often aligned with ISA-18.2 ideas.</td><td>Must be built from helpers and automations, or a custom front end.</td></tr>
+      <tr><td>Redundancy / hot standby</td><td>Server redundancy options exist on major platforms.</td><td>No native HA clustering; rely on VM-level restart and backups.</td></tr>
+      <tr><td>Support and liability</td><td>Contracted SLA, certified integrators, spare parts for 10+ years.</td><td>Community, or your own team; you carry the liability.</td></tr>
+      <tr><td>Change pace</td><td>Major releases every 1–2 years, long-term support.</td><td>Monthly releases; deprecations within months.</td></tr>
+      <tr><td>Cost of entry</td><td>Licences plus engineering, often tens of thousands of euros.</td><td>Free software; cost is in engineering and upkeep.</td></tr>
+      <tr><td>Integration breadth</td><td>Strong on BACnet/Modbus/OPC, weak on consumer IoT and AV.</td><td>Very broad, quality uneven.</td></tr>
+    </table></div>
+
+    <h3>Try it: which platform fits these requirements?</h3>
+    <figure class="viz" id="fitter">
+      <div class="reqs"></div>
+      <div class="fit"></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>A teaching heuristic, not procurement advice. Each requirement adds or removes points per option.</figcaption>
+    </figure>
+
+    <h3>A common hybrid</h3>
+    <p>Many projects land on a hybrid: certified controllers and a commercial or Niagara supervisor for HVAC and anything
+      in the tender's compliance scope; fire and security on their own certified systems; an open platform or a custom
+      front end on top for user experience, AV, IoT and analytics, reading through BACnet/IP, MQTT or an API. The
+      open layer adds value; it never becomes the only thing that keeps the building safe.</p>
+
+    <div class="callout example">A 12,000 m² office tender asks for a BTL-listed operator workstation, a five-level
+      operator rights model and 24/7 vendor support. A commercial BMS is the safe answer. The tenant then adds Home
+      Assistant behind its own VLAN to integrate meeting-room panels and AV, reading occupancy and temperature from
+      the BMS via BACnet/IP read-only. If HA dies, nobody is cold.</div>
+
+    <div class="callout warn">The "bus factor" is real. A building run on one engineer's custom automations becomes
+      unmaintainable when that person leaves. If you use open source commercially, document it as you would a
+      commercial system: point lists, architecture, backup and restore procedure, upgrade policy, and a named support
+      owner.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Which requirement most clearly rules out Home Assistant as the sole BMS?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="HA has a Modbus integration.">Modbus TCP integration of a heat pump</button>
+        <button class="opt" data-opt="b" data-why="HA dashboards and the API can do this well.">A modern tablet dashboard</button>
+        <button class="opt" data-opt="c" data-why="Certification and tender compliance are what open platforms usually cannot provide.">A tender requiring a BTL-listed operator workstation and audited operator rights</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The limits are certification, audited operation, support and long-term stability.</li>
+      <li>Hybrids work: certified core, open layer on top, read-mostly.</li>
+      <li>Document open systems as rigorously as commercial ones.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">1. Which Niagara element is a station's protocol for talking to other stations?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Fox runs on TCP 1911, foxs (TLS) on 4911.">Fox</button>
+        <button class="opt" data-opt="b" data-why="BQL is a query language, not a station-to-station protocol.">BQL</button>
+        <button class="opt" data-opt="c" data-why="Haystack is a tagging model.">Haystack</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. What makes a SCADA tag trustworthy after a communication failure?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Faster polling does not help a dead link.">A shorter poll interval</button>
+        <button class="opt" data-opt="b" data-why="Compression reduces storage, it says nothing about validity.">Historian compression</button>
+        <button class="opt" data-opt="c" data-why="Quality marks the value as bad or uncertain.">Its quality attribute</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">3. <code>{{ states('sensor.x') | float }}</code> errors at night. The most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Templates run at any time.">Templates cannot run after midnight</button>
+        <button class="opt" data-opt="b" data-why="'unavailable' cannot be converted without a default.">The sensor became unavailable and float has no default</button>
+        <button class="opt" data-opt="c" data-why="states() returns a string, which float converts when numeric.">states() returns a number already</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. An automation with mode <code>single</code> runs a 5-minute sequence. It triggers again at minute 2. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is restart.">The run restarts</button>
+        <button class="opt" data-opt="b" data-why="That is queued.">A second run starts at minute 5</button>
+        <button class="opt" data-opt="c" data-why="That is parallel.">Two runs execute together</button>
+        <button class="opt" data-opt="d" data-why="single drops the new trigger and logs a warning.">The new trigger is ignored</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">5. A good role for an open-source platform in a large certified office building?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Read-mostly integration layer for UX and IoT, with the certified BMS still in charge.">A read-mostly layer for AV, IoT and user panels on top of the certified BMS</button>
+        <button class="opt" data-opt="b" data-why="Fire systems must remain certified and independent.">Replacing the fire alarm panel's logic</button>
+        <button class="opt" data-opt="c" data-why="Fast loops belong in field controllers on any platform.">Running the AHU supply-air PID loop over Wi-Fi</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="18-sensors-metering.html">← Chapter 18</a>
+    <a class="btn" href="20-custom-frontend.html">Chapter 20 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 19 visualizations.
+
+// 19.1 Architecture comparison.
+(() => {
+  const fig = document.getElementById("arch");
+  const svg = fig.querySelector("svg");
+  // Each tier: [label, sublabel, own software?]
+  const P = {
+    desigo: {
+      clients: [["Desigo CC client", "installed", 1], ["Web / Flex client", "browser", 1], ["Mobile", "app", 0]],
+      server: [["Desigo CC server", "Windows", 1], ["SQL Server", "history, config", 0], ["Fire / security", "subsystems", 0]],
+      edge: [["PXC controllers", "Desigo", 1], ["BACnet devices", "3rd party", 0], ["Modbus / OPC", "drivers", 0]],
+      txt: "Desigo CC: one management station for many disciplines. Strong at integrating Siemens fire and security with HVAC. Server-centric: the edge controllers are separate products.",
+    },
+    niagara: {
+      clients: [["Workbench", "engineering", 1], ["HTML5 browser", "operators", 1], ["API / export", "Haystack, oBIX", 0]],
+      server: [["Supervisor station", "PC or VM", 1], ["Histories", "per station", 1], ["Alarms", "routed up", 1]],
+      edge: [["JACE stations", "same software", 1], ["BACnet / Modbus", "drivers", 0], ["KNX / LON / MQTT", "drivers", 0]],
+      txt: "Niagara: the same station software runs on every JACE and on the Supervisor, linked by Fox. Each JACE can work alone; the Supervisor aggregates.",
+    },
+    ebo: {
+      clients: [["WorkStation", "engineering", 1], ["WebStation", "browser", 1], ["Mobile", "app", 0]],
+      server: [["Enterprise Central", "multi-site", 1], ["Enterprise Server", "site", 1], ["Reports / history", "database", 0]],
+      edge: [["Automation Servers", "AS-P / AS-B", 1], ["SpaceLogic I/O", "Schneider", 0], ["BACnet / Modbus / LON", "3rd party", 0]],
+      txt: "EcoStruxure BO: one software model from the field Automation Server up to Enterprise Server and Enterprise Central. Engineering objects look the same at every tier.",
+    },
+  };
+  const tier = (items, y, tierName) => items.map(([a, b, own], i) => {
+    const x = 120 + i * 175;
+    return `<rect class="${own ? "soft" : "box"}" x="${x}" y="${y}" width="160" height="56" rx="8"/>
+      <text x="${x + 80}" y="${y + 24}" text-anchor="middle">${a}</text>
+      <text class="small" x="${x + 80}" y="${y + 42}" text-anchor="middle">${b}</text>`;
+  }).join("") + `<text class="small" x="10" y="${y + 33}">${tierName}</text>`;
+  const draw = (p) => {
+    const d = P[p];
+    svg.innerHTML = tier(d.clients, 10, "Clients") +
+      `<path class="arrow" d="M375,68 L375,112"/>` +
+      tier(d.server, 116, "Server") +
+      `<path class="arrow ${p === "niagara" ? "" : "dash"}" d="M375,174 L375,226"/>` +
+      `<text class="small" x="385" y="204">${p === "niagara" ? "Fox / foxs" : p === "ebo" ? "EBO protocol / BACnet/IP" : "BACnet/IP and others"}</text>` +
+      tier(d.edge, 232, "Edge");
+    fig.querySelector(".readout").textContent = d.txt;
+    fig.querySelectorAll("[data-p]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === p));
+  };
+  fig.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.p)));
+  draw("desigo");
+})();
+
+// 19.2 SCADA pipeline stepper.
+(() => {
+  const fig = document.getElementById("scada");
+  const $ = (id) => fig.querySelector("#" + id);
+  let down = false, i = -1;
+  const UP = [
+    { lit: ["sc0"], v: { scv0: "reg 3001 = 2685" }, t: "1 · The sensor's Modbus register holds 2685 (raw, ×0.01 °C)." },
+    { lit: ["sc1", "scw1"], v: {}, t: "2 · The driver polls in a block read with 9 other registers, every 5 s." },
+    { lit: ["sc2", "scw2"], v: { scv2: "26.85 °C · good" }, t: "3 · Scaling ×0.01 gives 26.85 °C. The tag gets a timestamp and quality GOOD." },
+    { lit: ["sc3", "scw3"], v: { scv3: "> 26 °C · delay 300 s" }, t: "4 · The alarm engine sees 26.85 > 26. It starts a 300 s delay to avoid nuisance alarms." },
+    { lit: ["sc4", "scw4"], v: { scv4: "stored (Δ ≥ 0.2)" }, t: "5 · The historian stores the value because it moved more than the 0.2 K deadband." },
+    { lit: ["sc6", "scw6", "scw7"], v: { scv6: "26.9 °C ⚠" }, t: "6 · After 300 s the alarm is raised. The HMI shows the value and an unacknowledged alarm." },
+  ];
+  const DOWN = [
+    { lit: ["sc0"], v: { scv0: "unreachable" }, t: "1 · The Modbus gateway stops answering." },
+    { lit: ["sc1", "scw1"], v: {}, t: "2 · The driver times out after 1 s and retries 3 times." },
+    { lit: ["sc2", "scw2"], v: { scv2: "26.85 °C · BAD" }, t: "3 · The tag keeps its last value but quality becomes BAD (comm failure)." },
+    { lit: ["sc3", "scw3"], v: { scv3: "comm alarm" }, t: "4 · A device communication alarm is raised. Limit alarms on bad data are suppressed." },
+    { lit: ["sc4", "scw4"], v: { scv4: "gap marked" }, t: "5 · The historian records a gap or bad-quality marker, not a flat line." },
+    { lit: ["sc6", "scw6", "scw7"], v: { scv6: "26.9 °C ?" }, t: "6 · The HMI greys the value out or shows a quality symbol. The operator knows not to trust it." },
+  ];
+  const DEF = { scv0: "Modbus reg", scv2: "value·time·quality", scv3: "limit 26 °C", scv4: "deadband 0.2", scv6: "—" };
+  const render = () => {
+    const S = down ? DOWN : UP;
+    fig.querySelectorAll(".lit, .lit-line").forEach((e) => e.classList.remove("lit", "lit-line"));
+    const v = { ...DEF };
+    for (let k = 0; k <= i; k++) Object.assign(v, S[k].v);
+    for (const k in v) $(k).textContent = v[k];
+    if (i < 0) { fig.querySelector(".readout").textContent = "Press “Next step”. Toggle “Gateway dead” to see quality handling."; return; }
+    S[i].lit.forEach((id) => $(id).classList.add(id.startsWith("scw") ? "lit-line" : "lit"));
+    fig.querySelector(".readout").textContent = S[i].t;
+  };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(UP.length - 1, i + 1); render(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(-1, i - 1); render(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { i = -1; render(); });
+  fig.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () => {
+    down = b.dataset.link === "down";
+    fig.querySelectorAll("[data-link]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    i = -1; render();
+  }));
+  render();
+})();
+
+// 19.4 Entity model explorer.
+(() => {
+  const fig = document.getElementById("model");
+  const T0 = new Date("2026-03-10T09:00:00Z").getTime();
+  let clock = T0;
+  const iso = (t) => new Date(t).toISOString().slice(11, 19) + "Z";
+  const ent = {
+    id: "sensor.hp1_flow_temperature", unique_id: "modbus_10.0.20.15_1_3001", state: "42.5",
+    attrs: { unit_of_measurement: "°C", device_class: "temperature", state_class: "measurement", friendly_name: "HP-1 Flow temperature" },
+    lc: T0, lu: T0, lr: T0, area: "Plant room",
+  };
+  const NODES = [
+    { k: "int", label: "modbus", tag: "integration", d: () => ({ domain: "modbus", type: "hub integration", entries: "1" }) },
+    { k: "ce", label: "Heat pump gateway", tag: "config entry", lvl: 1, d: () => ({ host: "10.0.20.15", port: "502", state: "loaded" }) },
+    { k: "dev", label: "Heat pump HP-1", tag: "device", lvl: 2, d: () => ({ manufacturer: "ExampleTherm", model: "AW-16", sw_version: "3.12", area: "Plant room" }) },
+    { k: "e1", label: "sensor.hp1_flow_temperature", tag: "entity", lvl: 3 },
+    { k: "e2", label: "binary_sensor.hp1_compressor", tag: "entity", lvl: 3, d: () => ({ state: '"on"', area: "Plant room (from device)", device_class: "running" }) },
+    { k: "e3", label: "switch.hp1_enable", tag: "entity", lvl: 3, d: () => ({ state: '"on"', area: "Plant room (from device)", labels: "critical" }) },
+    { k: "area", label: "Plant room", tag: "area", d: () => ({ floor: "Basement", devices: "1", entities: "3" }) },
+  ];
+  let sel = "e1";
+  const tree = fig.querySelector(".tree");
+  const mkBtn = (n) => `<button data-n="${n.k}" aria-pressed="${n.k === sel}">${n.label}<span class="tag">${n.tag}</span></button>`;
+  // Nested list built from levels.
+  tree.innerHTML = `<li>${mkBtn(NODES[0])}<ul><li>${mkBtn(NODES[1])}<ul><li>${mkBtn(NODES[2])}<ul>` +
+    NODES.slice(3, 6).map((n) => `<li>${mkBtn(n)}</li>`).join("") + `</ul></li></ul></li></ul></li><li>${mkBtn(NODES[6])}</li>`;
+  const entDetail = () => ({
+    entity_id: ent.id, unique_id: ent.unique_id, state: JSON.stringify(ent.state),
+    ...Object.fromEntries(Object.entries(ent.attrs).map(([k, v]) => ["attr." + k, v])),
+    last_changed: iso(ent.lc), last_updated: iso(ent.lu), last_reported: iso(ent.lr), area: ent.area + " (from device)",
+  });
+  const render = () => {
+    const n = NODES.find((x) => x.k === sel);
+    fig.querySelector("#mdTitle").textContent = `${n.label} (${n.tag})`;
+    const d = n.k === "e1" ? entDetail() : n.d();
+    fig.querySelector("#mdKv").innerHTML = Object.entries(d).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    tree.querySelectorAll("[data-n]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.n === sel));
+    fig.querySelectorAll("[data-act]").forEach((b) => (b.disabled = sel !== "e1"));
+  };
+  tree.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-n]");
+    if (!b) return;
+    sel = b.dataset.n; render();
+    fig.querySelector(".readout").textContent = sel === "e1" ? "Try the buttons to see which timestamps move." : "Select the flow temperature entity to try state updates.";
+  });
+  const act = {
+    change: () => { ent.state = (parseFloat(ent.state) + 0.5 + Math.random()).toFixed(1); ent.lc = ent.lu = ent.lr = clock; return "State changed: last_changed, last_updated and last_reported all move."; },
+    attr: () => { ent.attrs.friendly_name = ent.attrs.friendly_name.endsWith("*") ? "HP-1 Flow temperature" : "HP-1 Flow temperature*"; ent.lu = ent.lr = clock; return "Only an attribute changed: last_updated and last_reported move, last_changed stays."; },
+    same: () => { if (ent.state === "unavailable") ent.state = "42.5", ent.lc = ent.lu = clock; ent.lr = clock; return "Identical value written: only last_reported moves. No state_changed event in the history graph."; },
+    dead: () => { ent.state = "unavailable"; ent.lc = ent.lu = ent.lr = clock; return 'Gateway offline: state becomes "unavailable" (a string). Templates and automations must handle it.'; },
+  };
+  fig.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => {
+    clock += 37000;
+    fig.querySelector(".readout").textContent = act[b.dataset.act]();
+    render();
+  }));
+  render();
+})();
+
+// 19.5 Automation builder.
+(() => {
+  const fig = document.getElementById("builder");
+  const T = {
+    co2: "  - trigger: numeric_state\n    entity_id: sensor.meeting_co2\n    above: 1000\n    for: \"00:02:00\"",
+    door: "  - trigger: state\n    entity_id: binary_sensor.plant_room_door\n    to: \"on\"",
+    time: "  - trigger: time\n    at: \"06:30:00\"\n    weekday: [mon, tue, wed, thu, fri]",
+  };
+  const C = {
+    none: "conditions: []",
+    occ: "conditions:\n  - condition: state\n    entity_id: binary_sensor.meeting_occupied\n    state: \"on\"",
+    hours: "conditions:\n  - condition: time\n    after: \"07:00:00\"\n    before: \"19:00:00\"",
+  };
+  const A = {
+    fan: "  - action: fan.set_percentage\n    target:\n      entity_id: fan.meeting_ahu\n    data:\n      percentage: 80",
+    notify: "  - action: notify.facility_manager\n    data:\n      message: \"{{ trigger.to_state.name }}: {{ trigger.to_state.state }}\"",
+    heat: "  - action: climate.set_temperature\n    target:\n      area_id: meeting_room\n    data:\n      temperature: 21",
+  };
+  const pre = fig.querySelector("pre");
+  const sel = (k) => fig.querySelector(`[data-k=${k}]`).value;
+  const draw = () => {
+    let note = "";
+    if (sel("t") === "time" && sel("a") === "notify") note = "\n# trigger.to_state does not exist for a time trigger: this template fails.";
+    pre.textContent = `alias: Example automation\nmode: single\ntriggers:\n${T[sel("t")]}\n${C[sel("c")]}\nactions:\n${A[sel("a")]}${note}`;
+  };
+  fig.querySelectorAll("select").forEach((s) => s.addEventListener("change", draw));
+  draw();
+})();
+
+// 19.5 Mode timeline.
+(() => {
+  const fig = document.getElementById("modes");
+  const lane = fig.querySelector("#mdTrig");
+  const runsBox = fig.querySelector("#mdRuns");
+  const MAX = 15, DUR = 5;
+  let mode = "single", trig = [0, 2, 9];
+  const pct = (t) => (t / MAX) * 100;
+  const simulate = () => {
+    const runs = []; // {s, e, cut, row}
+    const ts = [...trig].sort((a, b) => a - b);
+    let ignored = 0;
+    if (mode === "single") {
+      let busyTill = -1;
+      ts.forEach((t) => { if (t < busyTill) ignored++; else { runs.push({ s: t, e: t + DUR, row: 0 }); busyTill = t + DUR; } });
+    } else if (mode === "restart") {
+      ts.forEach((t, i) => {
+        const last = runs[runs.length - 1];
+        if (last && t < last.e) { last.e = t; last.cut = true; }
+        runs.push({ s: t, e: t + DUR, row: 0 });
+      });
+    } else if (mode === "queued") {
+      let free = 0;
+      ts.forEach((t) => { const s = Math.max(t, free); runs.push({ s, e: s + DUR, row: 0, wait: s > t }); free = s + DUR; });
+    } else {
+      const rowsEnd = [];
+      ts.forEach((t) => {
+        let r = rowsEnd.findIndex((e) => e <= t);
+        if (r < 0) { r = rowsEnd.length; rowsEnd.push(0); }
+        rowsEnd[r] = t + DUR;
+        runs.push({ s: t, e: t + DUR, row: r });
+      });
+    }
+    return { runs, ignored };
+  };
+  const render = () => {
+    lane.innerHTML = trig.map((t) => `<div class="tick" style="left:${pct(t)}%" title="trigger at ${t} min"></div>`).join("");
+    const { runs, ignored } = simulate();
+    const rows = Math.max(1, ...runs.map((r) => r.row + 1));
+    runsBox.innerHTML = Array.from({ length: rows }, (_, r) =>
+      `<div class="lane">${runs.filter((x) => x.row === r).map((x) => {
+        const e = Math.min(MAX, x.e), w = Math.max(0.8, pct(e) - pct(x.s));
+        return `<div class="run ${x.cut ? "cut" : ""}" style="left:${pct(x.s)}%;width:${w}%">${x.cut ? "stopped" : x.s + "–" + x.e}</div>`;
+      }).join("")}</div>`).join("");
+    const msg = {
+      single: `single: ${ignored} trigger(s) ignored while busy. The light may go off while the door is still in use.`,
+      restart: "restart: each new trigger cancels the running sequence and starts a fresh 5-minute timer.",
+      queued: "queued: runs wait their turn. A trigger at minute 2 starts its run at minute 5.",
+      parallel: "parallel: overlapping runs execute at once. Both may switch the same light at different times.",
+    };
+    fig.querySelector(".readout").textContent = msg[mode];
+    fig.querySelectorAll("[data-m]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === mode));
+  };
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { mode = b.dataset.m; render(); }));
+  lane.addEventListener("click", (e) => {
+    const r = lane.getBoundingClientRect();
+    const t = Math.round(((e.clientX - r.left) / r.width) * MAX);
+    if (trig.length < 8 && t >= 0 && t < MAX && !trig.includes(t)) { trig.push(t); render(); }
+  });
+  lane.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    const free = [...Array(MAX).keys()].find((t) => !trig.includes(t) && t > Math.max(...trig));
+    if (free !== undefined && trig.length < 8) { trig.push(free); render(); }
+  });
+  fig.querySelector("[data-act=clear]").addEventListener("click", () => { trig = [0, 2, 9]; render(); });
+  render();
+})();
+
+// 19.6 Data flow paths.
+(() => {
+  const fig = document.getElementById("tsflow");
+  const PATHS = {
+    rec: { lit: ["tf-sm", "tf-rec", "tf-db", "tf-ui", "tw1", "tw3", "tw5"], t: "Every state change is a row in the states table. Kept 10 days by default, then purged. Feeds the History panel and logbook." },
+    stats: { lit: ["tf-sm", "tf-st", "tf-db", "tf-ui", "tw2", "tw4", "tw5"], t: "Entities with a state_class get 5-minute and hourly aggregates. Hourly rows are kept indefinitely and feed the Energy dashboard." },
+    influx: { lit: ["tf-sm", "tf-ix", "tf-gr", "tw6", "tw7"], t: "The InfluxDB integration writes each state change as a point. InfluxDB retention is set per bucket; Grafana queries it for long-term dashboards." },
+  };
+  const draw = (p) => {
+    fig.querySelectorAll(".lit, .lit-line").forEach((e) => e.classList.remove("lit", "lit-line"));
+    PATHS[p].lit.forEach((id) => fig.querySelector("#" + id).classList.add(id.startsWith("tw") ? "lit-line" : "lit"));
+    fig.querySelector(".readout").textContent = PATHS[p].t;
+    fig.querySelectorAll("[data-p]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === p));
+  };
+  fig.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.p)));
+  draw("rec");
+})();
+
+// 19.6 Storage estimator.
+(() => {
+  const fig = document.getElementById("store");
+  const v = (k) => Number(fig.querySelector(`[data-k=${k}]`).value);
+  const fmt = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : b >= 1e6 ? (b / 1e6).toFixed(0) + " MB" : (b / 1e3).toFixed(0) + " kB";
+  const draw = () => {
+    const n = v("n"), r = v("r"), d = v("d"), y = v("y");
+    ["n", "r", "d", "y"].forEach((k) => (fig.querySelector(`[data-o=${k}]`).textContent = v(k)));
+    const perDay = n * r * 24;
+    const rec = perDay * d * 250;
+    const lts = n * 24 * 365 * y * 100 * 0.3; // roughly 30 % of entities have a state_class
+    const inf = perDay * 365 * y * 3;
+    const rows = [["Recorder (SQL)", rec], ["Long-term stats", lts], ["InfluxDB", inf]];
+    const max = Math.max(...rows.map((x) => x[1]));
+    fig.querySelector(".bars").innerHTML = rows.map(([l, b]) =>
+      `<div class="bar"><span>${l}</span><span class="track"><span class="${l.startsWith("Rec") && b > 5e9 ? "warnfill" : ""}" style="width:${Math.max(1, (b / max) * 100)}%"></span></span><b>${fmt(b)}</b></div>`).join("");
+    fig.querySelector(".readout").textContent = `${perDay.toLocaleString("en")} state rows/day` +
+      (rec > 5e9 ? " · recorder above 5 GB: exclude noisy entities or shorten purge_keep_days." : "");
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 19.7 Platform fit heuristic.
+(() => {
+  const fig = document.getElementById("fitter");
+  const OPTS = ["Commercial BMS", "Niagara-based", "Home Assistant", "Hybrid"];
+  // Score deltas per option for each requirement.
+  const REQ = [
+    ["Tender requires BTL-listed workstation", [3, 3, -4, 2]],
+    ["Audited operator rights per area", [3, 3, -3, 2]],
+    ["24/7 contracted vendor support", [3, 2, -3, 1]],
+    ["Consumer IoT, AV and app integrations", [-2, 0, 3, 3]],
+    ["Very low software budget", [-3, -1, 3, 0]],
+    ["In-house software team available", [0, 1, 2, 2]],
+    ["Fire and security on the same station", [2, 1, -2, 0]],
+    ["Custom modern UX for occupants", [-1, 0, 2, 3]],
+  ];
+  fig.querySelector(".reqs").innerHTML = REQ.map(([l], i) => `<label><input type="checkbox" data-i="${i}"> ${l}</label>`).join("");
+  const draw = () => {
+    const on = [...fig.querySelectorAll("input:checked")].map((c) => Number(c.dataset.i));
+    const sc = OPTS.map((_, o) => on.reduce((s, i) => s + REQ[i][1][o], 0));
+    const best = Math.max(...sc), worst = Math.min(...sc);
+    fig.querySelector(".fit").innerHTML = OPTS.map((o, i) =>
+      `<div class="${on.length && sc[i] === best ? "good" : on.length && sc[i] === worst ? "poor" : ""}"><b>${o}</b>score ${sc[i] > 0 ? "+" : ""}${sc[i]}</div>`).join("");
+    fig.querySelector(".readout").textContent = on.length ? `Best fit: ${OPTS.filter((_, i) => sc[i] === best).join(", ")}` : "Tick the requirements of a project.";
+  };
+  fig.querySelector(".reqs").addEventListener("change", draw);
+  draw();
+})();
+</script>
+</body>
+</html>

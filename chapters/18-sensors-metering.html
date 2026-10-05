@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sensors and Metering</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .sm-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; margin: 10px 0; }
+  .sm-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .sm-row input[type=range] { width: 100%; }
+  .sm-sel, .sm-in {
+    font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0;
+  }
+  .sm-out { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-top: 10px; }
+  .sm-out div { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; font-size: 13px; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+  .sm-out b { display: block; font: 600 18px var(--mono); color: var(--text); }
+  .sm-out div.good { border-color: var(--ok); background: var(--ok-soft); }
+  .sm-out div.good b { color: var(--ok); }
+  .sm-out div.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .sm-out div.bad b { color: var(--bad); }
+  .sm-out div.mid { border-color: var(--example); background: var(--example-soft); }
+  .sm-out div.mid b { color: var(--example); }
+  svg .grid-l { stroke: var(--border); stroke-width: 1; }
+  svg .curve { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+  svg .curve-2 { fill: none; stroke: var(--example); stroke-width: 2; stroke-dasharray: 6 4; }
+  svg .curve-bad { fill: none; stroke: var(--bad); stroke-width: 2; }
+  svg .band { fill: var(--ok-soft); }
+  svg .fill-example { fill: var(--example); }
+  svg .stroke-accent { stroke: var(--accent); }
+  svg .stroke-bad { stroke: var(--bad); }
+  svg .stroke-ok { stroke: var(--ok); }
+  .room [role=button] rect, .room [role=button] circle { stroke: var(--border); stroke-width: 2; fill: var(--surface); transition: fill .15s; }
+  .room [role=button]:hover rect, .room [role=button]:hover circle { stroke: var(--accent); }
+  .room [aria-pressed=true] rect, .room [aria-pressed=true] circle { fill: var(--accent-soft); stroke: var(--accent); }
+  .room [role=button]:focus-visible circle { stroke: var(--accent); stroke-width: 3; }
+  .tag-ok { color: var(--ok); font-weight: 700; }
+  .tag-bad { color: var(--bad); font-weight: 700; }
+  .tag-mid { color: var(--example); font-weight: 700; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="18">
+<div class="content">
+  <div class="kicker">Chapter 18</div>
+  <h1>Sensors and metering</h1>
+  <p class="lead">Every control loop, alarm and energy report starts with a number from a sensor or a meter.
+    This chapter looks at how those numbers are produced, how they go wrong, and how to make them trustworthy:
+    resistance thermometers, air quality sensors, leak and gas detection, energy meters, placement, drift and
+    battery-powered wireless devices.</p>
+
+  <!-- 18.1 -->
+  <section class="lesson" id="s1" data-num="18.1">
+    <h2>18.1 Temperature sensors: NTC, PT1000, digital</h2>
+    <p>Temperature is the most common measurement in a building. A medium office has hundreds of points: rooms,
+      supply and return water, supply and extract air, outdoor air, domestic hot water. Almost all of them use one of
+      three families.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Family</th><th>Principle</th><th>Typical value</th><th>Strengths</th><th>Weaknesses</th></tr>
+      <tr><td><strong>RTD</strong> (PT100, PT1000, Ni1000)</td><td>Metal resistance rises almost linearly with temperature</td><td>PT1000: 1000 Ω at 0 °C, about +3.85 Ω/K</td><td>Standardised curve (IEC 60751), interchangeable, stable for years</td><td>Small signal change, sensitive to lead resistance (PT100 badly so)</td></tr>
+      <tr><td><strong>NTC thermistor</strong></td><td>Semiconductor resistance falls steeply and non-linearly</td><td>10 kΩ at 25 °C, about −4.4 %/K</td><td>Cheap, large signal, lead resistance barely matters</td><td>Many incompatible curves (B = 3435, 3950, 3977 …), needs linearisation, narrower range</td></tr>
+      <tr><td><strong>Digital</strong> (DS18B20, Sensirion SHT4x, TMP117)</td><td>Sensor and ADC in one chip, sends a number on a bus</td><td>±0.1 to ±0.5 °C depending on part</td><td>No analog errors on the cable, often humidity on the same chip</td><td>Needs a bus (1-Wire, I²C, Modbus), firmware, power</td></tr>
+    </table></div>
+
+    <h3>The RTD equation</h3>
+    <p>Platinum RTDs follow the Callendar–Van Dusen equation. For 0 °C and above it is
+      <code>R(t) = R0 · (1 + A·t + B·t²)</code> with <code>A = 3.9083·10⁻³</code> and
+      <code>B = −5.775·10⁻⁷</code>. R0 is 100 Ω for a PT100 and 1000 Ω for a PT1000. The PT1000 is not more
+      accurate than a PT100. It just produces ten times more ohms per kelvin, so the same cable resistance causes
+      one tenth of the error. That is why building automation uses PT1000 and Ni1000 almost everywhere, while
+      process plants with 4-wire transmitters still use PT100.</p>
+    <p>Accuracy is set by tolerance class. IEC 60751 class B allows <code>±(0.30 + 0.005·|t|)</code> K, so ±0.3 K
+      at 0 °C and ±0.55 K at 50 °C. Class A is <code>±(0.15 + 0.002·|t|)</code> K. Heat meters use matched pairs,
+      because there the <em>difference</em> between two sensors matters more than either absolute value.</p>
+
+    <h3>The NTC equation</h3>
+    <p>An NTC is usually described by its B value: <code>R(T) = R25 · exp(B · (1/T − 1/298.15))</code> with T in
+      kelvin. The steep curve gives a big signal near room temperature, but sensitivity collapses at high
+      temperatures. A 10 kΩ NTC drops to a few hundred ohms above 100 °C, where a small resistance error becomes a
+      large temperature error. Controllers ship a table per sensor type. Choosing the wrong type in configuration is
+      a classic commissioning mistake: a "10k3" read as a "10k2" can be off by a degree or more away from 25 °C.</p>
+
+    <figure class="viz" id="curves">
+      <div class="controls seg" role="group" aria-label="Sensor type">
+        <button data-k="pt" aria-pressed="true">PT1000</button>
+        <button data-k="ni">Ni1000</button>
+        <button data-k="ntc">NTC 10k (B 3950)</button>
+      </div>
+      <svg viewBox="0 0 600 300" role="img" aria-label="Resistance versus temperature for the selected sensor">
+        <g id="cv-grid"></g>
+        <path id="cv-path" class="curve" d=""/>
+        <line id="cv-v" class="stroke-accent" stroke-dasharray="4 4" x1="0" x2="0" y1="20" y2="260"/>
+        <circle id="cv-dot" r="6" class="fill-accent"/>
+        <text id="cv-ylab" class="small" x="12" y="14">Ω</text>
+        <text class="small" x="580" y="292" text-anchor="end">temperature °C</text>
+      </svg>
+      <div class="demo" style="margin:10px 0 0">
+        <label for="cv-t">Temperature: <output id="cv-to">20</output> °C</label>
+        <input id="cv-t" type="range" min="-20" max="120" step="1" value="20">
+      </div>
+      <div class="sm-out" id="cv-out"></div>
+      <figcaption>The NTC uses a logarithmic axis, otherwise the curve would be a wall. Watch the "1 Ω error" box as you move to 100 °C.</figcaption>
+    </figure>
+
+    <h3>Lead resistance: 2, 3 and 4 wires</h3>
+    <p>A resistance sensor cannot tell its own ohms from the ohms of the cable. Copper has a resistivity of about
+      0.0175 Ω·mm²/m. A 50 m run of 0.5 mm² wire has 1.75 Ω per conductor, 3.5 Ω for the loop. On a PT100 that is
+      9 K of error. On a PT1000 it is 0.9 K. On an NTC near room temperature it is less than 0.01 K.</p>
+    <ul>
+      <li><strong>2-wire:</strong> the input sees sensor plus both leads. Fine for PT1000 and NTC on short runs,
+        and many controllers allow a fixed offset to compensate.</li>
+      <li><strong>3-wire:</strong> a third lead lets the input measure one lead and subtract it, assuming both
+        leads are equal. The residual error comes from the mismatch between leads and from terminals.</li>
+      <li><strong>4-wire:</strong> a constant current flows through two leads and the voltage is sensed on two
+        others that carry almost no current. Lead resistance drops out completely.</li>
+    </ul>
+
+    <figure class="viz" id="wires">
+      <div class="sm-row">
+        <label>Sensor<select class="sm-sel" id="w-s"><option value="pt100">PT100</option><option value="pt1000" selected>PT1000</option><option value="ntc">NTC 10k at 25 °C</option></select></label>
+        <label>Connection<select class="sm-sel" id="w-n"><option value="2" selected>2-wire</option><option value="3">3-wire</option><option value="4">4-wire</option></select></label>
+        <label>Cable length (m): <output id="w-lo">50</output><input type="range" id="w-l" min="1" max="200" value="50"></label>
+        <label>Cross-section<select class="sm-sel" id="w-a"><option>0.25</option><option selected>0.5</option><option>0.75</option><option>1.0</option><option>1.5</option></select></label>
+      </div>
+      <svg viewBox="0 0 600 150" role="img" aria-label="Wiring of the sensor to the input">
+        <g id="w-draw"></g>
+      </svg>
+      <div class="sm-out" id="w-out"></div>
+      <figcaption>The 3-wire case assumes a 3 % mismatch between leads, a realistic figure for terminals and joints. Copper at about 20 °C.</figcaption>
+    </figure>
+
+    <h3>Digital sensors</h3>
+    <p>A digital sensor moves the analog problem into the chip. A DS18B20 on a 1-Wire bus gives ±0.5 °C between
+      −10 and +85 °C and needs no calibration table. A Sensirion SHT4x reports temperature and humidity over I²C.
+      Room units then speak Modbus RTU, BACnet MS/TP, KNX or a radio protocol. The trade-off moves: no cable
+      errors, but bus topology, addressing, firmware and power supply become your problem. A frozen digital value
+      looks exactly like a stable room, so the BMS should watch for values that never change (Chapter 21).</p>
+
+    <div class="callout example">A supply water sensor on a district heating substation is a PT1000 class B in a
+      brass immersion pocket, wired 2-wire with 15 m of 0.75 mm² cable. Lead error: about 0.7 Ω, or 0.18 K.
+      The controller allows a 0.2 K offset, so the commissioning engineer checks it against a reference probe in
+      the same pocket and trims it. Total error after trimming: well under 0.5 K, which is fine for a weather
+      compensated loop.</div>
+
+    <div class="callout warn">Immersion sensors need thermal paste or oil in the pocket and full insertion
+      depth. An air gap in a pocket can make a sensor read several kelvin low and respond in minutes instead of
+      seconds. Strap-on sensors on uninsulated pipes read lower than the water inside.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A 2-wire PT100 on 60 m of 0.5 mm² cable reads about 11 K high. What is the best fix?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="NTC would hide lead error, but you lose the standard curve and the input type would change.">Replace it with an NTC and reconfigure</button>
+        <button class="opt" data-opt="b" data-why="An offset only works at one cable temperature, and 11 K is far outside what offsets are meant for.">Enter a −11 K offset in the controller</button>
+        <button class="opt" data-opt="c" data-why="A PT1000 cuts the error to about 1.1 K, and 3-wire or a head transmitter removes most of the rest.">Use a PT1000, or 3/4-wire wiring or a head-mounted transmitter</button>
+        <button class="opt" data-opt="d" data-why="Shielding helps with noise, not with series resistance.">Use shielded cable</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>PT1000 and Ni1000 dominate building automation because their larger signal tolerates cable resistance.</li>
+      <li>NTCs are cheap and sensitive but come in many curves. The configured type MUST match the sensor.</li>
+      <li>2-wire adds both leads, 3-wire subtracts one, 4-wire removes them.</li>
+      <li>Digital sensors remove analog cable error but add bus, firmware and stale-value risks.</li>
+    </ul>
+  </section>
+
+  <!-- 18.2 -->
+  <section class="lesson" id="s2" data-num="18.2">
+    <h2>18.2 Humidity, CO₂, pressure, flow</h2>
+
+    <h3>Humidity</h3>
+    <p>Almost all building humidity sensors are <strong>capacitive</strong>: a thin polymer film absorbs water
+      vapour and its dielectric constant changes. They report <em>relative</em> humidity (%RH), which depends
+      strongly on temperature. Air at 21 °C and 50 %RH has a dew point near 10 °C. Warm the same air to 25 °C and
+      it reads about 40 %RH, though no water was added. That is why good sensors put temperature and humidity on
+      the same chip, and why the BMS often computes dew point or absolute humidity rather than controlling on %RH
+      alone. Typical accuracy is ±2 to ±3 %RH in the middle of the range, worse above 80 %RH. Long exposure to
+      condensing conditions or solvents causes drift.</p>
+
+    <h3>CO₂</h3>
+    <p>Indoor CO₂ comes mostly from people. Outdoor air is roughly 420 ppm. CO₂ is a proxy for how well a room
+      is ventilated relative to its occupancy, not a toxic concern at normal indoor levels. Common design targets
+      are 800 to 1200 ppm, depending on the standard and the class of indoor climate.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Technology</th><th>How it works</th><th>Notes</th></tr>
+      <tr><td><strong>NDIR</strong></td><td>Infrared lamp, sample cavity, filter at 4.26 µm. CO₂ absorbs that wavelength.</td><td>The standard for ventilation control. Typically ±(30–50 ppm + 3 %). Lamp and optics age.</td></tr>
+      <tr><td><strong>Dual-channel NDIR</strong></td><td>Adds a reference wavelength that CO₂ does not absorb.</td><td>Compensates lamp ageing. Suited to rooms that are never empty (hospitals, 24/7 sites).</td></tr>
+      <tr><td><strong>Photoacoustic</strong></td><td>Pulsed IR heats the gas, a microphone hears the pressure wave.</td><td>Very small (e.g. Sensirion SCD4x). Accuracy similar to compact NDIR.</td></tr>
+      <tr><td><strong>MOX "eCO₂"</strong></td><td>Metal-oxide VOC sensor, CO₂ estimated from VOC.</td><td>Not a CO₂ measurement. Fine as a VOC trend, misleading as CO₂.</td></tr>
+    </table></div>
+    <p>Many single-channel NDIR sensors use <strong>automatic baseline correction (ABC)</strong>. They assume the
+      lowest reading over a week or so is outdoor air, about 400 ppm, and shift the curve to match. This works in
+      offices that empty at night. It quietly fails in rooms that are always occupied or always poorly ventilated,
+      where the sensor drifts down and reports good air when it is not.</p>
+
+    <h3>Try it: CO₂ in a meeting room</h3>
+    <p>A seated adult breathes out about 0.005 L/s of CO₂. In a well-mixed room the concentration approaches a
+      steady state <code>C = C_out + G / Q</code>, where G is the CO₂ generation and Q the outdoor air flow. The
+      time constant is <code>V / Q</code>.</p>
+    <figure class="viz" id="co2">
+      <div class="sm-row">
+        <label>People: <output id="c-no">10</output><input type="range" id="c-n" min="1" max="40" value="10"></label>
+        <label>Outdoor air (L/s total): <output id="c-qo">80</output><input type="range" id="c-q" min="10" max="400" step="5" value="80"></label>
+        <label>Room volume (m³): <output id="c-vo">120</output><input type="range" id="c-v" min="30" max="600" step="10" value="120"></label>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="CO2 concentration over three hours">
+        <g id="c-grid"></g>
+        <path id="c-path" class="curve" d=""/>
+      </svg>
+      <div class="sm-out" id="c-out"></div>
+      <figcaption>Meeting starts at minute 0 with outdoor-air levels and lasts three hours. Generation 0.005 L/s per person, outdoor 420 ppm, perfect mixing assumed.</figcaption>
+    </figure>
+
+    <h3>Pressure</h3>
+    <p>HVAC pressure sensors are mostly <strong>differential</strong>: piezoresistive or capacitive membranes
+      between two ports. Ranges are small. A filter alarm might trip at 150 to 250 Pa, a duct static pressure
+      setpoint might be 250 Pa, a clean-room cascade only 10 to 15 Pa. Water-side sensors measure bar: system
+      fill pressure (1 to 3 bar in a typical heating system) and differential pressure across pumps or valves.
+      Low-range air sensors need periodic zeroing, and many have an auto-zero valve for that.</p>
+
+    <h3>Flow</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Meter</th><th>Principle</th><th>Typical use</th><th>Limits</th></tr>
+      <tr><td>Ultrasonic</td><td>Transit time difference up and down stream</td><td>Heat meters, chilled water, clamp-on surveys</td><td>Needs full pipe, straight runs; air bubbles disturb it</td></tr>
+      <tr><td>Electromagnetic</td><td>Faraday's law, conductive liquid crossing a magnetic field</td><td>Large water mains, process</td><td>Needs a conductive liquid; expensive at small sizes</td></tr>
+      <tr><td>Vortex</td><td>Counts vortices shed behind a bluff body</td><td>Steam, larger water flows</td><td>Poor at low flow</td></tr>
+      <tr><td>Mechanical (impeller, Woltmann)</td><td>A rotor turns with the flow</td><td>Domestic and cold water meters</td><td>Wear, start-up threshold, debris</td></tr>
+      <tr><td>Air: pitot / averaging grid, thermal</td><td>Δp across a probe (v ∝ √Δp) or heat loss of a heated element</td><td>VAV boxes, AHU airflow</td><td>Δp methods are poor at low velocity</td></tr>
+    </table></div>
+
+    <div class="classify" data-cats="Humidity,CO₂,Pressure,Flow">
+      <div class="item" data-cat="CO₂" data-why="Infrared absorption at 4.26 µm is the NDIR principle."><span class="label">Absorption of 4.26 µm infrared light</span></div>
+      <div class="item" data-cat="Humidity" data-why="Capacitive humidity sensors use a hygroscopic polymer."><span class="label">Polymer film whose capacitance changes</span></div>
+      <div class="item" data-cat="Flow" data-why="Transit-time difference is ultrasonic flow."><span class="label">Time of flight up- vs downstream</span></div>
+      <div class="item" data-cat="Pressure" data-why="A membrane between two ports is a differential pressure sensor."><span class="label">Silicon membrane between two hose ports</span></div>
+      <div class="item" data-cat="Flow" data-why="Velocity follows the square root of the measured Δp."><span class="label">Averaging pitot grid in an AHU inlet</span></div>
+      <div class="item" data-cat="CO₂" data-why="Photoacoustic sensing detects CO₂ by the sound of absorbed IR pulses."><span class="label">Microphone hearing pulsed infrared</span></div>
+    </div>
+
+    <div class="callout warn">A room unit that "measures CO₂" for a low price may contain only a MOX VOC sensor with
+      an eCO₂ estimate. Check the datasheet for NDIR or photoacoustic before using it for demand-controlled ventilation.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A hospital ward's NDIR CO₂ sensor slowly reads lower each month, though complaints rise. Most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Humidity has a small effect on NDIR and would not cause a steady trend.">Humidity cross-sensitivity</button>
+        <button class="opt" data-opt="b" data-why="The ward never reaches outdoor levels, so ABC keeps pulling the baseline down to its minimum reading.">Automatic baseline correction in a room that is never empty</button>
+        <button class="opt" data-opt="c" data-why="Lamp ageing exists, but ABC in a never-empty room is the classic cause of falling readings.">The NDIR lamp getting brighter</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Relative humidity depends on temperature. Control on dew point or absolute humidity when it matters.</li>
+      <li>NDIR or photoacoustic for CO₂. ABC needs a room that regularly sees outdoor air.</li>
+      <li>HVAC differential pressures are tens to hundreds of pascals and need zeroing.</li>
+      <li>Pick flow meters by medium, conductivity, pipe size and low-flow behaviour.</li>
+    </ul>
+  </section>
+
+  <!-- 18.3 -->
+  <section class="lesson" id="s3" data-num="18.3">
+    <h2>18.3 Leak and gas sensors</h2>
+    <h3>Water leak detection</h3>
+    <p>A water leak in a plant room, server room or under a kitchen is cheap to detect and expensive to miss. Leak
+      sensors measure conductivity between electrodes. Water bridges them and current flows.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>Coverage</th><th>Output</th><th>Typical place</th></tr>
+      <tr><td>Spot probe</td><td>A few cm²</td><td>Dry contact or radio message</td><td>Lowest point under a boiler, drip tray, sump</td></tr>
+      <tr><td>Sensing cable</td><td>Up to tens of metres per zone</td><td>Contact; zoned controllers</td><td>Around CRAC units, along pipe runs, under raised floors</td></tr>
+      <tr><td>Location sensing cable</td><td>Hundreds of metres</td><td>Distance to the leak, e.g. "47 m"</td><td>Data centres, museums, archives</td></tr>
+      <tr><td>Flow-based (meter logic)</td><td>Whole supply</td><td>Alarm on continuous flow</td><td>Night flow detection on the main water meter</td></tr>
+    </table></div>
+    <p>A detector is half the answer. The other half is what happens next: a motorised shut-off valve on the
+      zone supply, an alarm to the person who can act, and a test routine. Valves that never move tend to seize,
+      so good designs exercise them, for example monthly.</p>
+
+    <h3>Gas detection</h3>
+    <p>Fixed gas detection protects people and plant in boiler rooms, kitchens, car parks and refrigeration plant.
+      It is a safety function. The detection controller and its shut-off valve act locally. The BMS only monitors
+      alarm, fault and possibly the gas level.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Sensing principle</th><th>Gases</th><th>Range</th><th>Notes</th></tr>
+      <tr><td><strong>Catalytic bead (pellistor)</strong></td><td>Flammable: methane, propane, hydrogen</td><td>0–100 % LEL</td><td>Robust, needs oxygen; can be poisoned by silicones</td></tr>
+      <tr><td><strong>Infrared</strong></td><td>Hydrocarbons, CO₂, many refrigerants</td><td>% LEL, % vol or ppm</td><td>No poisoning, fail-safe optics; cannot see hydrogen</td></tr>
+      <tr><td><strong>Electrochemical</strong></td><td>Toxic: CO, NO₂, NH₃</td><td>ppm</td><td>Accurate, limited cell life (often 2 to 5 years)</td></tr>
+      <tr><td><strong>Semiconductor (MOX)</strong></td><td>Broad: hydrocarbons, refrigerants, VOC</td><td>ppm</td><td>Cheap, sensitive, cross-sensitive to humidity and other gases</td></tr>
+    </table></div>
+    <p>Flammable gases are measured as a percentage of the <strong>lower explosive limit (LEL)</strong>. For
+      methane the LEL is about 4.4 % by volume (older references use 5 %). Detectors typically raise a first alarm
+      around 10 to 20 % LEL and a second, shut-off alarm around 20 to 40 % LEL. Exact values come from national
+      rules and the risk assessment. Car park CO detection is typically in ppm, with thresholds in the tens of ppm
+      used to stage extract fans.</p>
+
+    <h3>Where to mount: it depends on density</h3>
+    <figure class="viz" id="gas">
+      <div class="controls seg" role="group" aria-label="Gas">
+        <button data-g="ch4" aria-pressed="true">Natural gas</button>
+        <button data-g="lpg">LPG (propane)</button>
+        <button data-g="co">Carbon monoxide</button>
+        <button data-g="ref">Most refrigerants</button>
+        <button data-g="h2">Hydrogen</button>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Plant room cross-section with the detector mounting height for the selected gas">
+        <rect class="box" x="40" y="20" width="520" height="220" rx="4"/>
+        <line class="grid-l" x1="40" y1="240" x2="560" y2="240"/>
+        <rect class="box" x="90" y="130" width="110" height="110" rx="6"/>
+        <text x="145" y="190" text-anchor="middle">Boiler</text>
+        <rect class="box" x="380" y="150" width="120" height="90" rx="6"/>
+        <text x="440" y="200" text-anchor="middle">Chiller</text>
+        <rect id="g-zone" x="40" y="20" width="520" height="40" class="fill-accent-soft" opacity=".8"/>
+        <g id="g-cloud"></g>
+        <circle id="g-det" cx="300" cy="40" r="11" class="fill-accent"/>
+        <text id="g-lbl" x="318" y="44">detector</text>
+        <text class="small" x="30" y="30" text-anchor="end">ceiling</text>
+        <text class="small" x="30" y="244" text-anchor="end">floor</text>
+      </svg>
+      <div class="readout" id="g-txt" aria-live="polite"></div>
+      <figcaption>Relative density to air decides whether a leak pools near the ceiling or the floor. Always follow the detector manufacturer and local rules for exact heights.</figcaption>
+    </figure>
+
+    <div class="callout example">A gas-fired boiler room has two catalytic or IR methane heads near the ceiling,
+      above the burners and near the gas train. A gas detection controller drives a normally closed solenoid valve
+      on the incoming gas line and cuts burner enable at the second alarm level. The BMS reads three dry contacts:
+      pre-alarm, alarm and fault. It shows them, logs them and notifies staff, but it is not in the shut-off chain.</div>
+
+    <div class="callout warn">Catalytic sensors can be poisoned by silicone sealants and some cleaning sprays,
+      losing sensitivity without any fault signal. Gas detectors need regular bump tests and calibration with test
+      gas, often every 6 or 12 months, and a log of each test.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Where should an LPG detector be mounted?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Propane and butane are heavier than air and pool at low level.">Low, close to the floor</button>
+        <button class="opt" data-opt="b" data-why="That is correct for natural gas, which is lighter than air.">High, close to the ceiling</button>
+        <button class="opt" data-opt="c" data-why="Breathing height suits roughly air-density gases such as CO, not LPG.">At breathing height, 1.5 m</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Leak detection is only useful with an action: shut-off valve, alarm routing and tests.</li>
+      <li>Flammable gas is measured in % LEL, toxic gas in ppm.</li>
+      <li>Light gases are detected high, heavy gases low.</li>
+      <li>Gas detection is a local safety function. The BMS monitors it.</li>
+    </ul>
+  </section>
+
+  <!-- 18.4 -->
+  <section class="lesson" id="s4" data-num="18.4">
+    <h2>18.4 Energy, heat and water meters</h2>
+    <p>A sensor feeds a control loop. A meter feeds a bill, a report or a contract. That changes the rules:
+      meters are type-approved, sealed and accurate over years. In the EU, meters used for billing fall under the
+      Measuring Instruments Directive (MID), which defines accuracy classes and marking.</p>
+
+    <h3>Electricity meters</h3>
+    <p>A modern electricity meter samples voltage and current and integrates power into energy. MID classes A, B
+      and C correspond roughly to 2 %, 1 % and 0.5 % accuracy. Large or main meters use current transformers, and
+      the CT ratio must be configured correctly. Getting it wrong scales every reading. Outputs include:</p>
+    <ul>
+      <li><strong>S0 pulse:</strong> a contact pulse per fixed energy, e.g. 1000 imp/kWh. Simple, robust, only energy.</li>
+      <li><strong>Modbus RTU/TCP:</strong> energy, power, voltage, current, power factor per phase. The usual BMS route.</li>
+      <li><strong>M-Bus or wireless M-Bus:</strong> standard for utility meters in Europe, read at intervals.</li>
+    </ul>
+
+    <h3>Heat meters</h3>
+    <p>A heat (or cooling) meter combines three parts: a flow sensor, a matched pair of temperature sensors on
+      supply and return, and a calculator. It integrates</p>
+    <p><code>Q = ∫ ṁ · c · (T_supply − T_return) dt</code></p>
+    <p>For water near normal heating temperatures, <code>kW ≈ 1.16 · flow[m³/h] · ΔT[K]</code>. The calculator
+      uses temperature-dependent density and heat capacity, so the real factor varies slightly. Heat meters in
+      Europe follow EN 1434. The weak point is the temperature difference. A pair error of 0.1 K is nothing when
+      ΔT is 20 K. It is 2 % of the reading when ΔT is 5 K and 5 % at 2 K. That is why meters specify a minimum ΔT
+      and why low-ΔT systems are hard to meter.</p>
+
+    <figure class="viz" id="heat">
+      <div class="sm-row">
+        <label>Flow (m³/h): <output id="h-fo">2.5</output><input type="range" id="h-f" min="0.1" max="20" step="0.1" value="2.5"></label>
+        <label>Supply (°C): <output id="h-so">70</output><input type="range" id="h-s" min="20" max="90" value="70"></label>
+        <label>Return (°C): <output id="h-ro">50</output><input type="range" id="h-r" min="10" max="85" value="50"></label>
+        <label>Pair error (K): <output id="h-eo">0.10</output><input type="range" id="h-e" min="0" max="0.5" step="0.01" value="0.1"></label>
+      </div>
+      <svg viewBox="0 0 600 150" role="img" aria-label="Heat meter with flow sensor, two temperature sensors and calculator">
+        <defs><marker id="ah18" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <line class="wire stroke-bad" x1="20" y1="40" x2="580" y2="40" marker-end="url(#ah18)"/>
+        <line class="wire stroke-accent" x1="580" y1="110" x2="20" y2="110" marker-end="url(#ah18)"/>
+        <text class="small" x="20" y="30">supply</text><text class="small" x="20" y="132">return</text>
+        <circle class="box" cx="140" cy="40" r="13"/><text x="140" y="45" text-anchor="middle" class="small">T</text>
+        <circle class="box" cx="140" cy="110" r="13"/><text x="140" y="115" text-anchor="middle" class="small">T</text>
+        <rect class="box" x="420" y="96" width="70" height="28" rx="5"/><text x="455" y="115" text-anchor="middle" class="small">flow</text>
+        <rect class="box" x="240" y="55" width="120" height="40" rx="6"/><text x="300" y="80" text-anchor="middle" id="h-calc">— kW</text>
+        <line class="arrow" x1="153" y1="45" x2="240" y2="68"/><line class="arrow" x1="153" y1="105" x2="240" y2="85"/><line class="arrow" x1="420" y1="104" x2="360" y2="85"/>
+        <rect x="560" y="60" width="30" height="30" rx="4" class="fill-example-soft"/><text x="575" y="80" text-anchor="middle" class="small">load</text>
+      </svg>
+      <div class="sm-out" id="h-out"></div>
+      <figcaption>Drag the return temperature close to the supply and watch the relative error explode.</figcaption>
+    </figure>
+
+    <h3>Reading pulse meters</h3>
+    <p>With a pulse output the BMS counts pulses for energy and measures the time between pulses for power:
+      <code>P[kW] = 3600 / (imp_per_kWh · t[s])</code>. At 1000 imp/kWh a 2 kW load gives one pulse every 1.8 s.
+      A 50 W standby load gives one every 72 s, so the displayed power lags badly at low load. Counters must
+      survive controller restarts, so store the total, not just the rate.</p>
+
+    <h3>Water meters</h3>
+    <p>Water meters under MID are described by Q3, the permanent flow (for example Q3 = 2.5 m³/h for a house), and
+      a ratio R = Q3/Q1 such as R160, which tells how low a flow it still measures accurately. Mechanical meters
+      often have a reed or inductive pulse pick-up. Ultrasonic meters measure lower flows and often add leak and
+      backflow flags in their M-Bus telegram.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Meter</th><th>Typical BMS interface</th><th>Common mistake</th></tr>
+      <tr><td>Electricity, sub-meter</td><td>Modbus RTU, S0</td><td>Wrong CT ratio, swapped CT direction gives negative power</td></tr>
+      <tr><td>Heat / cooling</td><td>M-Bus, wM-Bus, Modbus via gateway</td><td>Sensors swapped or flow sensor in the wrong leg</td></tr>
+      <tr><td>Water</td><td>Pulse, wM-Bus</td><td>Wrong litres per pulse, no leak-flow alarm</td></tr>
+      <tr><td>Gas</td><td>Pulse (reed), M-Bus</td><td>Volume not converted to energy (needs calorific value)</td></tr>
+    </table></div>
+
+    <div class="callout example">An office floor gets a heat meter with a DN20 ultrasonic flow sensor (qp 2.5 m³/h),
+      two PT1000 sensors in pockets and an M-Bus calculator. The BMS polls it every 15 minutes through an
+      M-Bus level converter. Typical winter values: 1.2 m³/h, 55/40 °C, so ΔT = 15 K and about 21 kW. In summer
+      the floor sees only DHW circulation losses at ΔT 2 K, and the meter's relative error there is much larger.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">A heat meter shows 1.0 m³/h and ΔT 3 K. The sensors have a 0.15 K pair error. Roughly how big is the power error?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="0.15 K is not 0.15 % of anything relevant here.">About 0.15 %</button>
+        <button class="opt" data-opt="b" data-why="That would be the case at 15 K ΔT.">About 1 %</button>
+        <button class="opt" data-opt="c" data-why="0.15/3 is not 15 %.">About 15 %</button>
+        <button class="opt" data-opt="d" data-why="0.15 / 3 = 5 %, on roughly 3.5 kW.">About 5 %</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Billing meters are type-approved (MID in the EU). Sensors are not.</li>
+      <li>Heat power is about 1.16 × m³/h × ΔT. Small ΔT means large relative error.</li>
+      <li>Pulses give energy well, power poorly at low load.</li>
+      <li>Check CT ratios, pulse weights and sensor positions at commissioning.</li>
+    </ul>
+  </section>
+
+  <!-- 18.5 -->
+  <section class="lesson" id="s5" data-num="18.5">
+    <h2>18.5 Placement, calibration, drift</h2>
+    <p>A perfect sensor in the wrong place measures the wrong thing perfectly. Most room temperature complaints
+      that turn out to be "sensor problems" are placement problems.</p>
+
+    <h3>Room sensor placement</h3>
+    <p>A room sensor should see air that represents the occupied zone. Common guidance: about 1.2 to 1.5 m above
+      the floor, on an internal wall, away from direct sun, heat sources, doors, supply air jets and corners.
+      Click the positions.</p>
+
+    <div class="explorer">
+      <svg class="room" viewBox="0 0 300 260" aria-label="Room plan with candidate sensor positions">
+        <rect class="box" x="10" y="10" width="280" height="200"/>
+        <rect x="80" y="6" width="100" height="8" class="fill-accent-soft"/><text class="small" x="130" y="28" text-anchor="middle">window, south</text>
+        <rect x="20" y="40" width="10" height="70" class="fill-example-soft"/><text class="small" x="36" y="80">radiator</text>
+        <rect x="230" y="206" width="50" height="8" class="fill-muted"/><text class="small" x="255" y="228" text-anchor="middle">door</text>
+        <rect x="120" y="90" width="60" height="40" class="fill-example-soft" opacity=".6"/><text class="small" x="150" y="114" text-anchor="middle">desks</text>
+        <text class="small" x="230" y="60" text-anchor="middle">diffuser</text>
+        <circle cx="230" cy="70" r="6" class="fill-muted"/>
+        <g class="layer" role="button" tabindex="0" data-target="p-a" aria-label="Position A, internal wall"><circle cx="150" cy="200" r="13"/><text x="150" y="205" text-anchor="middle">A</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="p-b" aria-label="Position B, by the window"><circle cx="110" cy="26" r="13"/><text x="110" y="31" text-anchor="middle">B</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="p-c" aria-label="Position C, above the radiator"><circle cx="24" cy="128" r="13"/><text x="24" y="133" text-anchor="middle">C</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="p-d" aria-label="Position D, by the door"><circle cx="270" cy="190" r="13"/><text x="270" y="195" text-anchor="middle">D</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="p-e" aria-label="Position E, in the supply jet"><circle cx="276" cy="80" r="13"/><text x="276" y="85" text-anchor="middle">E</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="p-f" aria-label="Position F, return air duct"><circle cx="150" cy="242" r="13"/><text x="150" y="247" text-anchor="middle">F</text></g>
+        <text class="small" x="180" y="246">F: in extract duct</text>
+      </svg>
+      <div class="panel" aria-live="polite">
+        <template id="p-a"><h4><span class="tag-ok">Good</span> · A: internal wall, 1.5 m</h4><p>Representative air, no sun, no radiant source. The default choice. Seal the conduit behind the sensor so wall-cavity air cannot blow through it.</p></template>
+        <template id="p-b"><h4><span class="tag-bad">Bad</span> · B: next to a south window</h4><p>Direct sun can push the reading several kelvin above the air temperature. The controller then cuts heat or adds cooling for a room that is fine. In winter, cold glass and downdraught do the opposite.</p></template>
+        <template id="p-c"><h4><span class="tag-bad">Bad</span> · C: above the radiator</h4><p>Rising warm air and radiation make the sensor read high, so the room stays cold. The loop also becomes jumpy because the sensor sees the heater directly.</p></template>
+        <template id="p-d"><h4><span class="tag-bad">Bad</span> · D: by the door</h4><p>Every time the door opens, corridor air hits the sensor. The loop reacts to noise, not to the room.</p></template>
+        <template id="p-e"><h4><span class="tag-bad">Bad</span> · E: in the supply air jet</h4><p>The sensor measures supply air, not room air. In cooling it reads too low and the room overheats. Also bad for CO₂, which reads close to outdoor levels.</p></template>
+        <template id="p-f"><h4><span class="tag-mid">Acceptable</span> · F: extract duct</h4><p>Gives a mixed average of the room, useful for CO₂ in large rooms and for AHU control. Only valid while the fan runs, and it lags. Heat from lights in a ceiling plenum can bias temperature.</p></template>
+      </div>
+    </div>
+
+    <h3>Plant sensor placement</h3>
+    <ul>
+      <li><strong>Supply air:</strong> after the fan and after enough distance for mixing, not right behind a coil.</li>
+      <li><strong>Mixed air:</strong> averaging sensors (a long capillary or several elements) across the duct, because layers of cold and warm air do not mix quickly.</li>
+      <li><strong>Outdoor air:</strong> north face or shaded, away from exhaust air, windows and dark walls.</li>
+      <li><strong>Water:</strong> immersion pockets in the flow, not in dead legs. Downstream of mixing valves by several pipe diameters.</li>
+    </ul>
+
+    <h3>Calibration and drift</h3>
+    <p>Every sensor changes slowly with age, temperature cycling, contamination and humidity. The rate depends on
+      the technology. PT1000 elements are very stable. Humidity sensors may drift in the order of 0.25 %RH per year
+      in clean air and much faster in polluted or condensing air. Single-channel NDIR sensors age with their lamp
+      unless ABC corrects them. Electrochemical gas cells lose sensitivity until they are replaced.</p>
+    <p>Calibration means comparing against a reference with known, better accuracy. Field practice has three levels:
+      a <em>check</em> (portable reference next to the sensor, record the difference), an <em>adjustment</em>
+      (offset or two-point correction in the controller or sensor) and <em>replacement</em> (cheaper than
+      calibration for most room sensors).</p>
+
+    <figure class="viz" id="drift">
+      <div class="sm-row">
+        <label>Sensor<select class="sm-sel" id="d-k">
+          <option value="rh">Humidity, ±2 %RH spec</option>
+          <option value="co2" selected>NDIR CO₂ without ABC, ±50 ppm spec</option>
+          <option value="pt">PT1000 class B, ±0.3 K spec</option>
+        </select></label>
+        <label>Environment<select class="sm-sel" id="d-e"><option value="1">Clean office</option><option value="2.5">Dusty or humid</option></select></label>
+        <label>Recheck every<select class="sm-sel" id="d-r"><option value="0">never</option><option value="1">1 year</option><option value="2" selected>2 years</option><option value="5">5 years</option></select></label>
+      </div>
+      <svg viewBox="0 0 600 240" role="img" aria-label="Sensor error over ten years with recalibration">
+        <g id="d-grid"></g>
+        <rect id="d-band" class="band" x="50" y="0" width="530" height="0"/>
+        <path id="d-path" class="curve-bad" d=""/>
+      </svg>
+      <div class="sm-out" id="d-out"></div>
+      <figcaption>Illustrative drift rates, not datasheet values: 0.5 %RH/yr, 20 ppm/yr and 0.02 K/yr in clean air. The green band is the spec. Real rates depend on the product and the environment.</figcaption>
+    </figure>
+
+    <div class="callout example">A school has 40 classroom CO₂ sensors. During annual maintenance a technician
+      carries a calibrated handheld NDIR meter, holds it next to each sensor for a few minutes with the room empty
+      and windows open, and records both values. Sensors more than 75 ppm off are adjusted or replaced. The BMS
+      also compares each sensor's nightly minimum against 420 ppm and flags any that settle far from it.</div>
+
+    <div class="callout warn">Analytics can catch drift that people miss: two sensors in the same duct disagreeing,
+      a room never dropping below 600 ppm overnight, a supply temperature that never changes. Use them, but do not
+      "fix" a sensor by offsetting it to match another sensor that may be the wrong one.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A room is always 2 K warmer than the sensor says, only on sunny afternoons. First suspect?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Drift would be steady, not linked to sun.">Sensor drift</button>
+        <button class="opt" data-opt="b" data-why="Lead resistance does not depend on sunshine.">Lead resistance</button>
+        <button class="opt" data-opt="c" data-why="The sensor sits in a different microclimate from the occupants, e.g. on a shaded wall while desks are in the sun, or vice versa. Placement first.">Placement relative to sun and occupants</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Placement errors are larger and more common than sensor errors.</li>
+      <li>Internal wall, about 1.5 m, away from sun, heat, doors and jets.</li>
+      <li>Drift depends on technology and environment. Plan checks, adjustments or replacements.</li>
+      <li>Use the BMS to spot drift with plausibility checks.</li>
+    </ul>
+  </section>
+
+  <!-- 18.6 -->
+  <section class="lesson" id="s6" data-num="18.6">
+    <h2>18.6 Wireless sensors and batteries</h2>
+    <p>Wireless sensors make retrofits possible where cables are not: listed buildings, glass walls, rented
+      offices. The cost is moved from installation to maintenance. Every battery must be replaced, and every radio
+      link can fail.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Technology</th><th>Range</th><th>Topology</th><th>Power</th><th>Typical use</th></tr>
+      <tr><td>EnOcean</td><td>Tens of m indoors</td><td>Star, repeaters</td><td>Energy harvesting: light, motion, temperature difference</td><td>Batteryless switches, room sensors, window contacts</td></tr>
+      <tr><td>Zigbee</td><td>10 to 30 m per hop</td><td>Mesh via mains-powered routers</td><td>Coin cell or AA, years</td><td>Room sensors, smart home devices</td></tr>
+      <tr><td>Thread / Matter</td><td>Similar to Zigbee</td><td>IPv6 mesh</td><td>Sleepy end devices on batteries</td><td>Newer consumer and light commercial</td></tr>
+      <tr><td>LoRaWAN</td><td>Hundreds of m to km</td><td>Star via gateways</td><td>AA or lithium cells, 5 to 10 years claimed</td><td>Campus-wide sensors, meters, leak probes</td></tr>
+      <tr><td>Wireless M-Bus</td><td>Building scale</td><td>One way or two way, star</td><td>Long-life lithium in the meter</td><td>Heat, water and gas meters, heat cost allocators</td></tr>
+      <tr><td>Bluetooth LE</td><td>10 to 30 m</td><td>Star or mesh</td><td>Coin cell</td><td>Asset tags, some room sensors</td></tr>
+    </table></div>
+
+    <h3>Where the battery goes</h3>
+    <p>A battery sensor sleeps most of the time at a few microamps. It wakes, measures, transmits a short burst at
+      tens of milliamps, and sleeps again. The average current is</p>
+    <p><code>I_avg = I_sleep + I_tx · t_tx / interval</code></p>
+    <p>Life is roughly usable capacity divided by average current, limited by the battery's own self-discharge and
+      by cold, which reduces capacity. Radio airtime dominates. A LoRaWAN uplink at spreading factor 7 lasts tens of
+      milliseconds. At SF12 the same payload can take over a second, so a device far from its gateway can use more
+      than ten times the energy per message.</p>
+
+    <figure class="viz" id="batt">
+      <div class="controls seg" role="group" aria-label="Preset">
+        <button data-p="zb" aria-pressed="true">Zigbee room sensor</button>
+        <button data-p="sf7">LoRaWAN SF7</button>
+        <button data-p="sf12">LoRaWAN SF12</button>
+        <button data-p="chatty">Chatty firmware</button>
+      </div>
+      <div class="sm-row">
+        <label>Battery<select class="sm-sel" id="b-c">
+          <option value="220">CR2032, 220 mAh</option>
+          <option value="1000">CR123A, about 1500 mAh nominal</option>
+          <option value="2600">2 × AA alkaline, about 2600 mAh</option>
+          <option value="3000">2 × AA lithium, about 3000 mAh</option>
+          <option value="8500">Li-SOCl₂ C cell, about 8500 mAh</option>
+        </select></label>
+        <label>Sleep current (µA): <output id="b-so">3</output><input type="range" id="b-s" min="0.5" max="50" step="0.5" value="3"></label>
+        <label>Transmit current (mA): <output id="b-io">20</output><input type="range" id="b-i" min="5" max="120" value="20"></label>
+        <label>Active time per message (ms): <output id="b-to">10</output><input type="range" id="b-t" min="1" max="2000" value="10"></label>
+        <label>Interval (s): <output id="b-no">300</output><input type="range" id="b-n" min="10" max="3600" step="10" value="300"></label>
+      </div>
+      <div class="bars" id="b-bars"></div>
+      <div class="sm-out" id="b-out"></div>
+      <figcaption>Usable capacity derated to 80 %, self-discharge about 2 % a year, capped at 15 years. CR123A derated further for pulse load. Rough planning only. Real life also depends on temperature, retries and battery chemistry.</figcaption>
+    </figure>
+
+    <h3>Designing a wireless sensor estate</h3>
+    <ul>
+      <li><strong>Report on change plus heartbeat.</strong> Send when the value moves by, say, 0.2 K, and at least
+        every 15 to 60 minutes, so silence means "dead" rather than "unchanged".</li>
+      <li><strong>Watch battery and link quality.</strong> Trend battery voltage, RSSI and SNR. Alarm on low battery
+        weeks before failure, and on missed heartbeats.</li>
+      <li><strong>Plan replacements in batches.</strong> Hundreds of sensors bought together die together. Replace
+        by area during routine maintenance.</li>
+      <li><strong>Mind the building.</strong> Concrete, metal lift shafts, foil-backed insulation and coated
+        glass attenuate radio heavily. Survey before you buy.</li>
+    </ul>
+
+    <div class="callout example">A university retrofits 600 lecture-room sensors on LoRaWAN with 2 × AA lithium cells,
+      reporting temperature, humidity and CO₂ every 10 minutes. Sensors near gateways run at SF7 and are estimated at
+      over 8 years. A dozen in basements fall back to SF11 or SF12, and the operator adds one more gateway rather than
+      replace those batteries every 2 to 3 years.</div>
+
+    <div class="callout warn">NDIR CO₂ sensors are power-hungry: the lamp and measurement take far more energy than
+      the radio message. Battery CO₂ sensors therefore measure less often or use low-power photoacoustic modules.
+      Check how often the sensor actually measures, not just how often it reports.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Which single change usually extends a LoRaWAN sensor's battery life the most?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Payload size matters, but less than airtime set by spreading factor.">Removing two bytes from the payload</button>
+        <button class="opt" data-opt="b" data-why="Better coverage lets the device use a low SF, cutting airtime and energy per message many times over.">Adding a gateway so the device can use SF7 instead of SF12</button>
+        <button class="opt" data-opt="c" data-why="Sleep current matters only when transmit energy is already small.">Halving sleep current from 2 µA to 1 µA</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Average current = sleep + transmit energy spread over the interval.</li>
+      <li>Airtime, interval and retries dominate battery life.</li>
+      <li>Report on change plus heartbeat, and alarm on silence and low battery.</li>
+      <li>Energy harvesting (EnOcean) removes batteries for simple devices.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. Why does building automation prefer PT1000 to PT100?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Both follow the same standard and tolerance classes.">PT1000 is a more accurate platinum grade</button>
+        <button class="opt" data-opt="b" data-why="Ten times more ohms per kelvin makes cable resistance ten times less significant.">Lead resistance causes ten times less error</button>
+        <button class="opt" data-opt="c" data-why="RTDs are near-linear either way.">PT1000 is linear, PT100 is not</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. A cheap room unit reports "CO₂" from a MOX sensor. What is it actually measuring?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is NDIR.">Infrared absorption by CO₂</button>
+        <button class="opt" data-opt="b" data-why="That is a humidity sensor principle.">Capacitance of a polymer film</button>
+        <button class="opt" data-opt="c" data-why="eCO₂ is an estimate derived from VOCs, not a CO₂ measurement.">VOCs, with CO₂ estimated from them</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Where do natural gas detectors go in a boiler room?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Methane is lighter than air and collects near the ceiling.">High, near the ceiling above the gas train</button>
+        <button class="opt" data-opt="b" data-why="Low level is for heavier-than-air gases such as LPG.">Low, near the floor</button>
+        <button class="opt" data-opt="c" data-why="Methane does not stay at breathing height.">At 1.5 m on the door</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. A heat meter reads 4 m³/h with 80 °C supply and 60 °C return. Approximate power?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That ignores ΔT.">About 4.6 kW</button>
+        <button class="opt" data-opt="b" data-why="That uses the supply temperature instead of ΔT.">About 370 kW</button>
+        <button class="opt" data-opt="c" data-why="That would be ΔT 5 K.">About 23 kW</button>
+        <button class="opt" data-opt="d" data-why="1.16 × 4 × 20 ≈ 93 kW.">About 93 kW</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. A battery sensor reports only on change. It has been silent for two days. What can the BMS conclude?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Without a heartbeat, silence is ambiguous.">The room temperature has not changed</button>
+        <button class="opt" data-opt="b" data-why="Report-on-change MUST be combined with a heartbeat, or a dead sensor looks like a stable room.">Nothing for sure, which is why a heartbeat is needed</button>
+        <button class="opt" data-opt="c" data-why="That is one possibility, not a conclusion.">The battery is flat</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="17-power.html">← Chapter 17</a>
+    <a class="btn" href="19-bms-platforms.html">Chapter 19 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 18 visualizations.
+
+// 18.1 Resistance vs temperature curves.
+(() => {
+  const fig = document.getElementById("curves");
+  const X0 = 50, X1 = 580, Y0 = 20, Y1 = 260, T0 = -20, T1 = 120;
+  const SENS = {
+    pt: { name: "PT1000", R: (t) => 1000 * (1 + 3.9083e-3 * t - 5.775e-7 * t * t), log: false },
+    // Approximation of the DIN 43760 Ni1000 curve, good enough for a plot.
+    ni: { name: "Ni1000", R: (t) => 1000 * (1 + 5.485e-3 * t + 6.65e-6 * t * t), log: false },
+    ntc: { name: "NTC 10k", R: (t) => 10000 * Math.exp(3950 * (1 / (t + 273.15) - 1 / 298.15)), log: true },
+  };
+  let key = "pt";
+  const slider = fig.querySelector("#cv-t");
+  const xOf = (t) => X0 + ((t - T0) / (T1 - T0)) * (X1 - X0);
+  const range = (s) => {
+    const a = s.R(T0), b = s.R(T1);
+    return [Math.min(a, b), Math.max(a, b)];
+  };
+  const yOf = (s, r) => {
+    const [lo, hi] = range(s);
+    const f = s.log ? (Math.log(r) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) : (r - lo) / (hi - lo);
+    return Y1 - f * (Y1 - Y0);
+  };
+  const fmt = (r) => (r >= 10000 ? (r / 1000).toFixed(1) + " kΩ" : r >= 1000 ? (r / 1000).toFixed(3) + " kΩ" : r.toFixed(1) + " Ω");
+  const draw = () => {
+    const s = SENS[key];
+    const [lo, hi] = range(s);
+    let g = "";
+    for (let t = T0; t <= T1; t += 20) {
+      g += `<line class="grid-l" x1="${xOf(t)}" x2="${xOf(t)}" y1="${Y0}" y2="${Y1}"/><text class="small" x="${xOf(t)}" y="278" text-anchor="middle">${t}</text>`;
+    }
+    const ticks = s.log ? [500, 1000, 2000, 5000, 10000, 20000, 50000, 100000].filter((v) => v >= lo && v <= hi) : [lo, (lo + hi) / 2, hi];
+    ticks.forEach((v) => {
+      const y = yOf(s, v);
+      g += `<line class="grid-l" x1="${X0}" x2="${X1}" y1="${y}" y2="${y}"/><text class="small" x="${X0 - 4}" y="${y + 4}" text-anchor="end">${v >= 1000 ? Math.round(v / 100) / 10 + "k" : Math.round(v)}</text>`;
+    });
+    fig.querySelector("#cv-grid").innerHTML = g;
+    let d = "";
+    for (let t = T0; t <= T1; t += 2) d += (d ? "L" : "M") + xOf(t).toFixed(1) + "," + yOf(s, s.R(t)).toFixed(1);
+    fig.querySelector("#cv-path").setAttribute("d", d);
+    fig.querySelector("#cv-ylab").textContent = s.log ? "Ω (log scale)" : "Ω";
+    update();
+  };
+  const update = () => {
+    const s = SENS[key];
+    const t = Number(slider.value);
+    const r = s.R(t);
+    const slope = (s.R(t + 0.5) - s.R(t - 0.5));
+    fig.querySelector("#cv-to").textContent = t;
+    const x = xOf(t), y = yOf(s, r);
+    const dot = fig.querySelector("#cv-dot");
+    dot.setAttribute("cx", x); dot.setAttribute("cy", y);
+    const v = fig.querySelector("#cv-v");
+    v.setAttribute("x1", x); v.setAttribute("x2", x);
+    const errK = 1 / Math.abs(slope);
+    const cls = errK < 0.05 ? "good" : errK < 0.5 ? "mid" : "bad";
+    fig.querySelector("#cv-out").innerHTML =
+      `<div>Resistance<b>${fmt(r)}</b></div>` +
+      `<div>Sensitivity<b>${Math.abs(slope) >= 100 ? Math.round(slope) : slope.toFixed(2)} Ω/K</b></div>` +
+      `<div class="${cls}">1 Ω error means<b>${errK < 0.01 ? errK.toFixed(4) : errK.toFixed(2)} K</b></div>`;
+  };
+  fig.querySelectorAll("[data-k]").forEach((b) => b.addEventListener("click", () => {
+    key = b.dataset.k;
+    fig.querySelectorAll("[data-k]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    draw();
+  }));
+  slider.addEventListener("input", update);
+  draw();
+})();
+
+// 18.1 Lead resistance error calculator.
+(() => {
+  const fig = document.getElementById("wires");
+  const $ = (id) => fig.querySelector("#" + id);
+  const RHO = 0.0175;
+  const SENS = { pt100: 0.385, pt1000: 3.85, ntc: 444 };
+  const MISMATCH = 0.03;
+  const drawWires = (n) => {
+    const ys = { 2: [50, 100], 3: [40, 75, 110], 4: [35, 62, 88, 115] }[n];
+    let s = `<rect class="box" x="20" y="25" width="110" height="100" rx="8"/><text x="75" y="70" text-anchor="middle">Input</text><text class="small" x="75" y="88" text-anchor="middle">${n === 4 ? "I source + V sense" : n === 3 ? "bridge" : "ohmmeter"}</text>`;
+    s += `<rect class="box" x="480" y="45" width="40" height="60" rx="4"/><text class="small" x="500" y="125" text-anchor="middle">sensor</text>`;
+    ys.forEach((y, i) => {
+      const sense = n === 4 ? i === 1 || i === 2 : n === 3 ? i === 1 : false;
+      s += `<line class="wire ${sense ? "stroke-ok" : "stroke-accent"}" x1="130" y1="${y}" x2="480" y2="${y}"/>`;
+      s += `<rect x="290" y="${y - 5}" width="30" height="10" rx="2" class="fill-example-soft"/>`;
+    });
+    s += `<text class="small" x="305" y="140" text-anchor="middle">small boxes: lead resistance · green: sense leads (little or no current)</text>`;
+    $("w-draw").innerHTML = s;
+  };
+  const calc = () => {
+    const n = Number($("w-n").value), L = Number($("w-l").value), A = Number($("w-a").value), k = $("w-s").value;
+    $("w-lo").textContent = L;
+    const rl = (RHO * L) / A;
+    const dR = n === 2 ? 2 * rl : n === 3 ? rl * MISMATCH : 0;
+    const errK = dR / SENS[k];
+    drawWires(n);
+    const cls = errK < 0.1 ? "good" : errK < 0.5 ? "mid" : "bad";
+    $("w-out").innerHTML =
+      `<div>Per conductor<b>${rl.toFixed(2)} Ω</b></div>` +
+      `<div>Uncompensated<b>${dR.toFixed(3)} Ω</b></div>` +
+      `<div class="${cls}">Temperature error<b>${n === 4 ? "≈ 0" : (k === "ntc" ? "−" : "+") + (errK < 0.01 ? errK.toFixed(4) : errK.toFixed(2))} K</b></div>`;
+  };
+  fig.querySelectorAll("select, input").forEach((e) => e.addEventListener("input", calc));
+  calc();
+})();
+
+// 18.2 CO2 build-up in a room.
+(() => {
+  const fig = document.getElementById("co2");
+  const $ = (id) => fig.querySelector("#" + id);
+  const X0 = 50, X1 = 580, Y0 = 15, Y1 = 225, TM = 180, CMIN = 400, CMAX = 3000, COUT = 420, G = 0.005;
+  const x = (m) => X0 + (m / TM) * (X1 - X0);
+  const y = (c) => Y1 - ((Math.min(c, CMAX) - CMIN) / (CMAX - CMIN)) * (Y1 - Y0);
+  let g = "";
+  [400, 1000, 1500, 2000, 2500, 3000].forEach((c) => {
+    g += `<line class="grid-l" x1="${X0}" x2="${X1}" y1="${y(c)}" y2="${y(c)}"/><text class="small" x="${X0 - 4}" y="${y(c) + 4}" text-anchor="end">${c}</text>`;
+  });
+  for (let m = 0; m <= TM; m += 30) g += `<text class="small" x="${x(m)}" y="245" text-anchor="middle">${m} min</text>`;
+  g += `<rect class="band" x="${X0}" y="${y(1000)}" width="${X1 - X0}" height="${y(400) - y(1000)}" opacity=".6"/>`;
+  g += `<text class="small" x="${X1 - 4}" y="${y(1000) + 14}" text-anchor="end">≤ 1000 ppm</text>`;
+  $("c-grid").innerHTML = g;
+  const calc = () => {
+    const n = Number($("c-n").value), q = Number($("c-q").value), v = Number($("c-v").value);
+    $("c-no").textContent = n; $("c-qo").textContent = q; $("c-vo").textContent = v;
+    const css = COUT + ((n * G) / q) * 1e6;
+    const tau = (v * 1000) / q / 60;
+    const C = (m) => css + (COUT - css) * Math.exp(-m / tau);
+    let d = "";
+    for (let m = 0; m <= TM; m += 2) d += (d ? "L" : "M") + x(m).toFixed(1) + "," + y(C(m)).toFixed(1);
+    $("c-path").setAttribute("d", d);
+    let t1000 = "never";
+    if (css > 1000) t1000 = Math.round(-tau * Math.log((css - 1000) / (css - COUT))) + " min";
+    const cls = css <= 1000 ? "good" : css <= 1400 ? "mid" : "bad";
+    $("c-out").innerHTML =
+      `<div>Per person<b>${(q / n).toFixed(1)} L/s</b></div>` +
+      `<div class="${cls}">Steady state<b>${Math.round(css)} ppm</b></div>` +
+      `<div>Time constant<b>${Math.round(tau)} min</b></div>` +
+      `<div>Reaches 1000 ppm<b>${t1000}</b></div>`;
+  };
+  fig.querySelectorAll("input").forEach((e) => e.addEventListener("input", calc));
+  calc();
+})();
+
+// 18.3 Gas detector mounting height.
+(() => {
+  const fig = document.getElementById("gas");
+  const $ = (id) => fig.querySelector("#" + id);
+  // rel = density relative to air; y = detector height in the svg.
+  const GAS = {
+    ch4: { rel: 0.55, y: 40, zone: [20, 40], txt: "Methane, relative density about 0.55. It rises and collects under the ceiling. Mount detectors high, typically within about 30 cm of the ceiling, above likely leak points." },
+    lpg: { rel: 1.5, y: 222, zone: [200, 40], txt: "Propane about 1.5, butane about 2. LPG flows along the floor into pits and drains. Mount detectors low, typically within about 30 cm of the floor." },
+    co: { rel: 0.97, y: 140, zone: [110, 60], txt: "Carbon monoxide is close to air density and mixes with room air. Detectors usually go at breathing height or as the manufacturer specifies. Car parks often mount around 1.5 m." },
+    ref: { rel: 3, y: 222, zone: [200, 40], txt: "Common HFC and HFO refrigerants are several times denser than air, so detectors go low near the plant. Ammonia (about 0.6) is an exception and is detected high." },
+    h2: { rel: 0.07, y: 34, zone: [20, 30], txt: "Hydrogen, about 0.07, rises very fast. Detect at the highest point, for example near battery room ceilings. IR sensors cannot see it; use catalytic or electrochemical types." },
+  };
+  const show = (k) => {
+    const g = GAS[k];
+    fig.querySelectorAll("[data-g]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.g === k));
+    $("g-zone").setAttribute("y", g.zone[0]);
+    $("g-zone").setAttribute("height", g.zone[1]);
+    $("g-det").setAttribute("cy", g.y);
+    $("g-lbl").setAttribute("y", g.y + 4);
+    // Gas puffs drift toward the zone where the gas accumulates.
+    let c = "";
+    for (let i = 0; i < 6; i++) {
+      const cx = 200 + i * 28, cy = g.zone[0] + g.zone[1] / 2 + (i % 2 ? 6 : -6);
+      c += `<circle cx="${cx}" cy="${cy}" r="${7 + (i % 3) * 2}" class="fill-example" opacity=".35"/>`;
+    }
+    $("g-cloud").innerHTML = c;
+    $("g-txt").textContent = `Relative density ≈ ${g.rel}. ${g.txt}`;
+  };
+  fig.querySelectorAll("[data-g]").forEach((b) => b.addEventListener("click", () => show(b.dataset.g)));
+  show("ch4");
+})();
+
+// 18.4 Heat meter calculator.
+(() => {
+  const fig = document.getElementById("heat");
+  const $ = (id) => fig.querySelector("#" + id);
+  const calc = () => {
+    const f = Number($("h-f").value), s = Number($("h-s").value), r = Number($("h-r").value), e = Number($("h-e").value);
+    $("h-fo").textContent = f.toFixed(1); $("h-so").textContent = s; $("h-ro").textContent = r; $("h-eo").textContent = e.toFixed(2);
+    const dt = s - r;
+    const kw = 1.163 * f * dt;
+    const rel = dt > 0 ? (e / dt) * 100 : Infinity;
+    $("h-calc").textContent = dt > 0 ? kw.toFixed(1) + " kW" : "no heat";
+    const cls = rel <= 1 ? "good" : rel <= 3 ? "mid" : "bad";
+    $("h-out").innerHTML =
+      `<div>ΔT<b>${dt} K</b></div>` +
+      `<div>Power<b>${dt > 0 ? kw.toFixed(1) : "0"} kW</b></div>` +
+      `<div>Energy per day<b>${dt > 0 ? Math.round(kw * 24) : 0} kWh</b></div>` +
+      `<div class="${cls}">Error from pair<b>${dt > 0 ? "±" + rel.toFixed(1) + " %" : "—"}</b></div>`;
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", calc));
+  calc();
+})();
+
+// 18.5 Drift with periodic recalibration.
+(() => {
+  const fig = document.getElementById("drift");
+  const $ = (id) => fig.querySelector("#" + id);
+  const X0 = 50, X1 = 580, Y0 = 15, Y1 = 215, YEARS = 10;
+  // spec = tolerance, rate = drift per year in clean air, max = y-axis top.
+  const K = {
+    rh: { spec: 2, rate: 0.5, max: 15, u: "%RH" },
+    co2: { spec: 50, rate: 20, max: 500, u: "ppm" },
+    pt: { spec: 0.3, rate: 0.02, max: 1, u: "K" },
+  };
+  const calc = () => {
+    const k = K[$("d-k").value], env = Number($("d-e").value), rc = Number($("d-r").value);
+    const x = (yr) => X0 + (yr / YEARS) * (X1 - X0);
+    const y = (v) => Y1 - (Math.min(v, k.max) / k.max) * (Y1 - Y0);
+    let g = "";
+    for (let yr = 0; yr <= YEARS; yr += 2) g += `<line class="grid-l" x1="${x(yr)}" x2="${x(yr)}" y1="${Y0}" y2="${Y1}"/><text class="small" x="${x(yr)}" y="232" text-anchor="middle">${yr} y</text>`;
+    [0, 0.5, 1].forEach((f) => g += `<text class="small" x="${X0 - 4}" y="${y(f * k.max) + 4}" text-anchor="end">${+(f * k.max).toFixed(2)}</text>`);
+    $("d-grid").innerHTML = g;
+    const band = $("d-band");
+    band.setAttribute("y", y(k.spec)); band.setAttribute("height", Y1 - y(k.spec));
+    const rate = k.rate * env;
+    let d = "", worst = 0, outside = 0;
+    for (let t = 0; t <= YEARS + 1e-9; t += 0.05) {
+      const since = rc ? t % rc : t;
+      // Small starting error that remains after each adjustment.
+      const err = k.spec * 0.2 + rate * since;
+      worst = Math.max(worst, err);
+      if (err > k.spec) outside += 0.05;
+      d += (d ? "L" : "M") + x(t).toFixed(1) + "," + y(err).toFixed(1);
+    }
+    $("d-path").setAttribute("d", d);
+    const cls = outside === 0 ? "good" : outside < 3 ? "mid" : "bad";
+    $("d-out").innerHTML =
+      `<div>Spec<b>±${k.spec} ${k.u}</b></div>` +
+      `<div>Worst error<b>${+worst.toFixed(2)} ${k.u}</b></div>` +
+      `<div class="${cls}">Time out of spec<b>${outside.toFixed(1)} of 10 y</b></div>` +
+      `<div>Site visits<b>${rc ? Math.floor(YEARS / rc) : 0}</b></div>`;
+  };
+  fig.querySelectorAll("select").forEach((s) => s.addEventListener("input", calc));
+  calc();
+})();
+
+// 18.6 Battery life estimator.
+(() => {
+  const fig = document.getElementById("batt");
+  const $ = (id) => fig.querySelector("#" + id);
+  const PRESETS = {
+    zb: { c: "220", s: 3, i: 20, t: 10, n: 300 },
+    sf7: { c: "3000", s: 2, i: 40, t: 80, n: 600 },
+    sf12: { c: "3000", s: 2, i: 40, t: 1600, n: 600 },
+    chatty: { c: "220", s: 15, i: 20, t: 30, n: 30 },
+  };
+  const apply = (p) => {
+    const v = PRESETS[p];
+    $("b-c").value = v.c; $("b-s").value = v.s; $("b-i").value = v.i; $("b-t").value = v.t; $("b-n").value = v.n;
+    fig.querySelectorAll("[data-p]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === p));
+    calc();
+  };
+  const calc = () => {
+    const capSel = Number($("b-c").value);
+    const s = Number($("b-s").value), i = Number($("b-i").value), t = Number($("b-t").value), n = Number($("b-n").value);
+    $("b-so").textContent = s; $("b-io").textContent = i; $("b-to").textContent = t; $("b-no").textContent = n;
+    const sleepMa = s / 1000;
+    const txMa = (i * t) / 1000 / n;
+    const avg = sleepMa + txMa;
+    const cap = capSel * 0.8;
+    const perYear = avg * 8760 + cap * 0.02;
+    const years = Math.min(15, cap / perYear);
+    const share = (v) => (v / (avg * 8760 + cap * 0.02)) * 100;
+    const parts = [["Sleep", share(sleepMa * 8760)], ["Radio", share(txMa * 8760)], ["Self-discharge", share(cap * 0.02)]];
+    $("b-bars").innerHTML = parts.map(([k, p], idx) =>
+      `<div class="bar-row ${idx === 1 ? "on" : ""}" style="grid-template-columns: minmax(0,110px) minmax(0,1fr) 48px"><b style="font-family:var(--font);font-size:13px">${k}</b><div class="track"><div class="fill" style="width:${p.toFixed(1)}%"></div></div><span class="v">${Math.round(p)}%</span></div>`).join("");
+    const cls = years >= 5 ? "good" : years >= 2 ? "mid" : "bad";
+    $("b-out").innerHTML =
+      `<div>Average current<b>${avg < 0.1 ? (avg * 1000).toFixed(1) + " µA" : avg.toFixed(3) + " mA"}</b></div>` +
+      `<div>Messages per year<b>${Math.round((8760 * 3600) / n).toLocaleString("en")}</b></div>` +
+      `<div class="${cls}">Estimated life<b>${years >= 15 ? "15+ y" : years >= 1 ? years.toFixed(1) + " y" : Math.round(years * 12) + " months"}</b></div>`;
+  };
+  fig.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => apply(b.dataset.p)));
+  fig.querySelectorAll("select, input").forEach((e) => e.addEventListener("input", () => {
+    fig.querySelectorAll("[data-p]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+    calc();
+  }));
+  apply("zb");
+})();
+</script>
+</body>
+</html>

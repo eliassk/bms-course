@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gateways and Integration</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .gw-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 10px; margin: 10px 0; }
+  .gw-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .gw-in, .gw-sel {
+    font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0;
+  }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; }
+  .pipe { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; margin-top: 10px; }
+  .pipe div { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; min-width: 0; }
+  .pipe small { display: block; color: var(--muted); font-size: 12px; }
+  .pipe b { font-family: var(--mono); overflow-wrap: anywhere; font-size: 14px; }
+  .pipe .hl { border-color: var(--accent); background: var(--accent-soft); }
+  .gw-log {
+    font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; max-height: 200px; overflow: auto; margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .gw-log .ok { color: var(--ok); } .gw-log .bad { color: var(--bad); } .gw-log .mu { color: var(--muted); }
+  .stat3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-top: 10px; }
+  .stat3 div { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+  .stat3 div.best { border-color: var(--ok); background: var(--ok-soft); }
+  .stat3 small { display: block; color: var(--muted); font-size: 12px; }
+  .stat3 b { font: 600 15px var(--mono); }
+  .badge { display: inline-block; font: 600 13px var(--mono); padding: 3px 9px; border-radius: 999px; }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.warn { background: var(--example-soft); color: var(--example); }
+  svg .dim { opacity: .25; }
+  svg .tick-ok { fill: var(--ok); }
+  svg .tick-bad { fill: var(--bad); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="7">
+<div class="content">
+  <div class="kicker">Chapter 07</div>
+  <h1>Gateways and integration patterns</h1>
+  <p class="lead">Real buildings never speak one protocol. A boiler talks Modbus, the lighting talks DALI or KNX, the
+    chillers talk BACnet and the TVs talk a vendor's IP API. Integration is the craft of turning all of that into one
+    consistent, trustworthy model. This chapter is about the software in the middle: gateways, mappings, update
+    strategies and the failure handling that separates a demo from a system you can leave running for ten years.</p>
+
+  <!-- 7.1 -->
+  <section class="lesson" id="s1" data-num="7.1">
+    <h2>7.1 Why gateways exist</h2>
+    <p>A <strong>gateway</strong> is a device or program that sits between two protocol worlds and translates. On one
+      side it speaks the field protocol of some equipment: Modbus RTU on RS-485, M-Bus, DALI, KNX TP, a proprietary
+      serial link. On the other side it speaks something the supervisory layer understands: BACnet/IP, Modbus TCP,
+      MQTT, OPC UA or a REST API.</p>
+    <p>Gateways exist for four reasons, and it helps to know which one you are solving.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Reason</th><th>What the gateway does</th><th>Typical example</th></tr>
+      <tr><td><strong>Physical layer</strong></td><td>Bridges media: RS-485 to Ethernet, M-Bus current loop to IP, DALI two-wire to IP.</td><td>A Modbus RTU to Modbus TCP converter. Same protocol semantics, new transport.</td></tr>
+      <tr><td><strong>Protocol semantics</strong></td><td>Converts the data model: registers become BACnet objects, KNX group addresses become MQTT topics.</td><td>A Modbus to BACnet gateway on a chiller.</td></tr>
+      <tr><td><strong>Aggregation</strong></td><td>Polls many slow devices locally and serves one fast, cached view upstream.</td><td>One gateway reads 60 heat meters over M-Bus every 15 min and publishes the totals.</td></tr>
+      <tr><td><strong>Isolation</strong></td><td>Keeps a fragile or insecure network segment away from the main LAN.</td><td>A vendor's plant controller that must not be reachable from the office VLAN.</td></tr>
+    </table></div>
+    <p>Physically, gateways come as small DIN-rail boxes (for example from Moxa, HMS Anybus, Intesis or Loytec, among
+      many others), as a function built into a controller, or as pure software running on a server or a container.
+      The software kind is increasingly common because one Linux host can run dozens of protocol drivers.</p>
+
+    <h3>Explore: anatomy of a gateway</h3>
+    <div class="explorer">
+      <div class="layers">
+        <button class="layer" data-target="g-south">Southbound driver</button>
+        <button class="layer" data-target="g-model">Point database</button>
+        <button class="layer" data-target="g-logic">Transform / logic</button>
+        <button class="layer" data-target="g-north">Northbound interface</button>
+        <button class="layer" data-target="g-ops">Management</button>
+      </div>
+      <div class="panel">
+        <template id="g-south"><h4>Southbound driver</h4><ul>
+          <li>Speaks the field protocol: opens the serial port, frames requests, handles timeouts and retries.</li>
+          <li>Owns the bus timing. On RS-485 at 9600 baud a single Modbus read of 10 registers takes about 30–40 ms round trip.</li>
+          <li>Marks each point with a quality flag: good, timeout, exception, CRC error.</li></ul></template>
+        <template id="g-model"><h4>Point database</h4><ul>
+          <li>The gateway's internal table: one row per point with raw value, scaled value, timestamp and quality.</li>
+          <li>Both sides read and write this table. It decouples the slow side from the fast side.</li>
+          <li>This is where the <em>mapping</em> (7.2) lives.</li></ul></template>
+        <template id="g-logic"><h4>Transform / logic</h4><ul>
+          <li>Scaling, unit conversion, deadbands, change-of-value detection.</li>
+          <li>Sometimes small logic: combine two 16-bit registers, derive "running" from a current value.</li>
+          <li>Keep it small. Control logic belongs in controllers, not in translation code.</li></ul></template>
+        <template id="g-north"><h4>Northbound interface</h4><ul>
+          <li>Exposes the point database upstream: as BACnet objects, Modbus TCP registers, MQTT topics or an HTTP API.</li>
+          <li>Decides when to send: on request (server role) or on change (publisher role).</li>
+          <li>Translates writes coming down into southbound commands.</li></ul></template>
+        <template id="g-ops"><h4>Management</h4><ul>
+          <li>Configuration upload, firmware, logs, diagnostics counters (requests, timeouts, CRC errors).</li>
+          <li>Health signalling upstream: a heartbeat, a status point, an MQTT last-will (Chapter 06).</li>
+          <li>Often the weakest part of cheap gateways. Check it before you buy.</li></ul></template>
+      </div>
+    </div>
+
+    <figure class="viz">
+      <svg viewBox="0 0 600 200" role="img" aria-label="Field devices on a slow bus connect to a gateway, which serves a cached view to fast supervisory clients">
+        <defs><marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="10" y="20" width="120" height="34" rx="6"/><text class="small" x="70" y="42" text-anchor="middle">Boiler (Modbus RTU)</text>
+        <rect class="box" x="10" y="83" width="120" height="34" rx="6"/><text class="small" x="70" y="105" text-anchor="middle">Heat meters (M-Bus)</text>
+        <rect class="box" x="10" y="146" width="120" height="34" rx="6"/><text class="small" x="70" y="168" text-anchor="middle">VFD (Modbus RTU)</text>
+        <line class="arrow" x1="130" y1="37" x2="230" y2="90" marker-end="url(#ah1)"/>
+        <line class="arrow" x1="130" y1="100" x2="230" y2="100" marker-end="url(#ah1)"/>
+        <line class="arrow" x1="130" y1="163" x2="230" y2="110" marker-end="url(#ah1)"/>
+        <text class="small fill-muted" x="180" y="135" text-anchor="middle">slow · serial</text>
+        <rect class="box lit" x="232" y="60" width="136" height="80" rx="10"/>
+        <text class="big" x="300" y="92" text-anchor="middle">Gateway</text>
+        <text class="small" x="300" y="114" text-anchor="middle">point cache</text>
+        <line class="arrow" x1="368" y1="90" x2="468" y2="40" marker-end="url(#ah1)"/>
+        <line class="arrow" x1="368" y1="100" x2="468" y2="100" marker-end="url(#ah1)"/>
+        <line class="arrow" x1="368" y1="110" x2="468" y2="160" marker-end="url(#ah1)"/>
+        <text class="small fill-muted" x="420" y="135" text-anchor="middle">fast · IP</text>
+        <rect class="box" x="470" y="22" width="120" height="34" rx="6"/><text class="small" x="530" y="44" text-anchor="middle">BMS / SCADA</text>
+        <rect class="box" x="470" y="83" width="120" height="34" rx="6"/><text class="small" x="530" y="105" text-anchor="middle">Historian</text>
+        <rect class="box" x="470" y="144" width="120" height="34" rx="6"/><text class="small" x="530" y="166" text-anchor="middle">Dashboard</text>
+      </svg>
+      <figcaption>The cache is the key idea. Three consumers asking for the same value cause zero extra bus traffic.</figcaption>
+    </figure>
+
+    <div class="callout example">A school has 24 heat meters on one M-Bus segment. At 2400 baud a full readout of
+      one meter takes roughly 1–2 seconds, so a sweep of all 24 takes close to a minute. If the BMS, an energy
+      platform and a billing tool each polled the meters directly, they would collide on the bus. A gateway polls
+      once every 15 minutes and serves all three from its cache.</div>
+
+    <div class="callout warn">Every gateway adds a place where data can be stale, mis-scaled or silently frozen.
+      A gateway that keeps serving its last cached value after the field bus died is worse than one that reports
+      "no data". Always ask how a gateway signals quality upstream (7.6).</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A Modbus RTU device must be reached from a Modbus TCP client. No data model change is needed. What kind of gateway is this?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="No objects or topics are created; registers stay registers.">Protocol semantics gateway</button>
+        <button class="opt" data-opt="b" data-why="Aggregation can happen, but the core job here is the medium change.">Aggregation gateway</button>
+        <button class="opt" data-opt="c" data-why="Only the transport changes: RS-485 frames become TCP frames with an MBAP header.">Physical layer / transport gateway</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Gateways bridge media, data models, speed and security zones.</li>
+      <li>The internal point database with quality flags is the heart of every gateway.</li>
+      <li>Slow buses are read once and served many times from a cache.</li>
+    </ul>
+  </section>
+
+  <!-- 7.2 -->
+  <section class="lesson" id="s2" data-num="7.2">
+    <h2>7.2 Protocol translation and point mapping</h2>
+    <p>Translation is mostly a big table. Each row says: <em>read this thing here, interpret it like this, expose it
+      there under this name</em>. That table is called the <strong>point map</strong> or <strong>points list</strong>.
+      On a mid-size building it has thousands of rows, and almost every integration bug is a wrong cell in it.</p>
+    <p>For each point you must decide:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Column</th><th>Question</th><th>Example</th></tr>
+      <tr><td>Source address</td><td>Where is it?</td><td>Slave 3, holding register 40107 (offset 106)</td></tr>
+      <tr><td>Data type</td><td>How many bits, signed or not, integer or float?</td><td>INT16, UINT32, FLOAT32</td></tr>
+      <tr><td>Byte / word order</td><td>For 32-bit values, which register is the high word?</td><td>ABCD (big-endian) vs CDAB (word swapped)</td></tr>
+      <tr><td>Scale and offset</td><td>Raw to engineering units.</td><td>value = raw × 0.1 − 40</td></tr>
+      <tr><td>Unit</td><td>What does the number mean?</td><td>°C, kW, m³/h, %</td></tr>
+      <tr><td>Access</td><td>Read, write, or both? Command or setpoint?</td><td>R for sensors, RW for setpoints</td></tr>
+      <tr><td>Target name</td><td>How is it exposed northbound?</td><td>BACnet AI:12 "AHU1 Supply Temp", or topic <code>site/ahu1/supply_temp</code></td></tr>
+      <tr><td>Update rule</td><td>Poll rate, COV increment, heartbeat.</td><td>poll 10 s, publish on change ≥ 0.2 K</td></tr>
+    </table></div>
+    <p>The trickiest columns are type and word order. Modbus registers are 16 bits. A 32-bit float spans two
+      registers, and the Modbus standard does not say which comes first. Vendors differ. A float of 21.5 read with
+      the wrong word order becomes a nonsense number like 2.6e-41 or a huge value. That is actually the lucky case:
+      an obviously wrong number is caught at commissioning. The dangerous case is a value that is wrong but
+      plausible, for example a missing ×0.1 scale that shows 215 °C as 21.5 °C on a different point.</p>
+
+    <h3>Try it: point mapping builder</h3>
+    <figure class="viz" id="mapper">
+      <div class="gw-row">
+        <label>Register 1 (hex) <input class="gw-in" data-k="r1" value="41AC"></label>
+        <label>Register 2 (hex) <input class="gw-in" data-k="r2" value="0000"></label>
+        <label>Data type
+          <select class="gw-sel" data-k="type">
+            <option value="u16">UINT16 (reg 1)</option>
+            <option value="i16">INT16 (reg 1)</option>
+            <option value="u32">UINT32</option>
+            <option value="f32" selected>FLOAT32</option>
+          </select></label>
+        <label>Word order
+          <select class="gw-sel" data-k="order">
+            <option value="abcd" selected>ABCD (reg 1 high)</option>
+            <option value="cdab">CDAB (reg 2 high)</option>
+          </select></label>
+        <label>Scale <input class="gw-in" data-k="scale" value="1"></label>
+        <label>Offset <input class="gw-in" data-k="offset" value="0"></label>
+        <label>Unit <input class="gw-in" data-k="unit" value="°C"></label>
+        <label>Target topic <input class="gw-in" data-k="topic" value="site/ahu1/supply_temp"></label>
+      </div>
+      <div class="controls seg" role="group" aria-label="Presets">
+        <button data-p="float" aria-pressed="true">Float 21.5</button>
+        <button data-p="swap">Same, word-swapped</button>
+        <button data-p="neg">INT16 −4.5 °C</button>
+        <button data-p="energy">UINT32 kWh</button>
+      </div>
+      <div class="pipe" aria-live="polite"></div>
+      <div class="readout"></div>
+      <figcaption>Change the type or word order and watch a correct reading turn into garbage. Engineering value = decoded × scale + offset.</figcaption>
+    </figure>
+
+    <h3>Naming is part of mapping</h3>
+    <p>A point map with names like <code>HR107</code> is useless upstream. Good maps use a consistent naming scheme
+      or a tagging model. Project Haystack and Brick Schema are two open approaches that attach semantic tags
+      (<code>supply</code>, <code>air</code>, <code>temp</code>, <code>sensor</code>) or typed relations to points, so software can find
+      "all supply air temperatures" without parsing names. Even without them, a fixed pattern like
+      <code>site/system/equipment/point</code> pays off quickly.</p>
+
+    <div class="callout example">An energy meter exposes total active energy as UINT32 in Wh across registers
+      30073–30074, word order CDAB. The gateway reads both, swaps words, multiplies by 0.001 to get kWh and
+      publishes <code>site/meters/main/energy_kwh</code> only when it changes by at least 0.1 kWh. One row of the
+      point map captures all of that.</div>
+
+    <div class="callout warn">Modbus documentation mixes 0-based offsets and 1-based "register numbers" like 40001.
+      Being off by one register gives you a neighbouring value that often looks plausible. Verify every new device
+      against a known reading on site.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A FLOAT32 point shows 2.3e-41 instead of about 20. What is the most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A scale factor would shift by a decade, not to a denormal number.">Wrong scale factor</button>
+        <button class="opt" data-opt="b" data-why="Swapped words put the zero low word in the exponent position, giving a tiny denormal.">Wrong word order</button>
+        <button class="opt" data-opt="c" data-why="A wrong slave usually times out or returns a different but sane value.">Wrong slave address</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The point map is the integration. Treat it as versioned, reviewed source.</li>
+      <li>Type, word order and scale cause most mapping bugs.</li>
+      <li>Plausible wrong values are more dangerous than absurd ones.</li>
+    </ul>
+  </section>
+
+  <!-- 7.3 -->
+  <section class="lesson" id="s3" data-num="7.3">
+    <h2>7.3 Polling vs. push vs. subscription</h2>
+    <p>Every integration must decide <em>who starts the conversation</em> when a value changes. There are three
+      patterns.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Pattern</th><th>How it works</th><th>Examples</th><th>Strength</th><th>Weakness</th></tr>
+      <tr><td><strong>Polling</strong></td><td>Client asks on a timer.</td><td>Modbus, SNMP GET, REST GET loops</td><td>Simple. Client controls load. Silence is detected automatically.</td><td>Latency up to one interval. Traffic even when nothing changes.</td></tr>
+      <tr><td><strong>Push</strong></td><td>Device sends when something changes, to a configured target.</td><td>KNX telegrams, webhooks, SNMP traps, syslog</td><td>Low latency, low traffic.</td><td>Lost messages are lost. Silence is ambiguous: quiet or dead?</td></tr>
+      <tr><td><strong>Subscription</strong></td><td>Client registers interest; server then pushes changes for a time.</td><td>BACnet COV, OPC UA monitored items, MQTT subscribe, WebSocket APIs</td><td>Push latency with a managed relationship and often an initial value.</td><td>State on both sides. Subscriptions expire and must be renewed after restarts.</td></tr>
+    </table></div>
+    <p>The numbers matter. With polling, the average delay between a change and its detection is half the poll
+      interval, and the worst case is a full interval plus the request time. A BACnet COV subscription has a
+      lifetime (often set to minutes or hours). If the server reboots and forgets it, the client receives nothing
+      until it re-subscribes. A robust client renews before expiry and also does an occasional full read.</p>
+
+    <h3>Try it: load and latency simulator</h3>
+    <figure class="viz" id="loadsim">
+      <div class="gw-row">
+        <label>Points <input type="range" min="50" max="5000" step="50" value="1000" data-k="n"> <output></output></label>
+        <label>Poll interval (s) <input type="range" min="1" max="60" value="10" data-k="t"> <output></output></label>
+        <label>Changes per point per hour <input type="range" min="0" max="120" value="6" data-k="c"> <output></output></label>
+        <label>Points per request (block read) <input type="range" min="1" max="50" value="10" data-k="b"> <output></output></label>
+      </div>
+      <svg viewBox="0 0 600 150" role="img" aria-label="Timeline of value changes and when each pattern detects them"></svg>
+      <div class="stat3" aria-live="polite"></div>
+      <figcaption>Top row: a value changes (dots). Poll: detected at the next tick. Push / subscription: almost immediately. Subscription adds a small renewal cost.</figcaption>
+    </figure>
+
+    <p>Notice what the simulator shows. When values rarely change, push and subscription win by orders of magnitude
+      on traffic. When values change constantly (power readings every second), push can generate <em>more</em>
+      traffic than polling, which is why devices use a <strong>deadband</strong> or a minimum send interval. Polling
+      also has a hidden benefit: a failed poll is an immediate health signal.</p>
+
+    <div class="callout example">A BACnet supervisor integrates 400 VAV boxes with 8 points each. Polling every
+      5 s is 3200 property reads every 5 s. With ReadPropertyMultiple of 8 points per box it is 400 requests per
+      5 s, or 80 per second, still noticeable on an MS/TP trunk. Switching temperatures to COV with a 0.3 K
+      increment drops steady-state traffic to a few messages per second.</div>
+
+    <div class="callout warn">Never rely on push alone for anything important. Pair it with a heartbeat or a slow
+      background poll so that silence can be told apart from failure.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">You poll every 30 s. A pump trips at a random moment. What is the average detection delay?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Changes are uniformly distributed in the interval, so on average half of it passes.">About 15 s</button>
+        <button class="opt" data-opt="b" data-why="30 s is the worst case, not the average.">About 30 s</button>
+        <button class="opt" data-opt="c" data-why="Polling always has a delay related to its interval.">Near zero</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Polling: simple and self-checking, but slow and chatty.</li>
+      <li>Push: fast and light, but silence is ambiguous.</li>
+      <li>Subscriptions must be renewed and backed by an occasional full read.</li>
+    </ul>
+  </section>
+
+  <!-- 7.4 -->
+  <section class="lesson" id="s4" data-num="7.4">
+    <h2>7.4 Writing your own gateway (Node, Python)</h2>
+    <p>When no off-the-shelf gateway fits, writing one is very achievable. Mature open-source libraries exist:
+      for Node.js, <code>modbus-serial</code>, <code>node-bacnet</code> and <code>mqtt</code>; for Python,
+      <code>pymodbus</code>, <code>BAC0</code>/<code>bacpypes3</code>, <code>asyncua</code> and <code>paho-mqtt</code>
+      or <code>aiomqtt</code>. The protocol code is rarely the hard part. The hard part is everything around it.</p>
+
+    <h3>The shape of a good gateway</h3>
+    <figure class="viz" id="gwloop">
+      <svg viewBox="0 0 600 230" role="img" aria-label="Gateway main loop: load config, connect, poll, decode, compare, publish, handle errors">
+        <defs><marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <g id="gl0"><rect class="box" x="10" y="20" width="130" height="44" rx="8"/><text x="75" y="47" text-anchor="middle">Load point map</text></g>
+        <g id="gl1"><rect class="box" x="160" y="20" width="130" height="44" rx="8"/><text x="225" y="47" text-anchor="middle">Connect both sides</text></g>
+        <g id="gl2"><rect class="box" x="310" y="20" width="130" height="44" rx="8"/><text x="375" y="47" text-anchor="middle">Read block</text></g>
+        <g id="gl3"><rect class="box" x="460" y="20" width="130" height="44" rx="8"/><text x="525" y="47" text-anchor="middle">Decode + scale</text></g>
+        <g id="gl4"><rect class="box" x="460" y="130" width="130" height="44" rx="8"/><text x="525" y="157" text-anchor="middle">Changed? (deadband)</text></g>
+        <g id="gl5"><rect class="box" x="310" y="130" width="130" height="44" rx="8"/><text x="375" y="157" text-anchor="middle">Publish + timestamp</text></g>
+        <g id="gl6"><rect class="box" x="160" y="130" width="130" height="44" rx="8"/><text x="225" y="157" text-anchor="middle">Handle writes</text></g>
+        <g id="gl7"><rect class="box" x="10" y="130" width="130" height="44" rx="8"/><text x="75" y="157" text-anchor="middle">Errors → quality</text></g>
+        <line class="arrow" x1="140" y1="42" x2="158" y2="42" marker-end="url(#ah4)"/>
+        <line class="arrow" x1="290" y1="42" x2="308" y2="42" marker-end="url(#ah4)"/>
+        <line class="arrow" x1="440" y1="42" x2="458" y2="42" marker-end="url(#ah4)"/>
+        <line class="arrow" x1="525" y1="64" x2="525" y2="128" marker-end="url(#ah4)"/>
+        <line class="arrow" x1="460" y1="152" x2="442" y2="152" marker-end="url(#ah4)"/>
+        <line class="arrow" x1="310" y1="152" x2="292" y2="152" marker-end="url(#ah4)"/>
+        <line class="arrow" x1="160" y1="152" x2="142" y2="152" marker-end="url(#ah4)"/>
+        <path class="arrow" d="M75,174 L75,205 L375,205 L375,66" fill="none" marker-end="url(#ah4)"/>
+        <text class="small fill-muted" x="225" y="200" text-anchor="middle">next cycle</text>
+      </svg>
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">◀</button>
+        <button class="btn" data-act="next" aria-label="Next step">▶</button>
+      </div>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <p>A compact Node.js skeleton shows the structure. It is not production code, but every production gateway
+      has these parts.</p>
+    <pre class="code">import ModbusRTU from "modbus-serial";
+import mqtt from "mqtt";
+
+const POINTS = [
+  { reg: 106, type: "f32", scale: 1, topic: "site/ahu1/supply_temp", db: 0.2 },
+  { reg: 110, type: "u16", scale: 0.1, topic: "site/ahu1/fan_speed", db: 1 },
+];
+const last = new Map();
+const bus = new ModbusRTU();
+const broker = mqtt.connect("mqtts://broker.local", {
+  will: { topic: "site/gw1/status", payload: "offline", retain: true },
+});
+broker.on("connect", () =&gt; broker.publish("site/gw1/status", "online", { retain: true }));
+
+async function cycle() {
+  for (const p of POINTS) {
+    try {
+      const { buffer } = await bus.readHoldingRegisters(p.reg, p.type === "f32" ? 2 : 1);
+      const raw = p.type === "f32" ? buffer.readFloatBE(0) : buffer.readUInt16BE(0);
+      const v = raw * p.scale;
+      // Publish on change beyond the deadband, or as a heartbeat.
+      const prev = last.get(p.topic);
+      if (!prev || Math.abs(v - prev.v) &gt;= p.db || Date.now() - prev.t &gt; 300_000) {
+        broker.publish(p.topic, JSON.stringify({ v, ts: Date.now(), q: "good" }), { retain: true });
+        last.set(p.topic, { v, t: Date.now() });
+      }
+    } catch (e) {
+      broker.publish(p.topic, JSON.stringify({ v: null, ts: Date.now(), q: "bad" }), { retain: true });
+    }
+  }
+  setTimeout(cycle, 10_000);
+}
+await bus.connectRTUBuffered("/dev/ttyUSB0", { baudRate: 9600 });
+bus.setID(3); bus.setTimeout(500);
+cycle();</pre>
+
+    <h3>What separates a hobby script from a gateway</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Concern</th><th>Do this</th></tr>
+      <tr><td>Configuration</td><td>Point map in a file (YAML/JSON/CSV), validated at start. No addresses in code.</td></tr>
+      <tr><td>Concurrency</td><td>Serial buses are half-duplex. Serialise all requests on one bus through a single queue.</td></tr>
+      <tr><td>Block reads</td><td>Group contiguous registers into one request. 10 points in one read is ~10× faster than 10 reads.</td></tr>
+      <tr><td>Quality</td><td>Every value carries timestamp and quality. Never publish a stale value as fresh.</td></tr>
+      <tr><td>Writes</td><td>Validate range and type, rate-limit, log who wrote what. Read back to confirm.</td></tr>
+      <tr><td>Reconnect</td><td>Both sides reconnect with backoff (7.6). A broker restart must not crash the process.</td></tr>
+      <tr><td>Supervision</td><td>Run under systemd, a container restart policy or a service manager. Expose health.</td></tr>
+      <tr><td>Tests</td><td>Unit-test decoding and scaling with captured raw frames. That is where bugs hide.</td></tr>
+    </table></div>
+
+    <div class="callout example">A Python gateway built on <code>asyncio</code> runs one task per serial bus, each
+      with its own request queue, plus one MQTT client task. A crash in the decoding of one point is caught,
+      that point gets quality "bad", and the other 300 points keep flowing.</div>
+
+    <div class="callout warn">Two programs opening the same serial port, or two Modbus masters on one RS-485
+      bus, produce collisions and random CRC errors. One bus, one master, one queue.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Your gateway reads 40 registers on one RTU bus with 40 separate requests. What is the biggest, cheapest win?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Parallel requests on a half-duplex bus collide.">Send the 40 requests in parallel</button>
+        <button class="opt" data-opt="b" data-why="Faster baud may help a little but needs every device reconfigured.">Raise the baud rate</button>
+        <button class="opt" data-opt="c" data-why="Contiguous registers in one request share framing and turnaround time.">Group contiguous registers into block reads</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Libraries handle protocols. You handle config, quality, writes and recovery.</li>
+      <li>Serialise access per bus. Batch contiguous reads.</li>
+      <li>Test decoding with real captured data.</li>
+    </ul>
+  </section>
+
+  <!-- 7.5 -->
+  <section class="lesson" id="s5" data-num="7.5">
+    <h2>7.5 Low-code integration: Node-RED</h2>
+    <p><strong>Node-RED</strong> is an open-source, flow-based tool that runs on Node.js. You build programs in a browser
+      by wiring <em>nodes</em> together. Each node receives a message object, usually called <code>msg</code>, does one
+      thing, and passes it on. The main data lives in <code>msg.payload</code>; the source often sets
+      <code>msg.topic</code>.</p>
+    <p>It ships with nodes for MQTT, HTTP, TCP/UDP, files and timers. Community packages add Modbus, BACnet, OPC UA,
+      KNX, SNMP and many vendor APIs. For integration work this is very productive: a working bridge from a REST
+      API to MQTT can take ten minutes.</p>
+
+    <h3>Step through a flow</h3>
+    <figure class="viz" id="nrflow">
+      <svg viewBox="0 0 600 170" role="img" aria-label="Node-RED flow: inject, Modbus read, function scale, rbe filter, MQTT out, with a catch node and debug">
+        <g id="nr0"><rect class="box" x="10" y="30" width="96" height="36" rx="6"/><text class="small" x="58" y="52" text-anchor="middle">inject 10 s</text></g>
+        <g id="nr1"><rect class="box" x="126" y="30" width="96" height="36" rx="6"/><text class="small" x="174" y="52" text-anchor="middle">modbus read</text></g>
+        <g id="nr2"><rect class="box" x="242" y="30" width="96" height="36" rx="6"/><text class="small" x="290" y="52" text-anchor="middle">function: scale</text></g>
+        <g id="nr3"><rect class="box" x="358" y="30" width="96" height="36" rx="6"/><text class="small" x="406" y="52" text-anchor="middle">filter (rbe)</text></g>
+        <g id="nr4"><rect class="box" x="474" y="30" width="116" height="36" rx="6"/><text class="small" x="532" y="52" text-anchor="middle">mqtt out</text></g>
+        <g id="nr5"><rect class="box" x="126" y="110" width="96" height="36" rx="6"/><text class="small" x="174" y="132" text-anchor="middle">catch</text></g>
+        <g id="nr6"><rect class="box" x="242" y="110" width="96" height="36" rx="6"/><text class="small" x="290" y="132" text-anchor="middle">status: bad</text></g>
+        <path class="wire" d="M106,48 C116,48 116,48 126,48" fill="none"/>
+        <path class="wire" d="M222,48 C232,48 232,48 242,48" fill="none"/>
+        <path class="wire" d="M338,48 C348,48 348,48 358,48" fill="none"/>
+        <path class="wire" d="M454,48 C464,48 464,48 474,48" fill="none"/>
+        <path class="wire" d="M222,128 C232,128 232,128 242,128" fill="none"/>
+        <path class="wire" d="M338,128 C420,128 420,60 474,58" fill="none"/>
+      </svg>
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">◀</button>
+        <button class="btn" data-act="next" aria-label="Next step">▶</button>
+        <span class="seg" role="group" aria-label="Scenario">
+          <button data-sc="ok" aria-pressed="true">Normal</button>
+          <button data-sc="same">Unchanged</button>
+          <button data-sc="err">Timeout</button>
+        </span>
+      </div>
+      <pre class="code" aria-live="polite"></pre>
+      <div class="readout"></div>
+    </figure>
+
+    <p>A typical <em>function</em> node body is plain JavaScript:</p>
+    <pre class="code">const raw = msg.payload[0];          // register value
+msg.payload = { v: raw / 10, unit: "°C", ts: Date.now() };
+msg.topic = "site/boiler/flow_temp";
+return msg;</pre>
+
+    <h3>Where it fits, where it hurts</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Good for</th><th>Painful for</th></tr>
+      <tr><td>Glue between APIs and MQTT; quick vendor integrations; prototypes; notifications; small sites.</td><td>Thousands of points; complex state machines; code review and diffing (flows are big JSON files); strict testing.</td></tr>
+    </table></div>
+
+    <div class="callout example">A hotel integrates its booking system's webhook with room heating. An HTTP-in node
+      receives "check-in room 214", a function node maps it to <code>hotel/f2/room/214/mode/set = comfort</code>,
+      and an MQTT-out node publishes it. A second flow sets "eco" on checkout. The whole thing is six nodes.</div>
+
+    <div class="callout warn">Flows grow. A 300-node flow with logic buried in function nodes and global context
+      variables is as hard to maintain as any spaghetti code. Keep flows in git, use subflows, keep function nodes
+      short, and move heavy logic into a proper service.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">In Node-RED, which property normally carries the main data between nodes?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="msg.topic is usually the name or MQTT topic, not the data.">msg.topic</button>
+        <button class="opt" data-opt="b" data-why="By convention nodes read and write msg.payload.">msg.payload</button>
+        <button class="opt" data-opt="c" data-why="Global context is shared state, not the message.">global.data</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Node-RED: messages flow through wired nodes; data lives in <code>msg.payload</code>.</li>
+      <li>Excellent glue and prototyping tool.</li>
+      <li>Version flows, handle errors with catch nodes, and keep logic small.</li>
+    </ul>
+  </section>
+
+  <!-- 7.6 -->
+  <section class="lesson" id="s6" data-num="7.6">
+    <h2>7.6 Stale data, reconnects, watchdogs</h2>
+    <p>The most dangerous value in a BMS is a <strong>frozen</strong> one. A screen shows 21.3 °C, perfectly normal.
+      But the sensor's gateway died two days ago and the number is simply the last thing received. Nobody notices
+      until a room is cold. Robust integration makes staleness <em>visible</em>.</p>
+
+    <h3>Three tools</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Tool</th><th>How it works</th><th>Typical numbers</th></tr>
+      <tr><td><strong>Timestamps + max age</strong></td><td>Each value carries the time it was read. Consumers treat values older than a limit as stale.</td><td>Max age = 3 × expected update interval.</td></tr>
+      <tr><td><strong>Heartbeat</strong></td><td>The source sends something periodically even if nothing changed: a counter, a "still alive" message, or a resend of the value.</td><td>Every 30–300 s.</td></tr>
+      <tr><td><strong>Watchdog</strong></td><td>A timer that is reset by every heartbeat. If it expires, the point or device goes to "unavailable" and an alarm can fire.</td><td>Timeout = 2–3 heartbeats, so one lost message is tolerated.</td></tr>
+    </table></div>
+    <p>Protocols help. MQTT has keepalive and the last-will message (Chapter 06). Modbus gives you timeouts per
+      request. BACnet has a status flags property with a FAULT bit and a Reliability property. OPC UA attaches a
+      StatusCode and timestamps to every value. Use them; do not reinvent them.</p>
+
+    <h3>Try it: watchdog timeline</h3>
+    <figure class="viz" id="watchdog">
+      <div class="gw-row">
+        <label>Heartbeat every (s) <input type="range" min="5" max="60" step="5" value="15" data-k="hb"> <output></output></label>
+        <label>Watchdog timeout (× heartbeat) <input type="range" min="1" max="5" step="0.5" value="2.5" data-k="k"> <output></output></label>
+        <label>Message loss (%) <input type="range" min="0" max="50" step="5" value="10" data-k="loss"> <output></output></label>
+      </div>
+      <div class="controls seg" role="group" aria-label="Device">
+        <button data-dev="run" aria-pressed="true">Device running</button>
+        <button data-dev="die">Device dies at t = 150 s</button>
+      </div>
+      <svg viewBox="0 0 600 160" role="img" aria-label="Timeline of heartbeats, lost messages and watchdog state over 300 seconds"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Green ticks: heartbeats received. Red: lost. The band shows the state a consumer would display. Re-roll to try another random loss pattern.</figcaption>
+      <div class="controls"><button class="btn secondary" data-act="roll">Re-roll losses</button></div>
+    </figure>
+    <p>The trade-off is plain: a short timeout detects real failures fast but raises false "unavailable" states when
+      a message or two is lost. A long timeout is calm but slow. Two and a half to three heartbeats is a common
+      compromise.</p>
+
+    <h3>Reconnect with exponential backoff</h3>
+    <p>When a connection drops, a client must reconnect. Retrying immediately in a tight loop hammers the server,
+      floods logs, and when 200 clients all do it after a broker restart, they can knock the server over again (a
+      "thundering herd"). The standard fix is <strong>exponential backoff with jitter</strong>: wait 1 s, then 2, 4,
+      8… up to a cap such as 60 s, and randomise each wait so clients spread out. Reset the delay after a connection
+      has stayed up for a while.</p>
+    <figure class="viz" id="backoff">
+      <div class="gw-row">
+        <label>Base delay (s) <input type="range" min="0.5" max="5" step="0.5" value="1" data-k="base"> <output></output></label>
+        <label>Cap (s) <input type="range" min="5" max="120" step="5" value="60" data-k="cap"> <output></output></label>
+        <label>Clients <input type="range" min="1" max="50" value="20" data-k="n"> <output></output></label>
+      </div>
+      <div class="controls seg" role="group" aria-label="Jitter">
+        <button data-j="none">No jitter</button>
+        <button data-j="full" aria-pressed="true">Full jitter</button>
+      </div>
+      <svg viewBox="0 0 600 180" role="img" aria-label="Reconnect attempts of many clients over time"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Each row is a client; dots are reconnect attempts after a server outage at t = 0. Without jitter all clients hit the server at exactly the same moments.</figcaption>
+    </figure>
+    <pre class="code">// Full jitter: random wait between 0 and the capped exponential delay.
+const delay = (attempt) =&gt; Math.random() * Math.min(cap, base * 2 ** attempt);</pre>
+
+    <div class="callout example">A gateway publishes each point with <code>{"v":21.3,"ts":…,"q":"good"}</code> and a
+      device heartbeat every 30 s. The front end greys out any tile whose value is older than 90 s and shows
+      "unavailable" when the gateway's retained status topic says "offline" via its last will.</div>
+
+    <div class="callout warn">Retained MQTT messages and gateway caches make old values look current. A retained
+      value from last week is delivered instantly to a new subscriber. Always carry a timestamp in the payload, or
+      combine retained values with an availability topic.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">Heartbeat every 20 s, 5 % random loss. Which watchdog timeout best balances speed and false alarms?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="One lost message would already trigger 'unavailable'.">20 s</button>
+        <button class="opt" data-opt="b" data-why="Equal to the interval: any jitter or loss trips it.">21 s</button>
+        <button class="opt" data-opt="c" data-why="Safe but 10 minutes to detect a dead device is slow.">600 s</button>
+        <button class="opt" data-opt="d" data-why="Tolerates one or two lost heartbeats and still detects failure within a minute.">50–60 s</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Every value needs a timestamp and quality. Frozen data is the silent killer.</li>
+      <li>Heartbeat + watchdog at 2.5–3 intervals turns silence into a clear state.</li>
+      <li>Reconnect with exponential backoff and jitter. Never in a tight loop.</li>
+    </ul>
+  </section>
+
+  <!-- 7.7 -->
+  <section class="lesson" id="s7" data-num="7.7">
+    <h2>7.7 Integrating vendor systems (AV, TVs, network gear)</h2>
+    <p>Beyond HVAC, a modern building contains many systems that were never designed for a BMS: audio DSPs,
+      projectors, displays, video matrices, network switches, UPS units, access control. Each comes with its own
+      control interface, and their quality varies wildly.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Interface type</th><th>What it looks like</th><th>Examples</th></tr>
+      <tr><td>Serial command set</td><td>ASCII or hex strings over RS-232, often 9600 8N1. Frequently also available over raw TCP.</td><td>Many projectors and displays; legacy matrix switchers.</td></tr>
+      <tr><td>Raw TCP / Telnet</td><td>Line-based text protocol on a fixed port.</td><td>PJLink (projectors, TCP 4352); many DSPs and matrix switchers.</td></tr>
+      <tr><td>HTTP / REST / JSON-RPC</td><td>HTTP requests with JSON. Sometimes with tokens or digest auth.</td><td>Many smart TVs, newer AV processors, cloud-connected devices.</td></tr>
+      <tr><td>WebSocket</td><td>Persistent connection with pushed events.</td><td>Some TV and AV platforms; modern conferencing systems.</td></tr>
+      <tr><td>SNMP</td><td>MIB-based GET/SET, traps for events.</td><td>Switches, UPS units, PDUs, printers.</td></tr>
+      <tr><td>Vendor cloud API</td><td>Internet REST API with OAuth.</td><td>Consumer devices, some heat pumps and EV chargers.</td></tr>
+      <tr><td>CEC over HDMI</td><td>Low-level control over the HDMI cable.</td><td>Power and input on consumer TVs, via a small adapter.</td></tr>
+    </table></div>
+
+    <h3>Patterns that work</h3>
+    <ul>
+      <li><strong>One driver per device type</strong>, exposing a small, normalised model: power, input, volume,
+        mute, online. The rest of the system never sees vendor commands.</li>
+      <li><strong>Track state yourself when the device cannot report it.</strong> Many displays cannot be queried
+        while powering on. Assume, then confirm when possible.</li>
+      <li><strong>Respect timing.</strong> Projectors may ignore commands for 30–60 s during warm-up and cool-down.
+        Queue commands and send them when the device is ready.</li>
+      <li><strong>Prefer local over cloud.</strong> A cloud API adds internet dependency, rate limits and the risk
+        that the vendor changes or retires it.</li>
+      <li><strong>Separate network gear monitoring from control.</strong> Read port status, PoE power and errors via
+        SNMP; leave configuration to network tools.</li>
+    </ul>
+
+    <h3>Sort the interfaces</h3>
+    <div class="classify" data-cats="Serial/TCP text,HTTP/REST,SNMP,Cloud API">
+      <div class="item" data-cat="Serial/TCP text" data-why="PJLink is a text protocol over TCP 4352."><span class="label">Projector power via PJLink</span></div>
+      <div class="item" data-cat="SNMP" data-why="UPS units typically expose battery status via an SNMP MIB, e.g. the standard UPS-MIB."><span class="label">UPS battery level from a network card</span></div>
+      <div class="item" data-cat="HTTP/REST" data-why="Most modern TVs on the LAN expose an HTTP or JSON-RPC control API."><span class="label">Smart TV input switching over the LAN</span></div>
+      <div class="item" data-cat="SNMP" data-why="ifOperStatus in IF-MIB is the standard port status."><span class="label">Switch port link status</span></div>
+      <div class="item" data-cat="Cloud API" data-why="Many consumer heat pumps only expose data through the vendor's internet API."><span class="label">Heat pump with only a vendor app</span></div>
+      <div class="item" data-cat="Serial/TCP text" data-why="DSPs commonly offer line-based ASCII control over Telnet or raw TCP."><span class="label">Audio DSP gain change via Telnet</span></div>
+    </div>
+
+    <div class="callout example">A conference centre has 20 displays from two brands, 6 projectors and a DSP. Each
+      device type gets a driver that publishes <code>av/room3/display1/power</code>, <code>…/input</code> and
+      <code>…/online</code>. A "presentation" scene in the BMS sets lights to 40 %, lowers blinds, powers the
+      projector and routes the lectern input. The scene logic does not care which brand the projector is.</div>
+
+    <div class="callout warn">Vendor APIs change with firmware updates. A TV that accepted a command last month may
+      need a new pairing token after an update. Pin firmware where you can, monitor "online" per device, and keep
+      the driver's version notes with the point map.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Why expose a normalised model (power, input, online) instead of raw vendor commands?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Scenes, UIs and alarms stay unchanged when a device brand is replaced.">Higher layers become independent of the brand</button>
+        <button class="opt" data-opt="b" data-why="Normalisation does not add speed; it adds a small translation step.">It makes the device respond faster</button>
+        <button class="opt" data-opt="c" data-why="The driver still uses the vendor protocol underneath.">The device no longer needs its vendor protocol</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Vendor systems use serial text, HTTP, WebSocket, SNMP or cloud APIs.</li>
+      <li>Write one driver per type and expose a small normalised model.</li>
+      <li>Prefer local control; watch for firmware changes.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. A gateway keeps serving 21.3 °C after its RS-485 cable was cut. What design flaw is this?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Scaling is unrelated to a cut cable.">Wrong scaling</button>
+        <button class="opt" data-opt="b" data-why="The cache value should have been marked bad or stale after timeouts.">No quality or staleness signalling</button>
+        <button class="opt" data-opt="c" data-why="Polling rate does not matter if failures are hidden.">Too slow a poll rate</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. A UINT32 energy counter in Wh uses CDAB order. Registers read 0x1234 then 0x0001. What is the raw value?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is ABCD order: 0x12340001.">305 397 761</button>
+        <button class="opt" data-opt="b" data-why="That ignores the high word.">4 660</button>
+        <button class="opt" data-opt="c" data-why="CDAB: register 2 is high, so 0x00011234 = 70 196.">70 196</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. A BACnet COV subscription stops delivering after the controller reboots. Best fix?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Renewal restores the subscription; the read catches anything missed.">Renew subscriptions periodically and do an occasional full read</button>
+        <button class="opt" data-opt="b" data-why="Polling everything fast undoes the benefit of COV.">Switch everything to 1 s polling</button>
+        <button class="opt" data-opt="c" data-why="Longer lifetimes do not survive a reboot if the server forgets them.">Set an infinite subscription lifetime</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. After a broker restart 300 gateways reconnect at the same instant and overload it. What prevents this?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Shorter delays make the herd worse.">Retry every 100 ms</button>
+        <button class="opt" data-opt="b" data-why="Keepalive detects dead links; it does not schedule reconnects.">A longer keepalive</button>
+        <button class="opt" data-opt="c" data-why="Backoff without jitter keeps all clients synchronised.">Exponential backoff alone</button>
+        <button class="opt" data-opt="d" data-why="Randomised waits spread the clients over time.">Exponential backoff with jitter</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. Where does heavy control logic belong in an integration architecture?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Function nodes are fine for glue, but large logic there is hard to test and review.">Inside Node-RED function nodes</button>
+        <button class="opt" data-opt="b" data-why="Gateways translate; controllers or dedicated services control.">In controllers or a dedicated, tested service, not the gateway</button>
+        <button class="opt" data-opt="c" data-why="The broker routes messages; it does not run logic.">In the MQTT broker</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="06-mqtt.html">← Chapter 06</a>
+    <a class="btn" href="08-controllers-plcs.html">Chapter 08 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 7 visualizations.
+const pressSeg = (fig, attr, val) => fig.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute("aria-pressed", b.getAttribute(attr) === val));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const bindOutputs = (fig) => fig.querySelectorAll("input[type=range]").forEach((i) => {
+  const o = i.parentElement.querySelector("output");
+  const f = () => { if (o) o.textContent = i.value; };
+  i.addEventListener("input", f); f();
+});
+
+// 7.2 Point mapping builder.
+(() => {
+  const fig = document.getElementById("mapper");
+  const g = (k) => fig.querySelector(`[data-k="${k}"]`);
+  const pipe = fig.querySelector(".pipe"), out = fig.querySelector(".readout");
+  const PRESETS = {
+    float: { r1: "41AC", r2: "0000", type: "f32", order: "abcd", scale: "1", offset: "0", unit: "°C", topic: "site/ahu1/supply_temp" },
+    swap: { r1: "41AC", r2: "0000", type: "f32", order: "cdab", scale: "1", offset: "0", unit: "°C", topic: "site/ahu1/supply_temp" },
+    neg: { r1: "FFD3", r2: "0000", type: "i16", order: "abcd", scale: "0.1", offset: "0", unit: "°C", topic: "site/outdoor/temp" },
+    energy: { r1: "1234", r2: "0001", type: "u32", order: "cdab", scale: "0.001", offset: "0", unit: "kWh", topic: "site/meters/main/energy_kwh" },
+  };
+  const hex = (s) => { const n = parseInt(s, 16); return Number.isFinite(n) ? n & 0xffff : 0; };
+  const draw = () => {
+    const r1 = hex(g("r1").value), r2 = hex(g("r2").value), type = g("type").value, order = g("order").value;
+    const scale = parseFloat(g("scale").value) || 0, offset = parseFloat(g("offset").value) || 0;
+    const [hi, lo] = order === "abcd" ? [r1, r2] : [r2, r1];
+    const dv = new DataView(new ArrayBuffer(4));
+    let decoded, bytes;
+    if (type === "u16" || type === "i16") {
+      dv.setUint16(0, r1);
+      decoded = type === "u16" ? dv.getUint16(0) : dv.getInt16(0);
+      bytes = r1.toString(16).padStart(4, "0").toUpperCase();
+    } else {
+      dv.setUint16(0, hi); dv.setUint16(2, lo);
+      decoded = type === "u32" ? dv.getUint32(0) : dv.getFloat32(0);
+      bytes = (hi.toString(16).padStart(4, "0") + lo.toString(16).padStart(4, "0")).toUpperCase();
+    }
+    const eng = decoded * scale + offset;
+    const fmt = (x) => (Math.abs(x) > 1e9 || (x !== 0 && Math.abs(x) < 1e-4)) ? x.toExponential(3) : +x.toFixed(4);
+    const payload = JSON.stringify({ v: fmt(eng), unit: g("unit").value, q: "good" });
+    pipe.innerHTML =
+      `<div><small>Raw bytes (as assembled)</small><b>0x${bytes}</b></div>` +
+      `<div><small>Decoded ${type.toUpperCase()}</small><b>${esc(fmt(decoded))}</b></div>` +
+      `<div class="hl"><small>Engineering value</small><b>${esc(fmt(eng))} ${esc(g("unit").value)}</b></div>` +
+      `<div><small>Topic</small><b>${esc(g("topic").value)}</b></div>` +
+      `<div><small>Payload</small><b>${esc(payload)}</b></div>`;
+    const silly = !Number.isFinite(eng) || Math.abs(eng) > 1e6 || (eng !== 0 && Math.abs(eng) < 1e-6);
+    out.textContent = silly
+      ? "This value is absurd. Suspect word order or data type."
+      : "Plausible value. Still verify it against a reading on site.";
+  };
+  fig.querySelectorAll("input, select").forEach((el) => el.addEventListener("input", draw));
+  fig.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => {
+    const p = PRESETS[b.dataset.p];
+    Object.keys(p).forEach((k) => (g(k).value = p[k]));
+    pressSeg(fig, "data-p", b.dataset.p);
+    draw();
+  }));
+  draw();
+})();
+
+// 7.3 Polling vs push vs subscription.
+(() => {
+  const fig = document.getElementById("loadsim");
+  bindOutputs(fig);
+  const svg = fig.querySelector("svg"), stats = fig.querySelector(".stat3");
+  const val = (k) => +fig.querySelector(`[data-k="${k}"]`).value;
+  // Fixed demo changes on a 120 s window so the picture is stable.
+  const CH = [7, 23, 31, 58, 74, 97, 112];
+  const draw = () => {
+    const n = val("n"), t = val("t"), c = val("c"), b = val("b");
+    const pollRate = n / b / t;
+    const pushRate = (n * c) / 3600 + n / 300; // changes + 5 min heartbeat
+    const renew = n / b / 600; // renew every 10 min
+    const subRate = (n * c) / 3600 + renew;
+    const X = (s) => 20 + (s / 120) * 560;
+    let s = `<text class="small" x="20" y="14">change</text><text class="small" x="20" y="64">poll</text><text class="small" x="20" y="114">push/sub</text>`;
+    s += `<line class="muted-s" x1="20" y1="35" x2="580" y2="35"/><line class="muted-s" x1="20" y1="85" x2="580" y2="85"/><line class="muted-s" x1="20" y1="135" x2="580" y2="135"/>`;
+    for (let k = 0; k <= 120; k += t) s += `<line class="arrow" x1="${X(k)}" y1="77" x2="${X(k)}" y2="93"/>`;
+    CH.forEach((ch) => {
+      const det = Math.min(120, Math.ceil(ch / t) * t);
+      s += `<circle class="fill-accent" cx="${X(ch)}" cy="35" r="5"/>`;
+      s += `<line class="lit-line" x1="${X(ch)}" y1="40" x2="${X(det)}" y2="80" style="stroke:var(--example)"/><circle class="tick-ok" cx="${X(det)}" cy="85" r="4"/>`;
+      s += `<line class="lit-line" x1="${X(ch)}" y1="40" x2="${X(ch) + 3}" y2="130" style="stroke:var(--ok)"/><circle class="tick-ok" cx="${X(ch) + 3}" cy="135" r="4"/>`;
+    });
+    svg.innerHTML = s;
+    const rates = [pollRate, pushRate, subRate];
+    const best = rates.indexOf(Math.min(...rates));
+    const f = (x) => x >= 10 ? x.toFixed(0) : x.toFixed(2);
+    const cell = (i, name, r, lat) => `<div class="${i === best ? "best" : ""}"><small>${name}</small><b>${f(r)} msg/s</b><small>avg latency ${lat}</small></div>`;
+    stats.innerHTML = cell(0, "Polling", pollRate, `${(t / 2).toFixed(1)} s (worst ${t} s)`) +
+      cell(1, "Push + 5 min heartbeat", pushRate, "≈ network delay") +
+      cell(2, "Subscription (COV) + renewals", subRate, "≈ network delay");
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 7.4 Gateway loop stepper.
+(() => {
+  const fig = document.getElementById("gwloop");
+  const out = fig.querySelector(".readout");
+  const STEPS = [
+    "1 · Load and validate the point map. Refuse to start on a duplicate topic or an unknown type.",
+    "2 · Open the serial port and the MQTT connection. Publish status = online (retained); a last-will says offline.",
+    "3 · Read a contiguous block of registers through the bus queue. One request, many points.",
+    "4 · Decode types and word order, apply scale and offset. This function deserves unit tests.",
+    "5 · Compare with the last published value. Skip if inside the deadband, unless the heartbeat is due.",
+    "6 · Publish value, timestamp and quality. Retain so new subscribers get the current state.",
+    "7 · Process queued write commands: validate range, write, read back, publish the confirmed value.",
+    "8 · On timeout or exception, mark affected points as bad, count the error, and back off if the link is down.",
+  ];
+  let k = 0;
+  const draw = () => {
+    for (let i = 0; i < 8; i++) fig.querySelector("#gl" + i + " rect").classList.toggle("lit", i === k);
+    out.textContent = STEPS[k];
+  };
+  fig.querySelector('[data-act="next"]').addEventListener("click", () => { k = (k + 1) % STEPS.length; draw(); });
+  fig.querySelector('[data-act="prev"]').addEventListener("click", () => { k = (k + STEPS.length - 1) % STEPS.length; draw(); });
+  draw();
+})();
+
+// 7.5 Node-RED flow stepper.
+(() => {
+  const fig = document.getElementById("nrflow");
+  const pre = fig.querySelector("pre"), out = fig.querySelector(".readout");
+  const S = {
+    ok: [
+      [0, { payload: 1700000000000 }, "inject fires every 10 s. Payload is a timestamp; it only triggers the read."],
+      [1, { payload: [215], topic: "boiler" }, "modbus read returns register 40002 = 215."],
+      [2, { payload: { v: 21.5, unit: "°C" }, topic: "site/boiler/flow_temp" }, "function node scales by 0.1 and sets the topic."],
+      [3, { payload: { v: 21.5, unit: "°C" }, topic: "site/boiler/flow_temp" }, "rbe (report by exception) passes it: the value changed."],
+      [4, { payload: { v: 21.5, unit: "°C" }, topic: "site/boiler/flow_temp" }, "mqtt out publishes to the broker."],
+    ],
+    same: [
+      [0, { payload: 1700000010000 }, "inject fires again."],
+      [1, { payload: [215], topic: "boiler" }, "Same register value as last time."],
+      [2, { payload: { v: 21.5, unit: "°C" }, topic: "site/boiler/flow_temp" }, "Scaled as before."],
+      [3, null, "rbe blocks the message: no change, so nothing is published. Add a periodic heartbeat if consumers need one."],
+    ],
+    err: [
+      [0, { payload: 1700000020000 }, "inject fires."],
+      [1, { error: { message: "Timed out" } }, "modbus read times out and throws."],
+      [5, { error: { message: "Timed out", source: { type: "modbus-read" } } }, "catch node receives the error."],
+      [6, { payload: { v: null, q: "bad" }, topic: "site/boiler/flow_temp" }, "A change node builds a bad-quality message."],
+      [4, { payload: { v: null, q: "bad" }, topic: "site/boiler/flow_temp" }, "mqtt out publishes the bad quality. Consumers can grey the value out."],
+    ],
+  };
+  let sc = "ok", k = 0;
+  const draw = () => {
+    const [node, msg, text] = S[sc][k];
+    for (let i = 0; i < 7; i++) fig.querySelector("#nr" + i + " rect").classList.toggle("lit", i === node);
+    pre.textContent = msg ? "msg = " + JSON.stringify(msg, null, 2) : "(message dropped)";
+    out.textContent = `Step ${k + 1}/${S[sc].length} · ${text}`;
+  };
+  fig.querySelector('[data-act="next"]').addEventListener("click", () => { k = Math.min(S[sc].length - 1, k + 1); draw(); });
+  fig.querySelector('[data-act="prev"]').addEventListener("click", () => { k = Math.max(0, k - 1); draw(); });
+  fig.querySelectorAll("[data-sc]").forEach((b) => b.addEventListener("click", () => { sc = b.dataset.sc; k = 0; pressSeg(fig, "data-sc", sc); draw(); }));
+  draw();
+})();
+
+// 7.6 Watchdog timeline.
+(() => {
+  const fig = document.getElementById("watchdog");
+  bindOutputs(fig);
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  const val = (k) => +fig.querySelector(`[data-k="${k}"]`).value;
+  const T = 300;
+  let dev = "run", seed = 1;
+  // Small deterministic PRNG so re-roll is repeatable until clicked.
+  const rnd = (s) => () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const draw = () => {
+    const hb = val("hb"), to = val("k") * hb, loss = val("loss") / 100;
+    const r = rnd(seed * 7919);
+    const X = (t) => 20 + (t / T) * 560;
+    const beats = [];
+    for (let t = hb; t <= T; t += hb) {
+      if (dev === "die" && t > 150) break;
+      beats.push({ t, ok: r() >= loss });
+    }
+    // Walk time and build state segments.
+    let lastOk = 0, segs = [], cur = "ok", start = 0, falseAlarms = 0, detect = null;
+    const recv = beats.filter((b) => b.ok).map((b) => b.t);
+    for (let t = 0; t <= T; t += 0.5) {
+      if (recv.includes(t)) lastOk = t;
+      const st = t - lastOk > to ? "bad" : "ok";
+      if (st !== cur) {
+        segs.push([start, t, cur]);
+        if (st === "bad") { if (dev === "die" && t > 150) { if (detect === null) detect = t - 150; } else falseAlarms++; }
+        cur = st; start = t;
+      }
+    }
+    segs.push([start, T, cur]);
+    let s = `<text class="small" x="20" y="16">heartbeats</text><text class="small" x="20" y="96">consumer state</text>`;
+    s += `<line class="muted-s" x1="20" y1="50" x2="580" y2="50"/>`;
+    beats.forEach((b) => (s += `<rect class="${b.ok ? "tick-ok" : "tick-bad"}" x="${X(b.t) - 2}" y="${b.ok ? 34 : 42}" width="4" height="${b.ok ? 32 : 16}" rx="1"/>`));
+    if (dev === "die") s += `<line class="arrow" x1="${X(150)}" y1="24" x2="${X(150)}" y2="140" style="stroke-dasharray:4 3"/><text class="small" x="${X(150) + 4}" y="30">device dies</text>`;
+    segs.forEach(([a, b, st]) => {
+      if (b <= a) return;
+      s += `<rect x="${X(a)}" y="104" width="${X(b) - X(a)}" height="22" class="${st === "ok" ? "fill-ok" : "fill-bad"}" opacity=".85"/>`;
+      if (X(b) - X(a) > 70) s += `<text class="small" x="${(X(a) + X(b)) / 2}" y="119" text-anchor="middle" fill="#fff">${st === "ok" ? "available" : "unavailable"}</text>`;
+    });
+    for (let t = 0; t <= T; t += 60) s += `<text class="small fill-muted" x="${X(t)}" y="146" text-anchor="middle">${t}s</text>`;
+    svg.innerHTML = s;
+    const parts = [`Timeout ${to} s.`, `False "unavailable" episodes: ${falseAlarms}.`];
+    if (dev === "die") parts.push(detect === null ? "Failure not yet detected in the window." : `Failure detected ${detect.toFixed(1)} s after the device died.`);
+    out.textContent = parts.join(" ");
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  fig.querySelectorAll("[data-dev]").forEach((b) => b.addEventListener("click", () => { dev = b.dataset.dev; pressSeg(fig, "data-dev", dev); draw(); }));
+  fig.querySelector('[data-act="roll"]').addEventListener("click", () => { seed++; draw(); });
+  draw();
+})();
+
+// 7.6 Reconnect backoff.
+(() => {
+  const fig = document.getElementById("backoff");
+  bindOutputs(fig);
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  const val = (k) => +fig.querySelector(`[data-k="${k}"]`).value;
+  let jitter = "full";
+  const W = 180;
+  const draw = () => {
+    const base = val("base"), cap = val("cap"), n = val("n");
+    const X = (t) => 20 + (t / W) * 560;
+    const rowH = 150 / n;
+    let s = "", peak = new Map();
+    for (let c = 0; c < n; c++) {
+      let t = 0, a = 0;
+      const y = 10 + (c + 0.5) * rowH;
+      while (true) {
+        const d = Math.min(cap, base * 2 ** a);
+        t += jitter === "full" ? Math.random() * d : d;
+        a++;
+        if (t > W) break;
+        s += `<circle class="fill-accent" cx="${X(t)}" cy="${y}" r="${Math.max(1.5, Math.min(3.5, rowH / 2.5))}"/>`;
+        const bucket = Math.floor(t);
+        peak.set(bucket, (peak.get(bucket) || 0) + 1);
+      }
+    }
+    for (let t = 0; t <= W; t += 30) s += `<text class="small fill-muted" x="${X(t)}" y="174" text-anchor="middle">${t}s</text>`;
+    svg.innerHTML = s;
+    const max = Math.max(0, ...peak.values());
+    out.textContent = `Peak: ${max} of ${n} clients reconnecting within the same second.` +
+      (jitter === "none" ? " All clients are synchronised: a thundering herd." : " Jitter spreads the load.");
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  fig.querySelectorAll("[data-j]").forEach((b) => b.addEventListener("click", () => { jitter = b.dataset.j; pressSeg(fig, "data-j", jitter); draw(); }));
+  draw();
+})();
+</script>
+</body>
+</html>

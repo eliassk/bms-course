@@ -1,0 +1,1476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IP and IoT Protocols</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  pre { font: 13px/1.5 var(--mono); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 14px 0; }
+  .form-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 12px; }
+  .form-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+  .form-row input, .form-row select { font: 14px var(--mono); padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 110px; }
+  .form-row select { width: auto; font-family: var(--font); }
+  .bytes { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 14px; }
+  .byte { font: 600 13px var(--mono); padding: 6px 7px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); text-align: center; min-width: 34px; }
+  .byte small { display: block; font: 10px var(--font); color: var(--muted); }
+  .f-hdr { background: var(--accent-soft); border-color: var(--accent); }
+  .f-addr { background: var(--example-soft); border-color: var(--example); }
+  .f-pdu { background: var(--ok-soft); border-color: var(--ok); }
+  .f-crc { background: var(--bad-soft); border-color: var(--bad); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 1px solid var(--border); }
+  .legend .l-hdr::before { background: var(--accent-soft); border-color: var(--accent); }
+  .legend .l-addr::before { background: var(--example-soft); border-color: var(--example); }
+  .legend .l-pdu::before { background: var(--ok-soft); border-color: var(--ok); }
+  .legend .l-crc::before { background: var(--bad-soft); border-color: var(--bad); }
+  .frame-label { font-weight: 600; font-size: 14px; margin-top: 6px; }
+  .prio { width: 100%; font-size: 14px; }
+  .prio td, .prio th { padding: 4px 6px; vertical-align: middle; }
+  .prio tr.win td { background: var(--accent-soft); }
+  .prio tr.win td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
+  .prio input { width: 64px; font: 13px var(--mono); padding: 3px 5px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text); }
+  .prio .val { font-family: var(--mono); }
+  .prio button { font: 600 12px var(--font); padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  .prio button:hover { border-color: var(--accent); }
+  .pv-big { font: 700 28px var(--mono); color: var(--accent); }
+  .tree { list-style: none; padding-left: 0; margin: 0; font-size: 14px; }
+  .tree ul { list-style: none; padding-left: 12px; margin: 0; border-left: 1px dashed var(--border); }
+  .tree button { max-width: 100%; flex-wrap: wrap; overflow-wrap: anywhere; font: 14px var(--font); color: var(--text); background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; cursor: pointer; text-align: left; display: inline-flex; gap: 6px; align-items: baseline; }
+  .tree button:hover { border-color: var(--border); }
+  .tree button[aria-pressed=true] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .tree .tag { font: 600 10px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--surface-2); color: var(--muted); }
+  .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 640px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
+  .attr { font-size: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-wrap: anywhere; }
+  .attr dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 10px; margin: 0; }
+  .attr dt { color: var(--muted); }
+  .attr dd { margin: 0; font-family: var(--mono); font-size: 13px; }
+  .chain { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .chain button { font: 600 13px var(--font); padding: 8px 10px; border-radius: 8px; border: 2px solid var(--ok); background: var(--ok-soft); color: var(--text); cursor: pointer; }
+  .chain button.broken { border-color: var(--bad); background: var(--bad-soft); text-decoration: line-through; }
+  .chain .sep { color: var(--muted); }
+  .verdict { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-weight: 600; }
+  .verdict.ok { background: var(--ok-soft); color: var(--ok); }
+  .verdict.bad { background: var(--bad-soft); color: var(--bad); }
+  .toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; margin: 10px 0 0; }
+  svg .node-r { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+  svg .node-c { fill: var(--accent); stroke: var(--accent); stroke-width: 2; }
+  svg .node-e { fill: var(--surface); stroke: var(--muted); stroke-width: 2; }
+  svg .node-dead { fill: var(--bad-soft) !important; stroke: var(--bad) !important; }
+  svg .node-sel { stroke: var(--example) !important; stroke-width: 4 !important; }
+  svg .link { stroke: var(--border); stroke-width: 2; }
+  svg .link-dead { stroke: var(--bad); stroke-dasharray: 4 4; opacity: .5; }
+  svg .path { stroke: var(--example); stroke-width: 4; fill: none; }
+  svg .child { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 3; }
+  svg .hl { stroke: var(--example) !important; stroke-width: 3 !important; }
+  svg .fill-example { fill: var(--example); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="5">
+<div class="content">
+  <div class="kicker">Chapter 05</div>
+  <h1>IP and IoT protocols</h1>
+  <p class="lead">The protocols that carry building data over Ethernet, Wi-Fi and low-power radio: the industrial
+    classics (Modbus TCP, BACnet/IP, OPC UA), the web family (REST, WebSocket, webhooks), network management (SNMP),
+    smart-home meshes and cloud APIs, and finally the data models that give all these numbers meaning.</p>
+
+  <!-- 5.1 -->
+  <section class="lesson" id="s1" data-num="5.1">
+    <h2>5.1 Modbus TCP</h2>
+    <p>Modbus was created by Modicon in 1979 for its PLCs. It survived because it is tiny: a client asks, a server
+      answers, and the whole application layer fits on a few pages. Modbus TCP (published in 1999) takes the exact same
+      request and response, called the <strong>PDU</strong> (protocol data unit), and carries it in a TCP connection on
+      <strong>port 502</strong> instead of an RS-485 line.</p>
+    <p>The terms changed in 2020: the specification now says <em>client/server</em> instead of master/slave. The
+      client (a BMS, SCADA or gateway) always starts. The server (a chiller, energy meter or VFD) never speaks unless
+      asked. There is no discovery, no events and no data types beyond bits and 16-bit words.</p>
+
+    <h3>The data model: four tables</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Table</th><th>Size</th><th>Access</th><th>Read FC</th><th>Write FC</th><th>Legacy notation</th></tr>
+      <tr><td>Coils</td><td>1 bit</td><td>read/write</td><td><code>01</code></td><td><code>05</code>, <code>15</code></td><td>0xxxx</td></tr>
+      <tr><td>Discrete inputs</td><td>1 bit</td><td>read only</td><td><code>02</code></td><td>—</td><td>1xxxx</td></tr>
+      <tr><td>Input registers</td><td>16 bit</td><td>read only</td><td><code>04</code></td><td>—</td><td>3xxxx</td></tr>
+      <tr><td>Holding registers</td><td>16 bit</td><td>read/write</td><td><code>03</code></td><td><code>06</code>, <code>16</code></td><td>4xxxx</td></tr>
+    </table></div>
+    <p>On the wire, every address is <strong>0-based</strong>. Many manuals use the legacy 1-based notation, so
+      "register 40001" is sent as address <code>0</code> with function code 03. This off-by-one is the single most
+      common Modbus integration bug. If the values you read look like the neighbour of the right value, shift the
+      address by one.</p>
+
+    <h3>RTU frame vs TCP frame</h3>
+    <p>Both frames carry the same PDU: a function code plus data. What wraps it differs:</p>
+    <ul>
+      <li><strong>RTU</strong> (serial): 1 byte slave address, the PDU, then a 2-byte CRC-16 (low byte first). Frames
+        are separated by 3.5 character times of silence.</li>
+      <li><strong>TCP</strong>: a 7-byte <strong>MBAP header</strong> in front of the PDU, and no CRC because TCP and
+        Ethernet already check integrity. The MBAP header holds:
+        <em>transaction ID</em> (2 bytes, chosen by the client, echoed by the server),
+        <em>protocol ID</em> (2 bytes, always 0),
+        <em>length</em> (2 bytes, number of bytes that follow: unit ID + PDU) and
+        <em>unit ID</em> (1 byte).</li>
+    </ul>
+    <p>The PDU is at most 253 bytes. That is why one read is capped at <strong>125 registers</strong> (FC03/04) or
+      2000 coils, and one multi-register write at 123 registers.</p>
+
+    <h3>Try it: build a request</h3>
+    <figure class="viz" id="mbBuild">
+      <div class="form-row">
+        <label>Unit ID <input id="mbUnit" type="number" min="0" max="247" value="1"></label>
+        <label>Function
+          <select id="mbFc">
+            <option value="3">03 Read holding registers</option>
+            <option value="4">04 Read input registers</option>
+            <option value="6">06 Write single register</option>
+            <option value="1">01 Read coils</option>
+          </select></label>
+        <label>Address (0-based) <input id="mbAddr" type="number" min="0" max="65535" value="0"></label>
+        <label id="mbQtyL">Quantity <input id="mbQty" type="number" min="1" max="125" value="2"></label>
+      </div>
+      <label class="toggle"><input type="checkbox" id="mbErr"> Server rejects the address (exception)</label>
+      <div class="frame-label">Modbus RTU request</div>
+      <div class="bytes" id="mbRtu"></div>
+      <div class="frame-label">Modbus TCP request</div>
+      <div class="bytes" id="mbTcp"></div>
+      <div class="frame-label">Modbus TCP response</div>
+      <div class="bytes" id="mbResp"></div>
+      <div class="legend"><span class="l-hdr">MBAP header</span><span class="l-addr">unit / slave address</span><span class="l-pdu">PDU (identical in both)</span><span class="l-crc">CRC-16</span></div>
+      <div class="readout" id="mbText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Hex bytes as they appear in Wireshark. The CRC is computed live with the Modbus polynomial 0xA001.</figcaption>
+    </figure>
+
+    <h3>Data types and byte order</h3>
+    <p>Modbus knows only 16-bit registers. Everything else is a convention the device manual must state:</p>
+    <ul>
+      <li><strong>Scaled integers.</strong> 215 in a register with scale 0.1 means 21.5 °C. Signed values use two's
+        complement: 0xFFF6 is −10, i.e. −1.0 °C.</li>
+      <li><strong>32-bit values</strong> (float32, uint32 energy counters) use two registers. Bytes inside a register
+        are big-endian, but <em>word order</em> varies by vendor: ABCD, CDAB, BADC, DCBA. A temperature that reads
+        as 1.4e−38 or 2.3e+12 is almost always swapped words.</li>
+      <li><strong>Bit fields.</strong> One status register often packs 16 alarms.</li>
+    </ul>
+
+    <h3>Gateways and the unit ID</h3>
+    <p>On a native Modbus TCP device the unit ID is usually ignored (often 1 or 255). On a TCP-to-RTU gateway it is
+      the address of the serial device behind it. One gateway can expose 30 meters on one IP address, each a different
+      unit ID. The gateway then serialises all requests onto one slow RS-485 line, so poll budgets from Chapter 04
+      still apply.</p>
+    <div class="callout warn">Many small devices accept only a few simultaneous TCP connections (often 1 to 8). If a
+      BMS, a commissioning laptop and a cloud logger all connect, the last one may be refused or may knock out another.
+      Plan one owner per device, and let others read through it.</div>
+
+    <h3>Exceptions</h3>
+    <p>When a request is invalid the server answers with the function code plus 0x80 and an exception code:
+      <code>01</code> illegal function, <code>02</code> illegal data address, <code>03</code> illegal data value,
+      <code>04</code> server device failure, <code>0B</code> gateway target device failed to respond. No answer at all
+      means a timeout, which is a different problem (wrong IP, wrong unit ID behind a gateway, or a dead line).</p>
+
+    <div class="callout example">A typical office AHU controller publishes a register map: holding register 0 is the
+      supply air setpoint ×10, input register 10 is supply air temperature ×10 (signed), input registers 20–21 are
+      a float32 fan power in CDAB order, coil 0 is the run command. A BMS reads input registers 10–21 in one FC04
+      request every 10 s and writes register 0 only when an operator changes the setpoint.</div>
+
+    <div class="callout warn">Modbus has no authentication and no encryption. Anyone who reaches port 502 can write a
+      setpoint or stop a fan. Keep Modbus on an isolated OT VLAN and never forward port 502 to the internet. The newer
+      "Modbus/TCP Security" profile wraps Modbus in TLS on port 802, but few building devices support it.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A manual lists "Supply temperature: 30011". Which request reads it?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="3xxxx means input register, not holding register, and the address is 0-based.">FC03, address 30011</button>
+        <button class="opt" data-opt="b" data-why="Right table, but on the wire the address is 0-based: 30011 → 10.">FC04, address 11</button>
+        <button class="opt" data-opt="c" data-why="3xxxx is the input register table (FC04). 30001 is address 0, so 30011 is address 10.">FC04, address 10</button>
+        <button class="opt" data-opt="d" data-why="Coils hold single bits, not temperatures.">FC01, address 10</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Modbus TCP = the serial PDU + a 7-byte MBAP header, no CRC, port 502.</li>
+      <li>Four tables, 0-based addresses on the wire, 125 registers per read at most.</li>
+      <li>Scaling, signedness and word order are vendor conventions. Read the manual.</li>
+      <li>No security, no discovery, no events. Isolate it.</li>
+    </ul>
+  </section>
+
+  <!-- 5.2 -->
+  <section class="lesson" id="s2" data-num="5.2">
+    <h2>5.2 BACnet/IP: objects, services, BBMD</h2>
+    <p>BACnet (ASHRAE 135, also ISO 16484-5) was designed for buildings from the start. Where Modbus gives you a
+      numbered register and a manual, BACnet gives you a <strong>self-describing object</strong> with a name, units,
+      status and alarm limits that any client can read. It runs over several data links: MS/TP on RS-485 (Chapter
+      04), Ethernet, and most commonly today <strong>BACnet/IP</strong>, which uses <strong>UDP port 47808</strong>
+      (0xBAC0).</p>
+
+    <h3>Devices and objects</h3>
+    <p>Every BACnet device has exactly one <strong>Device object</strong> whose instance number (0 to 4 194 302) must
+      be unique on the whole BACnet internetwork, not just the subnet. All other data lives in objects identified by
+      <em>type + instance</em>, e.g. <code>analog-input,3</code>. Each object has <strong>properties</strong>; the
+      most important is <code>present-value</code>. Click an object to see its properties.</p>
+
+    <div class="explorer">
+      <div class="layers">
+        <button class="layer" data-target="bo-dev">Device 120401 "AHU-1"</button>
+        <button class="layer" data-target="bo-ai">analog-input,1 "SAT"</button>
+        <button class="layer" data-target="bo-ao">analog-output,1 "HtgVlv"</button>
+        <button class="layer" data-target="bo-bv">binary-value,5 "FanEnable"</button>
+        <button class="layer" data-target="bo-av">analog-value,2 "SAT-SP"</button>
+        <button class="layer" data-target="bo-sch">schedule,1 "Occupancy"</button>
+        <button class="layer" data-target="bo-nc">notification-class,1</button>
+      </div>
+      <div class="panel" aria-live="polite">
+        <template id="bo-dev">
+          <h4>Device object</h4>
+          <p>Describes the controller itself. Answers Who-Is.</p>
+          <ul>
+            <li><code>object-identifier</code> = device,120401</li>
+            <li><code>vendor-name</code>, <code>model-name</code>, <code>firmware-revision</code></li>
+            <li><code>object-list</code> = every object in the device (read it to "discover" points)</li>
+            <li><code>protocol-services-supported</code> = which services it implements</li>
+            <li><code>max-apdu-length-accepted</code> = 1476 on IP, 480 on MS/TP</li>
+            <li><code>segmentation-supported</code>, <code>system-status</code></li>
+          </ul>
+        </template>
+        <template id="bo-ai">
+          <h4>analog-input,1: supply air temperature</h4>
+          <ul>
+            <li><code>object-name</code> = "AHU1.SAT"</li>
+            <li><code>present-value</code> = 17.8 (REAL)</li>
+            <li><code>units</code> = degrees-celsius</li>
+            <li><code>status-flags</code> = {in-alarm F, fault F, overridden F, out-of-service F}</li>
+            <li><code>reliability</code> = no-fault-detected (or open-loop, over-range…)</li>
+            <li><code>out-of-service</code> = false. When true, present-value can be written for testing.</li>
+            <li><code>cov-increment</code> = 0.2: notify subscribers after a 0.2 K change</li>
+            <li><code>high-limit</code>, <code>low-limit</code>, <code>notification-class</code>: intrinsic alarming</li>
+          </ul>
+        </template>
+        <template id="bo-ao">
+          <h4>analog-output,1: heating valve</h4>
+          <ul>
+            <li><code>present-value</code> = 42.0 % (commandable)</li>
+            <li><code>priority-array</code> = 16 slots, see the simulator below</li>
+            <li><code>relinquish-default</code> = 0.0, used when all 16 slots are empty</li>
+            <li><code>units</code> = percent</li>
+            <li><code>status-flags</code>: <em>overridden</em> is set when a local hand switch wins</li>
+          </ul>
+        </template>
+        <template id="bo-bv">
+          <h4>binary-value,5: fan enable (virtual)</h4>
+          <ul>
+            <li><code>present-value</code> = active / inactive</li>
+            <li><code>active-text</code> = "On", <code>inactive-text</code> = "Off"</li>
+            <li><code>priority-array</code>, <code>relinquish-default</code> (if commandable)</li>
+            <li><code>minimum-on-time</code>, <code>minimum-off-time</code>: protect motors from short cycling (uses priority 6)</li>
+            <li><code>change-of-state-count</code>, <code>elapsed-active-time</code>: run hours</li>
+          </ul>
+        </template>
+        <template id="bo-av">
+          <h4>analog-value,2: supply air setpoint</h4>
+          <p>A virtual point: no wire, just a value in logic. The BMS writes it; the controller's loop reads it.</p>
+          <ul>
+            <li><code>present-value</code> = 18.0</li>
+            <li><code>units</code> = degrees-celsius</li>
+            <li><code>priority-array</code> optional: only if the vendor made it commandable</li>
+          </ul>
+        </template>
+        <template id="bo-sch">
+          <h4>schedule,1: occupancy</h4>
+          <ul>
+            <li><code>weekly-schedule</code> = Mon–Fri 07:00 active, 19:00 inactive</li>
+            <li><code>exception-schedule</code> = holidays, linked to a calendar object</li>
+            <li><code>list-of-object-property-references</code> = which points it writes (e.g. binary-value,5)</li>
+            <li><code>priority-for-writing</code> = usually 16, the lowest</li>
+          </ul>
+        </template>
+        <template id="bo-nc">
+          <h4>notification-class,1</h4>
+          <p>Routes alarms. Objects reference it by number.</p>
+          <ul>
+            <li><code>priority</code> = per transition: to-offnormal, to-fault, to-normal</li>
+            <li><code>ack-required</code> = which transitions need an operator acknowledgement</li>
+            <li><code>recipient-list</code> = which devices get ConfirmedEventNotification, on which days and times</li>
+          </ul>
+        </template>
+      </div>
+    </div>
+
+    <h3>Services: what you can ask</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Group</th><th>Services</th><th>Use</th></tr>
+      <tr><td>Discovery</td><td>Who-Is / I-Am, Who-Has / I-Have</td><td>Find devices by instance range, find objects by name</td></tr>
+      <tr><td>Data access</td><td>ReadProperty, ReadPropertyMultiple, WriteProperty, WritePropertyMultiple</td><td>Polling and commanding. RPM reads many properties in one round trip.</td></tr>
+      <tr><td>Change of value</td><td>SubscribeCOV, (Un)ConfirmedCOVNotification</td><td>Device pushes when a value moves more than cov-increment. Subscriptions have a lifetime and must be renewed.</td></tr>
+      <tr><td>Alarms and events</td><td>ConfirmedEventNotification, AcknowledgeAlarm, GetEventInformation</td><td>Intrinsic alarms raised by the device itself</td></tr>
+      <tr><td>Trends, files</td><td>ReadRange, AtomicReadFile</td><td>Pull trend-log buffers, backups</td></tr>
+      <tr><td>Device management</td><td>DeviceCommunicationControl, ReinitializeDevice, TimeSynchronization</td><td>Commissioning and maintenance</td></tr>
+    </table></div>
+
+    <h3>The priority array</h3>
+    <p>Commandable objects (outputs, and some values) do not have one present-value that the last writer wins. They
+      have a <strong>16-slot priority array</strong>. Each writer writes at its own priority. The present value is the
+      value of the <em>lowest-numbered</em> (highest priority) slot that is not NULL. Writing NULL is called
+      <strong>relinquishing</strong>. When every slot is NULL, the object falls back to
+      <code>relinquish-default</code>.</p>
+    <p>Standard meanings: 1 manual life safety, 2 automatic life safety, 5 critical equipment control, 6 minimum
+      on/off, 8 manual operator, 16 the lowest (schedules typically). Slots 3, 4, 7 and 9–15 are site-defined.</p>
+
+    <figure class="viz" id="prio">
+      <div class="two-col">
+        <div class="table-wrap"><table class="prio" id="prioTable"></table></div>
+        <div>
+          <div style="font-size:13px;color:var(--muted)">analog-output,1 present-value</div>
+          <div class="pv-big" id="prioPv">—</div>
+          <div id="prioWho" style="font-size:14px;margin-bottom:12px"></div>
+          <div style="font-size:13px;margin-bottom:6px"><strong>Scenarios</strong></div>
+          <div class="controls" style="display:grid;gap:6px">
+            <button class="btn secondary" data-sc="op">Operator forces 100 % at P8</button>
+            <button class="btn secondary" data-sc="fire">Smoke control closes it at P2</button>
+            <button class="btn secondary" data-sc="forgot">Operator "removes" override by writing 0 at P8</button>
+            <button class="btn secondary" data-sc="reset">Reset</button>
+          </div>
+        </div>
+      </div>
+      <div class="readout" id="prioText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Write a value or relinquish (NULL) at any priority. The highlighted row is the one in control.</figcaption>
+    </figure>
+
+    <div class="callout warn">The classic BACnet mistake: a front end writes at priority 8 and never relinquishes.
+      The schedule at 16 keeps running but has no effect, forever. Writing 0 or "off" does not release a slot; only
+      writing NULL does. Good front ends show the active priority and offer a "release" button.</div>
+
+    <h3>Discovery and broadcasts: why BBMDs exist</h3>
+    <p>Who-Is is a <strong>broadcast</strong>. IP routers do not forward broadcasts, so a Who-Is sent on
+      10.1.10.0/24 never reaches a controller on 10.1.20.0/24. BACnet solves this with a
+      <strong>BBMD</strong> (BACnet Broadcast Management Device) on each subnet. BBMDs hold a Broadcast Distribution
+      Table (BDT) listing their peers. A BBMD that hears a local broadcast wraps it in a
+      <em>Forwarded-NPDU</em> and unicasts it to each peer, which re-broadcasts it on its own subnet.</p>
+    <p>A single PC that sits elsewhere (a VPN laptop) can join as a <strong>foreign device</strong>: it sends
+      Register-Foreign-Device to one BBMD with a time-to-live and then receives broadcasts by unicast.</p>
+
+    <figure class="viz" id="bbmd">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="BBMD">
+          <button data-mode="off" aria-pressed="true">No BBMD</button>
+          <button data-mode="on">BBMD on each subnet</button>
+        </div>
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 640 300" role="img" aria-label="Two IP subnets joined by a router. A Who-Is broadcast from a workstation on subnet A reaches subnet B only through BBMDs.">
+        <defs><marker id="ahB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <rect x="10" y="30" width="270" height="250" rx="12" class="fill-surface" stroke="var(--border)" stroke-width="1.5"/>
+        <rect x="360" y="30" width="270" height="250" rx="12" class="fill-surface" stroke="var(--border)" stroke-width="1.5"/>
+        <text class="small" x="145" y="22" text-anchor="middle">Subnet A · 10.1.10.0/24</text>
+        <text class="small" x="495" y="22" text-anchor="middle">Subnet B · 10.1.20.0/24</text>
+        <rect class="box" id="bR" x="290" y="130" width="60" height="44" rx="8"/><text x="320" y="157" text-anchor="middle">Router</text>
+        <line class="arrow" x1="280" y1="152" x2="290" y2="152"/><line class="arrow" x1="350" y1="152" x2="360" y2="152"/>
+        <rect class="box" id="bWs" x="30" y="50" width="110" height="46" rx="8"/><text x="85" y="72" text-anchor="middle">BMS</text><text class="small" x="85" y="88" text-anchor="middle">workstation</text>
+        <rect class="box" id="bD1" x="160" y="50" width="105" height="46" rx="8"/><text x="212" y="72" text-anchor="middle">Device 101</text><text class="small" x="212" y="88" text-anchor="middle">boiler ctrl</text>
+        <rect class="box" id="bBa" x="95" y="200" width="120" height="46" rx="8"/><text x="155" y="222" text-anchor="middle">BBMD A</text><text class="small" x="155" y="238" text-anchor="middle" id="bBaT">—</text>
+        <rect class="box" id="bD2" x="375" y="50" width="110" height="46" rx="8"/><text x="430" y="72" text-anchor="middle">Device 201</text><text class="small" x="430" y="88" text-anchor="middle">AHU ctrl</text>
+        <rect class="box" id="bD3" x="505" y="50" width="110" height="46" rx="8"/><text x="560" y="72" text-anchor="middle">Device 202</text><text class="small" x="560" y="88" text-anchor="middle">VAV ctrl</text>
+        <rect class="box" id="bBb" x="430" y="200" width="120" height="46" rx="8"/><text x="490" y="222" text-anchor="middle">BBMD B</text><text class="small" x="490" y="238" text-anchor="middle" id="bBbT">—</text>
+        <g id="bArrows"></g>
+      </svg>
+      <div class="readout" id="bbmdText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>In practice the BBMD function is often built into one controller or router per subnet, not a separate box.</figcaption>
+    </figure>
+
+    <h3>Inside a BACnet/IP packet</h3>
+    <p>A BACnet/IP datagram stacks three headers: <strong>BVLC</strong> (4 bytes: type 0x81, function, length; it
+      says whether this is an original unicast 0x0A, original broadcast 0x0B or forwarded 0x04 message),
+      <strong>NPDU</strong> (network layer: routing to other BACnet networks such as an MS/TP trunk behind a router)
+      and <strong>APDU</strong> (the service request). A BACnet router between IP and MS/TP rewrites the NPDU so the
+      workstation can address <code>network 5, MAC 12</code> on the serial trunk.</p>
+    <div class="callout warn">Two common faults: duplicate device instances (two controllers shipped with the default
+      instance, one of them "disappears" at random), and two BBMDs on the same subnet, which makes every broadcast
+      arrive twice and can create broadcast storms. One BBMD per subnet, unique instances site-wide.</div>
+    <p><strong>BACnet/SC</strong> (Secure Connect, added in 2019) replaces UDP broadcasts with TLS-encrypted
+      WebSocket connections to a hub, using certificates. It removes BBMDs and adds real security, but needs newer
+      devices.</p>
+
+    <div class="callout example">A 40-room hotel has room controllers on four MS/TP trunks behind two BACnet/IP
+      routers, plus a chiller and two AHUs on the plant VLAN. The integrator assigns device instances by building,
+      floor and trunk (e.g. 1 03 05 → 10305), enables BBMD on one router per VLAN, and has the front end subscribe COV
+      to room temperatures while writing setpoints at priority 8 and occupancy at 16.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Slots 8 = 22.0 and 16 = 19.0, all others NULL, relinquish-default 21.0. The operator writes NULL at 8. What is present-value?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Relinquish-default is used only when all 16 slots are NULL.">21.0</button>
+        <button class="opt" data-opt="b" data-why="Slot 16 is now the highest non-NULL slot, so the schedule is back in control.">19.0</button>
+        <button class="opt" data-opt="c" data-why="Slot 8 was relinquished; its value no longer counts.">22.0</button>
+        <button class="opt" data-opt="d" data-why="NULL is not a value; it empties the slot.">NULL</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>BACnet data = objects with properties. Device instance numbers must be unique site-wide.</li>
+      <li>Commandable objects use a 16-level priority array. Release with NULL, not with 0.</li>
+      <li>Prefer COV and ReadPropertyMultiple over polling single properties.</li>
+      <li>Broadcasts stop at routers. One BBMD per subnet, or a foreign device registration.</li>
+    </ul>
+  </section>
+
+  <!-- 5.3 -->
+  <section class="lesson" id="s3" data-num="5.3">
+    <h2>5.3 OPC UA</h2>
+    <p>OPC UA (Unified Architecture, IEC 62541) came from industrial automation. Its ancestor "OPC Classic" was tied to
+      Windows DCOM. OPC UA is platform-independent, runs from small embedded servers to cloud services, and in
+      buildings appears in PLC-based plant (Siemens S7-1500, Beckhoff, B&amp;R), in large energy centres and in
+      SCADA-to-IT integration.</p>
+    <p>Where BACnet fixes a set of object types, OPC UA gives you a <strong>meta-model</strong>: a graph of
+      <strong>nodes</strong> joined by typed <strong>references</strong>. Vendors and industry groups define their
+      own types on top. The graph is called the <strong>address space</strong>.</p>
+
+    <h3>The address space</h3>
+    <p>Every node has a <strong>NodeId</strong> (a namespace index plus an identifier: number, string, GUID or
+      bytes, e.g. <code>ns=2;s=AHU1.SupplyAirTemp</code>), a <strong>NodeClass</strong> and attributes. There are
+      eight node classes: Object, Variable, Method, ObjectType, VariableType, ReferenceType, DataType and View.
+      Click a node.</p>
+
+    <figure class="viz" id="opcua">
+      <div class="two-col">
+        <ul class="tree" id="uaTree"></ul>
+        <div class="attr" id="uaAttr" aria-live="polite"></div>
+      </div>
+      <figcaption>A small OPC UA server exposing an air handling unit. Variables carry value, data type, timestamps and a status code.</figcaption>
+    </figure>
+
+    <h3>Services and subscriptions</h3>
+    <p>A client opens a <strong>secure channel</strong> and a <strong>session</strong>, then uses services: Browse
+      (walk references), Read, Write, Call (invoke a method) and HistoryRead. For live data it creates a
+      <strong>subscription</strong> containing <strong>monitored items</strong>. Each item has a sampling interval
+      (how often the server checks the value), a queue size and optionally a deadband filter. The subscription has a
+      publishing interval: the server sends one notification message per interval with all changes since the last.
+      If nothing changed, it sends keep-alives.</p>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Modbus TCP</th><th>BACnet/IP</th><th>OPC UA</th></tr>
+      <tr><td>Transport</td><td>TCP 502</td><td>UDP 47808</td><td>TCP 4840 (opc.tcp), also HTTPS, WebSocket</td></tr>
+      <tr><td>Data model</td><td>4 flat tables</td><td>Fixed object types</td><td>Extensible typed graph</td></tr>
+      <tr><td>Discovery</td><td>None</td><td>Who-Is broadcast</td><td>Discovery server, Browse</td></tr>
+      <tr><td>Push</td><td>None</td><td>COV</td><td>Subscriptions, PubSub</td></tr>
+      <tr><td>Security</td><td>None</td><td>None (SC: TLS)</td><td>X.509 certificates, Sign / SignAndEncrypt, user tokens</td></tr>
+      <tr><td>Typical in buildings</td><td>Meters, chillers, VFDs</td><td>HVAC controllers, room control</td><td>PLC plant, energy centres, IT integration</td></tr>
+    </table></div>
+
+    <h3>Security</h3>
+    <p>Each endpoint advertises a <em>security mode</em> (None, Sign, SignAndEncrypt) and a <em>security policy</em>
+      (the algorithm suite, e.g. Basic256Sha256 or Aes256_Sha256_RsaPss). Client and server authenticate each other
+      with <strong>application instance certificates</strong>, then the user logs in with anonymous, username/password
+      or certificate tokens. The first connection usually fails until an administrator moves the client certificate
+      from the server's "rejected" folder to "trusted". This is by design, not a bug.</p>
+
+    <h3>Information models and PubSub</h3>
+    <p><strong>Companion specifications</strong> define standard types for a domain, so every vendor's pump looks the
+      same (e.g. the Pumps and Vacuum Pumps spec, or machinery and energy models). <strong>PubSub</strong> (Part 14)
+      lets servers publish to MQTT brokers or UDP multicast without client sessions, which suits fleet and cloud use.</p>
+
+    <div class="callout example">A district heating substation runs on a PLC with a built-in OPC UA server. The BMS
+      gateway connects with SignAndEncrypt, browses <code>Objects/Substation/HeatExchanger1</code>, and subscribes to
+      12 variables with a 1 s sampling interval, a 5 s publishing interval and a 0.1 K deadband on temperatures. Only
+      changes travel, each with a source timestamp and a status code such as <code>Good</code> or
+      <code>Bad_CommunicationError</code>.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">An OPC UA client connects for the first time with SignAndEncrypt and is refused. The likely cause is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Servers reject unknown application certificates until an administrator trusts them.">The server has not yet trusted the client's application certificate</button>
+        <button class="opt" data-opt="b" data-why="OPC UA does not use UDP 47808; that is BACnet.">UDP port 47808 is blocked</button>
+        <button class="opt" data-opt="c" data-why="Subscriptions come after the session; they cannot cause a connection refusal.">The publishing interval is too short</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>OPC UA = a typed graph of nodes and references, browsed at runtime.</li>
+      <li>Subscriptions with monitored items push changes with timestamps and status codes.</li>
+      <li>Security is built in: certificates both ways, plus user authentication.</li>
+    </ul>
+  </section>
+
+  <!-- 5.4 -->
+  <section class="lesson" id="s4" data-num="5.4">
+    <h2>5.4 REST, WebSocket and webhooks</h2>
+    <p>Newer devices, gateways and BMS platforms expose web APIs. Three patterns cover almost everything. They differ
+      in one question: <em>who starts the conversation, and when?</em></p>
+
+    <h3>REST over HTTP</h3>
+    <p>Resources have URLs; you act on them with HTTP methods. <code>GET</code> reads, <code>PUT</code> replaces,
+      <code>PATCH</code> changes part, <code>POST</code> creates or triggers. Status codes tell you what happened: 200
+      OK, 201 Created, 204 No Content, 400 bad request, 401 not authenticated, 403 not allowed, 404 not found, 409
+      conflict, 429 too many requests, 5xx server error. REST is stateless: every request carries its own
+      authentication, usually a bearer token.</p>
+<pre>GET /api/v1/points/ahu1.supply_air_temp HTTP/1.1
+Host: gateway.plant.local
+Authorization: Bearer eyJhbGciOi...
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+ETag: "a91f"
+
+{"id":"ahu1.supply_air_temp","value":17.8,"unit":"°C",
+ "quality":"good","ts":"2026-03-04T08:15:02Z"}</pre>
+    <p>REST is perfect for configuration and commands. For live values it forces <strong>polling</strong>: the
+      client asks again and again, most answers say "nothing changed", and a change is seen only at the next poll.</p>
+
+    <h3>WebSocket</h3>
+    <p>A WebSocket starts as an HTTP request with <code>Upgrade: websocket</code> (RFC 6455). The server answers
+      <code>101 Switching Protocols</code> and the TCP connection stays open as a two-way message channel. The server
+      can now push a change the moment it happens. The cost: the server must keep state per client, and the client
+      must handle reconnects, resubscribe and fetch a fresh snapshot after a gap, because messages sent while it was
+      disconnected are lost. Ping/pong frames detect dead connections through NAT and proxies.</p>
+<pre>→ {"id":7,"type":"subscribe","points":["ahu1.*"]}
+← {"id":7,"type":"result","success":true}
+← {"type":"event","point":"ahu1.supply_air_temp","value":18.1,"ts":"…08:15:09Z"}</pre>
+
+    <h3>Webhooks</h3>
+    <p>A webhook reverses the direction. You register a URL with a service; when something happens, the
+      <em>service</em> sends an HTTP POST to <em>you</em>. No open connection, no polling. But your endpoint must be
+      reachable from the sender (often from the internet), must verify the request is genuine (usually an HMAC
+      signature header computed with a shared secret), must answer quickly with 2xx, and must tolerate retries and
+      duplicates, because senders retry on timeouts. Use the event ID to make handling idempotent.</p>
+
+    <h3>Compare them on the same 60 seconds</h3>
+    <figure class="viz" id="seq">
+      <div class="controls seg" role="group" aria-label="Pattern">
+        <button data-mode="poll" aria-pressed="true">REST polling</button>
+        <button data-mode="ws">WebSocket push</button>
+        <button data-mode="hook">Webhook</button>
+      </div>
+      <label for="seqInt" id="seqIntL"><strong>Polling interval: <output id="seqIntOut">10</output> s</strong></label>
+      <input type="range" id="seqInt" min="1" max="30" step="1" value="10" style="width:100%">
+      <svg viewBox="0 0 640 230" role="img" aria-label="Sequence of messages between a server and a client over 60 seconds, with five value changes">
+        <defs><marker id="ahS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker>
+          <marker id="ahS2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <text x="10" y="54" id="seqTopL">Device API</text>
+        <text x="10" y="164" id="seqBotL">Client</text>
+        <line x1="100" y1="50" x2="620" y2="50" stroke="var(--border)" stroke-width="6" stroke-linecap="round"/>
+        <line x1="100" y1="160" x2="620" y2="160" stroke="var(--border)" stroke-width="6" stroke-linecap="round"/>
+        <g id="seqG"></g>
+        <g id="seqAxis"></g>
+      </svg>
+      <div class="readout" id="seqText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Stars mark the five real value changes. Grey arrows carry no news; blue arrows carry a change.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th></th><th>REST polling</th><th>WebSocket</th><th>Webhook</th></tr>
+      <tr><td>Who connects</td><td>Client, repeatedly</td><td>Client, once</td><td>Server, per event</td></tr>
+      <tr><td>Latency</td><td>Up to one interval</td><td>Milliseconds</td><td>Milliseconds to seconds</td></tr>
+      <tr><td>Firewall</td><td>Outbound only</td><td>Outbound only</td><td>Inbound to you</td></tr>
+      <tr><td>Missed events</td><td>Only between polls (values, not events)</td><td>Lost while disconnected</td><td>Retried by sender, may duplicate</td></tr>
+      <tr><td>Best for</td><td>Config, commands, slow values</td><td>Live dashboards, gateways</td><td>Cloud notifications</td></tr>
+    </table></div>
+
+    <div class="callout example">A typical gateway pattern: on start-up the client calls <code>GET /points</code>
+      to load a full snapshot, then opens a WebSocket and subscribes to changes. Commands go as
+      <code>POST /points/{id}/command</code> so they get a clear status code. After any reconnect it repeats the
+      snapshot. The same pattern appears in Home Assistant's WebSocket API, in many PV inverter gateways and in most
+      modern BMS front ends.</div>
+
+    <div class="callout warn">Do not poll a cloud API every second "to be safe". You will hit 429 rate limits, and a
+      locked-out API key stops all control. Use push when it exists, back off on 429 using the
+      <code>Retry-After</code> header, and cache.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A dashboard on a laptop must show a room temperature within one second of a change. The device API offers REST and WebSocket. Best choice?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A laptop behind NAT is not reachable from the device, and webhooks need an inbound URL.">A webhook to the laptop</button>
+        <button class="opt" data-opt="b" data-why="That works but costs thousands of mostly useless requests per hour per client.">REST polling every 500 ms</button>
+        <button class="opt" data-opt="c" data-why="One outbound connection, instant push. Load a REST snapshot on (re)connect.">WebSocket subscription, with a REST snapshot on connect</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>REST for snapshots, configuration and commands. Polling trades load for latency.</li>
+      <li>WebSocket for live push over an outbound connection. Always resync after reconnect.</li>
+      <li>Webhooks need an inbound endpoint, signature checks and idempotent handling.</li>
+    </ul>
+  </section>
+
+  <!-- 5.5 -->
+  <section class="lesson" id="s5" data-num="5.5">
+    <h2>5.5 SNMP</h2>
+    <p>The Simple Network Management Protocol is how IT monitors network gear, and buildings are full of network
+      gear: switches, UPSs, PDUs, firewalls, NAS units, access points, even some generators and precision air
+      conditioners. A BMS that watches the UPS over SNMP knows about a mains failure before the server shuts down.</p>
+
+    <h3>Managers, agents, MIBs and OIDs</h3>
+    <p>A <strong>manager</strong> (the monitoring system) talks to an <strong>agent</strong> on the device. The agent
+      exposes values identified by an <strong>OID</strong> (object identifier), a path in a global tree such as
+      <code>1.3.6.1.2.1.1.3.0</code>. A <strong>MIB</strong> file is the dictionary that gives these numbers names,
+      types and meaning. Standard MIBs (RFC-defined) live under <code>1.3.6.1.2.1</code> (mib-2). Vendor MIBs live
+      under <code>1.3.6.1.4.1.&lt;enterprise number&gt;</code>. Click through the tree.</p>
+
+    <figure class="viz" id="oid">
+      <div class="two-col">
+        <ul class="tree" id="oidTree"></ul>
+        <div class="attr" id="oidAttr" aria-live="polite"></div>
+      </div>
+      <figcaption>Scalars end in <code>.0</code>. Table columns end in a row index, e.g. ifOperStatus.3 for interface 3.</figcaption>
+    </figure>
+
+    <h3>Operations</h3>
+    <figure class="viz" id="snmpSeq">
+      <div class="controls seg" role="group" aria-label="Operation">
+        <button data-mode="get" aria-pressed="true">Get</button>
+        <button data-mode="walk">Walk</button>
+        <button data-mode="trap">Trap</button>
+        <button data-mode="set">Set</button>
+      </div>
+      <svg viewBox="0 0 640 220" role="img" aria-label="SNMP message exchange between manager and agent">
+        <defs><marker id="ahN" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <rect class="box" x="20" y="20" width="150" height="50" rx="8"/><text x="95" y="42" text-anchor="middle">Manager</text><text class="small" x="95" y="60" text-anchor="middle">BMS / NMS</text>
+        <rect class="box" x="470" y="20" width="150" height="50" rx="8"/><text x="545" y="42" text-anchor="middle">Agent</text><text class="small" x="545" y="60" text-anchor="middle">UPS network card</text>
+        <line x1="95" y1="70" x2="95" y2="215" class="muted-s" stroke-dasharray="4 4"/>
+        <line x1="545" y1="70" x2="545" y2="215" class="muted-s" stroke-dasharray="4 4"/>
+        <g id="snmpG"></g>
+      </svg>
+      <div class="readout" id="snmpText" aria-live="polite" style="font-family:var(--font)"></div>
+    </figure>
+    <p>Requests go to <strong>UDP 161</strong> on the agent. Traps and informs go to <strong>UDP 162</strong> on the
+      manager. A trap is fire-and-forget over UDP, so it can be lost; an <em>inform</em> (v2c and v3) is acknowledged
+      and retried. Good practice: use traps for speed, but also poll the key values every 30–60 s so a lost trap is
+      caught.</p>
+
+    <h3>Versions and security</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Version</th><th>Authentication</th><th>Encryption</th><th>Notes</th></tr>
+      <tr><td>v1</td><td>Community string in clear text</td><td>None</td><td>32-bit counters only. Legacy.</td></tr>
+      <tr><td>v2c</td><td>Community string in clear text</td><td>None</td><td>Adds GetBulk, 64-bit counters, informs. Still the most common.</td></tr>
+      <tr><td>v3</td><td>User-based (USM), HMAC-SHA</td><td>AES (privacy)</td><td>Levels noAuthNoPriv, authNoPriv, authPriv. Use authPriv.</td></tr>
+    </table></div>
+    <div class="callout warn">The defaults "public" (read) and "private" (write) are still shipped on many UPS and PDU
+      cards. A write community lets anyone on the network switch off outlets on a PDU. Change them, disable write
+      access if you do not need it, prefer v3 authPriv, and limit which manager IPs the agent answers.</div>
+
+    <h3>Counters and rates</h3>
+    <p>Traffic counters such as <code>ifInOctets</code> only ever increase and wrap at 2³² (about 4.3 GB). On a
+      1 Gbit/s link that is about 34 seconds at full load, so use the 64-bit <code>ifHCInOctets</code>. A rate is
+      (value₂ − value₁) ÷ time, with care at a wrap or an agent reboot (sysUpTime goes backwards).</p>
+
+    <div class="callout example">A server room UPS with an SNMP card uses the standard UPS-MIB (RFC 1628). The BMS
+      polls <code>upsEstimatedChargeRemaining</code> and <code>upsEstimatedMinutesRemaining</code> every 30 s, and
+      receives a trap on <code>upsTrapOnBattery</code>. Its rule: on battery for 2 min → alert; minutes remaining
+      below 10 → start the graceful shutdown of virtual machines.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">Which statement about SNMP traps is true?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Traps go from agent to manager on UDP 162.">The manager sends them to the agent on UDP 161</button>
+        <button class="opt" data-opt="b" data-why="Traps are not acknowledged; informs are.">They are always acknowledged</button>
+        <button class="opt" data-opt="c" data-why="v1 and v2c have no encryption at all.">They are encrypted in v2c</button>
+        <button class="opt" data-opt="d" data-why="They are unacknowledged UDP datagrams, so pair them with periodic polling.">They can be lost, so key values should also be polled</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Manager polls agent on UDP 161; agent sends traps to UDP 162.</li>
+      <li>OIDs are paths in a global tree; MIBs give them names. mib-2 is standard, enterprises is vendor.</li>
+      <li>v2c is clear text. Use v3 authPriv and change default communities.</li>
+    </ul>
+  </section>
+
+  <!-- 5.6 -->
+  <section class="lesson" id="s6" data-num="5.6">
+    <h2>5.6 Zigbee, Z-Wave, Thread, Matter</h2>
+    <p>Battery sensors and retrofit actuators rarely use Wi-Fi: it drains batteries in weeks. They use low-power
+      radios that form a <strong>mesh</strong>, where mains-powered devices relay messages for others. Three radio
+      networks dominate, and Matter sits on top as a shared application language.</p>
+
+    <h3>Roles in a mesh</h3>
+    <ul>
+      <li><strong>Coordinator</strong> (Zigbee) / <strong>controller</strong> (Z-Wave) / <strong>border router</strong>
+        (Thread): forms the network and connects it to the rest of the world.</li>
+      <li><strong>Router</strong>: mains powered, always listening, forwards traffic. Smart plugs, wired switches,
+        many bulbs.</li>
+      <li><strong>End device</strong> (sleepy): battery powered, sleeps most of the time, talks only to its parent
+        router, which stores messages for it until it wakes and polls.</li>
+    </ul>
+
+    <figure class="viz" id="mesh">
+      <div class="controls seg" role="group" aria-label="Network">
+        <button data-mode="zigbee" aria-pressed="true">Zigbee</button>
+        <button data-mode="thread">Thread</button>
+      </div>
+      <svg viewBox="0 0 600 330" role="img" aria-label="Mesh network. Click a router to fail it, click an end device to see its route.">
+        <g id="meshLinks"></g><g id="meshPath"></g><g id="meshNodes"></g>
+      </svg>
+      <div class="legend" style="margin-top:6px"><span>● filled: coordinator / border router</span><span>◯ blue: router (mains)</span><span>◯ grey: sleepy end device</span></div>
+      <div class="readout" id="meshText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Click a router (or the coordinator) to fail or restore it. Click a sensor (E) to trace its route.</figcaption>
+    </figure>
+
+    <h3>The four technologies</h3>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Zigbee</th><th>Z-Wave</th><th>Thread</th><th>Matter</th></tr>
+      <tr><td>Layer</td><td>Full stack on IEEE 802.15.4</td><td>Full stack, own radio (ITU G.9959)</td><td>Network layer: IPv6 over 802.15.4 (6LoWPAN)</td><td>Application layer over IP</td></tr>
+      <tr><td>Radio</td><td>2.4 GHz, 250 kbit/s</td><td>Sub-GHz: 868.4 MHz EU, 908.4 MHz US; up to 100 kbit/s</td><td>2.4 GHz, 250 kbit/s</td><td>Thread, Wi-Fi or Ethernet</td></tr>
+      <tr><td>Topology</td><td>Mesh with one coordinator</td><td>Source-routed mesh, max 4 hops; Z-Wave LR uses star</td><td>Self-healing mesh, no single coordinator; leader re-elected</td><td>Depends on transport</td></tr>
+      <tr><td>Scale</td><td>Hundreds in theory, ~50–150 per coordinator in practice</td><td>232 nodes (LR: thousands)</td><td>Up to 32 routers per partition, many end devices</td><td>Fabric of many networks</td></tr>
+      <tr><td>Interop</td><td>Zigbee 3.0 clusters; vendor extensions common</td><td>Strong certification, one silicon vendor</td><td>Carries Matter (or other IP apps)</td><td>Standard device types, multi-admin</td></tr>
+      <tr><td>Interference</td><td>Shares 2.4 GHz with Wi-Fi</td><td>Clear sub-GHz band, better wall penetration</td><td>Shares 2.4 GHz with Wi-Fi</td><td>—</td></tr>
+    </table></div>
+    <p><strong>Matter</strong> (CSA, first release 2022) is not a radio. It defines device types, clusters and secure
+      commissioning (often over Bluetooth LE, with a QR code), and runs on IP. Its key promises for buildings are
+      <em>local control</em> without a cloud and <em>multi-admin</em>: the same device can belong to several
+      controllers at once. Thread is the low-power transport it is usually paired with.</p>
+
+    <h3>Practical rules</h3>
+    <ul>
+      <li>Build the router backbone first (plugs, wired switches), then add battery devices.</li>
+      <li>Keep Zigbee on channels that avoid your Wi-Fi: Zigbee 15, 20 and 25 sit between Wi-Fi channels 1, 6 and 11.</li>
+      <li>Do not cut power to routing bulbs with a wall switch; the mesh loses a relay each time.</li>
+      <li>Put the coordinator USB stick on an extension cable, away from USB 3 ports, which emit 2.4 GHz noise.</li>
+      <li>Treat "no reading for 2 h" from a battery sensor as a fault, not as "nothing happened".</li>
+    </ul>
+
+    <div class="callout example">A 40-room hotel retrofit uses Zigbee radiator thermostats and window contacts. Each
+      corridor has two mains-powered smart plugs acting as routers, so every room has at least two parents within
+      range. The gateway watches each device's "last seen" time and link quality, and raises a maintenance ticket when
+      a battery falls below 20 %.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">In a Thread network, the only border router fails. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Thread devices keep their mesh; only the link off the mesh is lost.">Every device leaves the network and must be re-paired</button>
+        <button class="opt" data-opt="b" data-why="The mesh keeps routing internally, but nothing can reach the home or building IP network until a border router returns. Add a second one.">Devices still talk to each other inside the mesh, but lose the connection to the IP network</button>
+        <button class="opt" data-opt="c" data-why="That describes a Zigbee coordinator, not a Thread border router.">Nothing changes because Thread has no border routers</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Routers are mains powered and relay; end devices sleep and need a parent.</li>
+      <li>Zigbee and Thread share 2.4 GHz with Wi-Fi; Z-Wave uses sub-GHz.</li>
+      <li>Matter is an application layer over IP: local, multi-admin, usually on Thread or Wi-Fi.</li>
+    </ul>
+  </section>
+
+  <!-- 5.7 -->
+  <section class="lesson" id="s7" data-num="5.7">
+    <h2>5.7 Cloud APIs (Tuya) and their risks</h2>
+    <p>Many cheap devices (plugs, thermostats, curtain motors, heat pump Wi-Fi modules) are controlled through the
+      manufacturer's or platform's cloud. Tuya is the best-known example: thousands of brands ship Tuya modules under
+      their own name. Integration is done by creating a developer project on the cloud platform, linking the user
+      account, and calling a REST API (plus, on some platforms, a push message channel) with signed requests and a
+      short-lived access token.</p>
+
+    <h3>The dependency chain</h3>
+    <p>When the BMS sends "set 21 °C" through a cloud, the command travels a long way to reach a device that may be
+      three metres from the BMS server. Every link can break. Click a link to break or restore it.</p>
+
+    <figure class="viz" id="cloud">
+      <div class="chain" id="cloudChain"></div>
+      <label class="toggle"><input type="checkbox" id="cloudLocal"> Device also offers a local API (LAN path)</label>
+      <div class="verdict" id="cloudVerdict" aria-live="polite"></div>
+      <figcaption>The cloud path needs every link. A local path needs only the LAN and the device.</figcaption>
+    </figure>
+
+    <h3>Risks beyond outages</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Risk</th><th>What happens</th><th>Mitigation</th></tr>
+      <tr><td>Rate limits and quotas</td><td>Too many calls → 429 errors or a blocked project</td><td>Push channels, caching, backoff</td></tr>
+      <tr><td>Token or subscription expiry</td><td>Developer plans and API access can expire or need renewal</td><td>Monitor auth errors as alarms, document renewal</td></tr>
+      <tr><td>API changes</td><td>Endpoints or device models change without notice</td><td>Pin versions, test after updates, abstract behind a gateway</td></tr>
+      <tr><td>Vendor exit</td><td>Service shut down; devices become bricks</td><td>Prefer devices with local APIs or open firmware</td></tr>
+      <tr><td>Firmware push</td><td>The vendor updates firmware remotely, possibly removing local access</td><td>Block device internet access once a local path works</td></tr>
+      <tr><td>Data and privacy</td><td>Occupancy and usage data leave the building, often abroad</td><td>Check GDPR and the data processing terms</td></tr>
+      <tr><td>Security</td><td>Account takeover controls the building</td><td>Strong passwords, MFA, a dedicated service account</td></tr>
+    </table></div>
+    <p>Some cloud devices also accept local commands when you know their device key, and community projects such as
+      local Tuya integrations use this. It removes the cloud from the control path, but the key is obtained from the
+      cloud once and may change if the device is re-paired. Treat it as a useful workaround, not a supported interface.</p>
+
+    <div class="callout example">A small office uses Wi-Fi heat pump controllers that only offer a cloud API. During an
+      ISP outage on a cold Monday morning, the BMS cannot raise the setpoints after the weekend setback; the units stay
+      at 16 °C until someone uses the wall controller. The fix: a Modbus adapter for the heat pumps, with the cloud
+      kept only for the installer's remote diagnostics.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Which cloud-only device is the most acceptable in a building?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Losing it is an inconvenience with no comfort or safety impact.">A decorative lighting plug in the lobby</button>
+        <button class="opt" data-opt="b" data-why="Heating control must work during an internet outage.">The main heat pump's setpoint control</button>
+        <button class="opt" data-opt="c" data-why="Leak shut-off is a protection function; it must act locally.">A water leak shut-off valve</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>A cloud command depends on Wi-Fi, ISP, DNS, the vendor, your account and the API all working.</li>
+      <li>Rate limits, token expiry and API changes are failures too.</li>
+      <li>Use cloud-only devices only where losing them is acceptable. Prefer local APIs.</li>
+    </ul>
+  </section>
+
+  <!-- 5.8 -->
+  <section class="lesson" id="s8" data-num="5.8">
+    <h2>5.8 Data modelling: Haystack, Brick</h2>
+    <p>Every protocol above delivers numbers with names chosen by whoever programmed the controller:
+      <code>AHU1_SAT</code>, <code>L03.ZN12.RmTmp</code>, <code>analog-input,3</code>. A human can guess; software
+      cannot. A <strong>semantic model</strong> describes what each point is, what equipment it belongs to and how
+      equipment relates, in a machine-readable way. Then an analytics rule written once ("alarm if supply air
+      temperature deviates from setpoint for 30 min") runs on any building.</p>
+
+    <h3>Project Haystack: tags</h3>
+    <p>Haystack (project-haystack.org) describes entities with <strong>tags</strong>. <em>Marker</em> tags carry
+      meaning by presence (<code>ahu</code>, <code>point</code>, <code>sensor</code>, <code>temp</code>,
+      <code>air</code>, <code>discharge</code>). Value tags hold data (<code>dis:"AHU-1 Discharge Temp"</code>,
+      <code>unit:"°C"</code>). <em>Ref</em> tags link entities (<code>equipRef</code>, <code>siteRef</code>,
+      <code>spaceRef</code>). Queries use filters such as
+      <code>point and temp and air and discharge and equipRef-&gt;ahu</code>. Haystack 4 added formal definitions
+      (defs) and standard prototypes so tag sets are consistent.</p>
+
+    <h3>Brick Schema: classes and relationships</h3>
+    <p>Brick (brickschema.org) uses RDF and an ontology. Each entity is an instance of a <strong>class</strong> from a
+      hierarchy (<code>brick:Supply_Air_Temperature_Sensor</code> is a <code>brick:Temperature_Sensor</code> is a
+      <code>brick:Sensor</code> is a <code>brick:Point</code>). Entities are linked by <strong>relationships</strong>:
+      <code>hasPoint</code>, <code>feeds</code>, <code>hasPart</code>/<code>isPartOf</code>, <code>hasLocation</code>.
+      Queries use SPARQL, and reasoning follows the class hierarchy, so a search for <code>Temperature_Sensor</code>
+      finds every subtype. ASHRAE 223P builds on similar ideas as a formal standard.</p>
+
+    <figure class="viz" id="sem">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Model">
+          <button data-mode="hs" aria-pressed="true">Haystack view</button>
+          <button data-mode="brick">Brick view</button>
+        </div>
+      </div>
+      <div class="controls seg" role="group" aria-label="Query">
+        <button data-q="temp">All temperature sensors</button>
+        <button data-q="ahu">Points of AHU-1</button>
+        <button data-q="feeds">What does AHU-1 feed?</button>
+        <button data-q="none">Clear</button>
+      </div>
+      <svg viewBox="0 0 640 330" role="img" aria-label="Graph of a site, an air handling unit, two VAV boxes, zones and points">
+        <defs><marker id="ahG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <g id="semEdges"></g><g id="semNodes"></g>
+      </svg>
+      <div class="attr" id="semAttr" aria-live="polite"></div>
+      <figcaption>Click a node to see how each model describes it. Run a query to highlight the matches.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Haystack</th><th>Brick</th></tr>
+      <tr><td>Building block</td><td>Tags on entities</td><td>Classes and relationships (RDF triples)</td></tr>
+      <tr><td>Strength</td><td>Simple, readable, wide vendor support (Niagara, SkySpark)</td><td>Precise, reasoning over hierarchy, rich system topology</td></tr>
+      <tr><td>Weakness</td><td>Tag combinations can be ambiguous without defs</td><td>Steeper learning curve, RDF tooling</td></tr>
+      <tr><td>Query</td><td>Filter expressions</td><td>SPARQL</td></tr>
+      <tr><td>Exchange</td><td>Zinc, JSON, Trio</td><td>Turtle, JSON-LD</td></tr>
+    </table></div>
+    <p>The two communities work together, and mapping between them is common. The practical lesson is the same for
+      both: model the <em>equipment and its relationships</em>, not just the points, and do it during commissioning,
+      when the knowledge is fresh, not years later.</p>
+
+    <h3>Exercise: which Haystack marker tags fit?</h3>
+    <div class="classify" data-cats="sensor,cmd,sp">
+      <div class="item" data-cat="sensor" data-why="A measured value: point, sensor, temp, air, discharge (or supply)."><span class="label">AHU supply air temperature</span></div>
+      <div class="item" data-cat="sp" data-why="A target value: point, sp, temp, air, discharge."><span class="label">AHU supply air temperature setpoint</span></div>
+      <div class="item" data-cat="cmd" data-why="An output the system writes: point, cmd, valve, hot, water."><span class="label">Heating valve command 0–100 %</span></div>
+      <div class="item" data-cat="sensor" data-why="A measured value: point, sensor, co2, zone, air."><span class="label">Zone CO₂ concentration</span></div>
+      <div class="item" data-cat="cmd" data-why="A command: point, cmd, fan, run (with enum on/off)."><span class="label">Supply fan run command</span></div>
+      <div class="item" data-cat="sp" data-why="A target value: point, sp, zone, air, temp, occupied/effective."><span class="label">Zone occupied cooling setpoint</span></div>
+    </div>
+
+    <div class="callout example">An analytics vendor connects to a portfolio of 12 office buildings with different BMS
+      brands. Instead of writing rules per building, each site's points are tagged once. The rule "simultaneous
+      heating and cooling" becomes: for every <code>ahu</code>, find a <code>cmd and valve and hot</code> point and a
+      <code>cmd and valve and chilled</code> point, and flag hours where both are above 10 %. It runs on all 12
+      sites unchanged.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">What does Brick's class hierarchy give you that a flat point name does not?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Polling speed is a protocol matter, not a modelling one.">Faster polling</button>
+        <button class="opt" data-opt="b" data-why="A query for Temperature_Sensor also finds Supply_Air_Temperature_Sensor and every other subtype.">Queries for a general class also find all its specific subtypes</button>
+        <button class="opt" data-opt="c" data-why="Brick does not encrypt anything; it describes data.">Encrypted point values</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Protocols move values; semantic models say what the values mean.</li>
+      <li>Haystack: tags and refs, filter queries. Brick: RDF classes and relationships, SPARQL.</li>
+      <li>Model equipment and relationships at commissioning time.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. What does a Modbus TCP frame have that an RTU frame does not, and vice versa?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The PDU (function code + data) is identical in both.">A different function code set</button>
+        <button class="opt" data-opt="b" data-why="TCP adds the 7-byte MBAP header and drops the CRC, which TCP/Ethernet already cover.">TCP adds an MBAP header; RTU has a CRC that TCP drops</button>
+        <button class="opt" data-opt="c" data-why="Modbus TCP has no encryption in its basic form.">TCP adds encryption; RTU has none</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">2. A BACnet workstation finds devices on its own subnet but none on the next VLAN. What is missing?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="COV is about value changes, not discovery.">A COV subscription</button>
+        <button class="opt" data-opt="b" data-why="BACnet/IP uses UDP 47808, not TCP 502.">An open TCP port 502</button>
+        <button class="opt" data-opt="c" data-why="Who-Is is a broadcast; routers drop it unless BBMDs forward it.">A BBMD on each subnet (or foreign device registration)</button>
+        <button class="opt" data-opt="d" data-why="A higher priority affects commands, not discovery.">A write at priority 1</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Which protocol has certificate-based security built into its core specification?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="OPC UA uses X.509 application certificates and Sign / SignAndEncrypt modes.">OPC UA</button>
+        <button class="opt" data-opt="b" data-why="Modbus TCP has no security.">Modbus TCP</button>
+        <button class="opt" data-opt="c" data-why="v2c uses clear-text community strings.">SNMP v2c</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. A cloud-connected thermostat stops responding to the BMS but works on its wall display. The internet is up. Which is a plausible cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The display works, so the device has power.">The thermostat has no power</button>
+        <button class="opt" data-opt="b" data-why="Matter is not involved in a cloud API integration.">A Matter fabric conflict</button>
+        <button class="opt" data-opt="c" data-why="The internet is up, so the ISP is not the issue.">An ISP outage</button>
+        <button class="opt" data-opt="d" data-why="Rate limits, expired tokens and API changes break cloud control with the internet still up.">An expired API token or a rate limit on the cloud project</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. Why are mains-powered smart plugs useful in a Zigbee retrofit?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Plugs do not change the radio band.">They move the mesh to sub-GHz</button>
+        <button class="opt" data-opt="b" data-why="Mains devices act as routers, giving sleepy end devices more parents and paths.">They act as routers and strengthen the mesh</button>
+        <button class="opt" data-opt="c" data-why="A coordinator is a single dedicated device; plugs are routers.">They each become a coordinator</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="04-fieldbus.html">← Chapter 04</a>
+    <a class="btn" href="06-mqtt.html">Chapter 06 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 5 visualizations.
+
+// 5.1 Modbus frame builder.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const hex = (b) => b.toString(16).toUpperCase().padStart(2, "0");
+  const crc16 = (bytes) => {
+    let c = 0xFFFF;
+    for (const b of bytes) {
+      c ^= b;
+      for (let i = 0; i < 8; i++) c = c & 1 ? (c >> 1) ^ 0xA001 : c >> 1;
+    }
+    return [c & 0xFF, c >> 8];
+  };
+  const cell = (b, cls, label) => `<div class="byte ${cls}">${hex(b)}<small>${label}</small></div>`;
+  const strip = (cells) => cells.map(([b, c, l]) => cell(b, c, l)).join("");
+  let tx = 1;
+  const draw = () => {
+    const unit = Math.max(0, Math.min(247, Number($("mbUnit").value) || 0));
+    const fc = Number($("mbFc").value);
+    const addr = Math.max(0, Math.min(65535, Number($("mbAddr").value) || 0));
+    const maxQ = fc === 1 ? 2000 : 125;
+    let qty = Math.max(1, Math.min(maxQ, Number($("mbQty").value) || 1));
+    $("mbQtyL").firstChild.textContent = fc === 6 ? "Value " : "Quantity ";
+    if (fc === 6) qty = Math.max(0, Math.min(65535, Number($("mbQty").value) || 0));
+    const err = $("mbErr").checked;
+    const pdu = [[fc, "f-pdu", "func"], [addr >> 8, "f-pdu", "addr hi"], [addr & 255, "f-pdu", "addr lo"], [qty >> 8, "f-pdu", fc === 6 ? "val hi" : "qty hi"], [qty & 255, "f-pdu", fc === 6 ? "val lo" : "qty lo"]];
+    const rtuBody = [[unit, "f-addr", "slave"], ...pdu];
+    const crc = crc16(rtuBody.map((x) => x[0]));
+    $("mbRtu").innerHTML = strip([...rtuBody, [crc[0], "f-crc", "CRC lo"], [crc[1], "f-crc", "CRC hi"]]);
+    const mbap = (len) => [[tx >> 8, "f-hdr", "trans"], [tx & 255, "f-hdr", "trans"], [0, "f-hdr", "proto"], [0, "f-hdr", "proto"], [len >> 8, "f-hdr", "len"], [len & 255, "f-hdr", "len"], [unit, "f-addr", "unit"]];
+    $("mbTcp").innerHTML = strip([...mbap(1 + pdu.length), ...pdu]);
+    let rp, note;
+    if (err) {
+      rp = [[fc | 0x80, "f-pdu", "func+80"], [2, "f-pdu", "exc 02"]];
+      note = `Exception: function ${hex(fc)} + 0x80 = ${hex(fc | 0x80)}, code 02 "illegal data address". The client must not retry blindly.`;
+    } else if (fc === 6) {
+      rp = pdu;
+      note = `FC06 response echoes the request. Wrote ${qty} (0x${hex(qty >> 8)}${hex(qty & 255)}) to holding register ${addr} (legacy ${40001 + addr}).`;
+    } else if (fc === 1) {
+      const n = Math.ceil(qty / 8);
+      rp = [[fc, "f-pdu", "func"], [n, "f-pdu", "bytes"]];
+      for (let i = 0; i < Math.min(n, 8); i++) rp.push([(0xA5 >> (i % 3)) & 255, "f-pdu", "bits"]);
+      note = `${qty} coils packed into ${n} byte(s), least significant bit first.` + (n > 8 ? " (Showing the first 8 bytes.)" : "");
+    } else {
+      rp = [[fc, "f-pdu", "func"], [qty * 2, "f-pdu", "bytes"]];
+      const shown = Math.min(qty, 6);
+      for (let i = 0; i < shown; i++) { const v = 215 + i * 3; rp.push([v >> 8, "f-pdu", `reg${i} hi`], [v & 255, "f-pdu", `reg${i} lo`]); }
+      const legacy = fc === 3 ? 40001 + addr : 30001 + addr;
+      note = `Reads ${qty} register(s) from ${fc === 3 ? "holding" : "input"} address ${addr} (legacy ${legacy}). First value 0x00D7 = 215, i.e. 21.5 °C with scale 0.1.` + (qty > shown ? ` Showing ${shown} of ${qty} registers.` : "");
+    }
+    $("mbResp").innerHTML = strip([...mbap(1 + rp.length), ...rp]);
+    $("mbText").textContent = note + ` MBAP length = ${1 + pdu.length} for the request: unit ID + ${pdu.length} PDU bytes.`;
+  };
+  ["mbUnit", "mbFc", "mbAddr", "mbQty", "mbErr"].forEach((id) => $(id).addEventListener("input", () => { tx = (tx % 65535) + 1; draw(); }));
+  draw();
+})();
+
+// 5.2 BACnet priority array.
+(() => {
+  const NAMES = { 1: "Manual life safety", 2: "Automatic life safety", 5: "Critical equipment", 6: "Minimum on/off", 8: "Manual operator", 16: "Schedule / lowest" };
+  const RD = 0;
+  const init = () => { const a = Array(17).fill(null); a[16] = 40; return a; };
+  let arr = init();
+  const tbl = document.getElementById("prioTable");
+  const pv = document.getElementById("prioPv"), who = document.getElementById("prioWho"), txt = document.getElementById("prioText");
+  const fmt = (v) => (v === null ? "NULL" : v.toFixed(1) + " %");
+  const build = () => {
+    tbl.innerHTML = `<tr><th>P</th><th>Use</th><th>Slot</th><th></th></tr>` +
+      Array.from({ length: 16 }, (_, k) => k + 1).map((p) =>
+        `<tr data-p="${p}"><td>${p}</td><td style="font-size:12px">${NAMES[p] || "site-defined"}</td><td class="val"></td>
+        <td style="white-space:nowrap"><input type="number" min="0" max="100" step="1" value="${p === 16 ? 40 : 100}" aria-label="Value for priority ${p}">
+        <button data-w="${p}" aria-label="Write at priority ${p}">Write</button> <button data-n="${p}" aria-label="Relinquish priority ${p}">NULL</button></td></tr>`).join("") +
+      `<tr><td>RD</td><td style="font-size:12px">relinquish-default</td><td class="val">${fmt(RD)}</td><td></td></tr>`;
+  };
+  const render = (msg) => {
+    let win = null;
+    for (let p = 1; p <= 16; p++) if (arr[p] !== null) { win = p; break; }
+    tbl.querySelectorAll("tr[data-p]").forEach((tr) => {
+      const p = Number(tr.dataset.p);
+      tr.querySelector(".val").textContent = fmt(arr[p]);
+      tr.classList.toggle("win", p === win);
+    });
+    pv.textContent = fmt(win ? arr[win] : RD);
+    who.textContent = win ? `Controlled by priority ${win} (${NAMES[win] || "site-defined"}).` : "All slots NULL: relinquish-default applies.";
+    if (msg !== undefined) txt.textContent = msg;
+  };
+  build();
+  tbl.addEventListener("click", (e) => {
+    const w = e.target.closest("[data-w]"), n = e.target.closest("[data-n]");
+    if (w) {
+      const p = Number(w.dataset.w);
+      const v = Math.max(0, Math.min(100, Number(w.parentElement.querySelector("input").value) || 0));
+      arr[p] = v; render(`WriteProperty(present-value, ${v}, priority ${p}).`);
+    } else if (n) {
+      const p = Number(n.dataset.n);
+      arr[p] = null; render(`WriteProperty(present-value, NULL, priority ${p}): slot relinquished.`);
+    }
+  });
+  const SC = {
+    op: () => { arr[8] = 100; return "The operator forces the valve to 100 % at P8. The schedule at P16 is still there, but overridden."; },
+    fire: () => { arr[2] = 0; return "Smoke control writes 0 % at P2. It beats the operator. When the fire panel resets and relinquishes P2, control drops back to P8."; },
+    forgot: () => { arr[8] = 0; return "Writing 0 at P8 is still a command. The valve stays shut and the schedule at P16 never wins. Only NULL releases the slot."; },
+    reset: () => { arr = init(); return "Only the schedule at P16 is active."; },
+  };
+  document.querySelectorAll("#prio [data-sc]").forEach((b) => b.addEventListener("click", () => render(SC[b.dataset.sc]())));
+  render("Only the schedule at P16 is active. Try writing at different priorities.");
+})();
+
+// 5.2 Who-Is and BBMD stepper.
+(() => {
+  const fig = document.getElementById("bbmd");
+  const g = fig.querySelector("#bArrows"), txt = fig.querySelector("#bbmdText");
+  const C = { ws: [85, 96], d1: [212, 96], ba: [155, 200], bb: [490, 200], d2: [430, 96], d3: [560, 96], r: [320, 152] };
+  const arrow = (a, b, dash) => `<path d="M${C[a][0]},${C[a][1]} L${C[b][0]},${C[b][1]}" stroke="var(--accent)" stroke-width="3" fill="none" marker-end="url(#ahB)"${dash ? ' stroke-dasharray="6 5"' : ""}/>`;
+  const STEPS = {
+    off: [
+      { a: [], lit: [], t: "Press Next. The workstation wants to find all devices." },
+      { a: [["ws", "d1"], ["ws", "ba"]], lit: ["bWs"], t: "1 · The workstation broadcasts Who-Is to 10.1.10.255, UDP 47808 (BVLC function 0x0B Original-Broadcast)." },
+      { a: [["d1", "ws"]], lit: ["bD1"], t: "2 · Device 101 on the same subnet answers with I-Am. Discovered." },
+      { a: [["ws", "r"]], lit: ["bR"], dead: true, t: "3 · The IP router drops the broadcast. Devices 201 and 202 never hear it. Only 1 of 3 devices found." },
+    ],
+    on: [
+      { a: [], lit: [], t: "Press Next. BBMD A and BBMD B list each other in their Broadcast Distribution Tables." },
+      { a: [["ws", "d1"], ["ws", "ba"]], lit: ["bWs"], t: "1 · The workstation broadcasts Who-Is on subnet A. Device 101 and BBMD A both hear it." },
+      { a: [["ba", "bb"]], lit: ["bBa", "bBb"], t: "2 · BBMD A wraps it as a Forwarded-NPDU (0x04) and unicasts it through the router to BBMD B." },
+      { a: [["bb", "d2"], ["bb", "d3"]], lit: ["bBb"], t: "3 · BBMD B re-broadcasts it on subnet B. Devices 201 and 202 receive a normal Who-Is." },
+      { a: [["d2", "bb"], ["d3", "bb"]], lit: ["bD2", "bD3"], t: "4 · Both answer with I-Am, usually as a broadcast. BBMD B forwards those back to BBMD A." },
+      { a: [["bb", "ba"], ["ba", "ws"]], lit: ["bWs"], t: "5 · BBMD A re-broadcasts the I-Ams on subnet A. The workstation now knows all 3 devices." },
+    ],
+  };
+  let mode = "off", i = 0;
+  const render = () => {
+    const s = STEPS[mode][i];
+    fig.querySelectorAll(".lit").forEach((e) => e.classList.remove("lit"));
+    s.lit.forEach((id) => fig.querySelector("#" + id).classList.add("lit"));
+    g.innerHTML = s.a.map(([a, b]) => arrow(a, b)).join("") + (s.dead ? `<text x="320" y="122" text-anchor="middle" class="fill-bad" style="fill:var(--bad);font-weight:700;font-size:18px">✕ dropped</text>` : "");
+    fig.querySelector("#bBaT").textContent = mode === "on" ? "BDT: 10.1.20.2" : "not configured";
+    fig.querySelector("#bBbT").textContent = mode === "on" ? "BDT: 10.1.10.2" : "not configured";
+    ["bBa", "bBb"].forEach((id) => (fig.querySelector("#" + id).style.opacity = mode === "on" ? 1 : 0.35));
+    txt.textContent = s.t;
+  };
+  fig.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+    mode = b.dataset.mode; i = 0;
+    fig.querySelectorAll("[data-mode]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    render();
+  }));
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(STEPS[mode].length - 1, i + 1); render(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(0, i - 1); render(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { i = 0; render(); });
+  render();
+})();
+
+// Tree widget used by 5.3 and 5.5. Nodes: [label, tag, attrs, children].
+(() => {
+  window.ch5Tree = (ul, attrBox, nodes, onSelect) => {
+    const make = (list, parent) => list.forEach((n) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.innerHTML = `${n[0]}${n[1] ? ` <span class="tag">${n[1]}</span>` : ""}`;
+      b.addEventListener("click", () => {
+        ul.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+        attrBox.innerHTML = `<strong>${n[0]}</strong><dl>${Object.entries(n[2] || {}).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>`;
+        if (onSelect) onSelect(n);
+      });
+      li.appendChild(b);
+      if (n[3] && n[3].length) { const sub = document.createElement("ul"); make(n[3], sub); li.appendChild(sub); }
+      parent.appendChild(li);
+    });
+    make(nodes, ul);
+    ul.querySelector("button")?.click();
+  };
+})();
+
+// 5.3 OPC UA address space.
+(() => {
+  const V = (id, dt, val, extra) => ({ NodeId: id, NodeClass: "Variable", DataType: dt, Value: val, StatusCode: "Good (0x00000000)", SourceTimestamp: "2026-03-04T08:15:02.120Z", ...extra });
+  const TREE = [
+    ["Objects", "Object", { NodeId: "i=85", NodeClass: "Object", BrowseName: "0:Objects", Note: "Standard entry point of every server." }, [
+      ["Server", "Object", { NodeId: "i=2253", NodeClass: "Object", Note: "Server status, capabilities, namespace array." }, []],
+      ["AHU1", "Object", { NodeId: "ns=2;s=AHU1", NodeClass: "Object", TypeDefinition: "ns=3;i=1001 AirHandlingUnitType", References: "HasComponent → SupplyFan, SupplyAirTemp, …" }, [
+        ["SupplyAirTemp", "Variable", V("ns=2;s=AHU1.SupplyAirTemp", "Double", "17.8", { EngineeringUnits: "°C", EURange: "-20 … 60", AccessLevel: "CurrentRead | HistoryRead", Historizing: "true" }), []],
+        ["SupplyAirSetpoint", "Variable", V("ns=2;s=AHU1.SupplyAirSetpoint", "Double", "18.0", { EngineeringUnits: "°C", AccessLevel: "CurrentRead | CurrentWrite" }), []],
+        ["SupplyFan", "Object", { NodeId: "ns=2;s=AHU1.SupplyFan", NodeClass: "Object", TypeDefinition: "ns=3;i=1010 FanType" }, [
+          ["Speed", "Variable", V("ns=2;s=AHU1.SupplyFan.Speed", "Float", "62.5", { EngineeringUnits: "%" }), []],
+          ["Running", "Variable", V("ns=2;s=AHU1.SupplyFan.Running", "Boolean", "true"), []],
+          ["Start", "Method", { NodeId: "ns=2;s=AHU1.SupplyFan.Start", NodeClass: "Method", InputArguments: "none", OutputArguments: "none", Note: "Invoked with the Call service." }, []],
+        ]],
+        ["Alarms", "Object", { NodeId: "ns=2;s=AHU1.Alarms", NodeClass: "Object", Note: "Emits events: OffNormalAlarmType, with Severity 1–1000, Acknowledge method." }, []],
+      ]],
+    ]],
+    ["Types", "Folder", { NodeId: "i=86", NodeClass: "Object", Note: "ObjectTypes, VariableTypes, DataTypes, ReferenceTypes." }, [
+      ["AirHandlingUnitType", "ObjectType", { NodeId: "ns=3;i=1001", NodeClass: "ObjectType", SubtypeOf: "BaseObjectType", Note: "Defines which components every AHU instance must have. Clients can rely on the shape." }, []],
+      ["HasComponent", "ReferenceType", { NodeId: "i=47", NodeClass: "ReferenceType", SubtypeOf: "Aggregates → HierarchicalReferences", InverseName: "ComponentOf" }, []],
+    ]],
+  ];
+  window.ch5Tree(document.getElementById("uaTree"), document.getElementById("uaAttr"), TREE);
+})();
+
+// 5.5 SNMP OID tree.
+(() => {
+  const TREE = [
+    ["iso.org.dod.internet", "1.3.6.1", { OID: "1.3.6.1", Note: "Everything SNMP lives under this branch." }, [
+      ["mgmt.mib-2", "1.3.6.1.2.1", { OID: "1.3.6.1.2.1", Note: "Standard MIBs defined in RFCs." }, [
+        ["system", ".1", { OID: "1.3.6.1.2.1.1", MIB: "SNMPv2-MIB (RFC 3418)" }, [
+          ["sysDescr.0", ".1.0", { OID: "1.3.6.1.2.1.1.1.0", Type: "DisplayString", Example: "\"Network Management Card AOS v7\"" }, []],
+          ["sysUpTime.0", ".3.0", { OID: "1.3.6.1.2.1.1.3.0", Type: "TimeTicks (1/100 s)", Example: "8640000 = 1 day", Use: "Drops to 0 after a reboot" }, []],
+          ["sysName.0", ".5.0", { OID: "1.3.6.1.2.1.1.5.0", Type: "DisplayString", Example: "\"ups-serverroom\"" }, []],
+        ]],
+        ["interfaces.ifTable", ".2.2", { OID: "1.3.6.1.2.1.2.2", MIB: "IF-MIB (RFC 2863)", Note: "One row per port, indexed by ifIndex." }, [
+          ["ifOperStatus.n", ".1.8.n", { OID: "1.3.6.1.2.1.2.2.1.8.n", Type: "INTEGER", Values: "1 up, 2 down, 3 testing …", Use: "Switch port to a controller went down" }, []],
+          ["ifInOctets.n", ".1.10.n", { OID: "1.3.6.1.2.1.2.2.1.10.n", Type: "Counter32", Note: "Wraps at 2³². Prefer ifHCInOctets (Counter64) from ifXTable." }, []],
+        ]],
+        ["upsMIB", ".33", { OID: "1.3.6.1.2.1.33", MIB: "UPS-MIB (RFC 1628)", Note: "Standard UPS values, supported by many vendors besides their own MIB." }, [
+          ["upsBatteryStatus.0", ".1.2.1.0", { OID: "1.3.6.1.2.1.33.1.2.1.0", Type: "INTEGER", Values: "1 unknown, 2 normal, 3 low, 4 depleted" }, []],
+          ["upsEstimatedMinutesRemaining.0", ".1.2.3.0", { OID: "1.3.6.1.2.1.33.1.2.3.0", Type: "INTEGER (minutes)", Example: "42" }, []],
+          ["upsEstimatedChargeRemaining.0", ".1.2.4.0", { OID: "1.3.6.1.2.1.33.1.2.4.0", Type: "INTEGER (%)", Example: "100" }, []],
+          ["upsTrapOnBattery", ".2.0.1", { OID: "1.3.6.1.2.1.33.2.0.1", Type: "Notification", Note: "Sent when the UPS switches to battery." }, []],
+        ]],
+      ]],
+      ["private.enterprises", "1.3.6.1.4.1", { OID: "1.3.6.1.4.1", Note: "Each vendor gets a number from IANA, e.g. 318 = APC, 9 = Cisco. Load the vendor MIB to decode." }, []],
+    ]],
+  ];
+  window.ch5Tree(document.getElementById("oidTree"), document.getElementById("oidAttr"), TREE);
+})();
+
+// 5.4 Polling vs WebSocket vs webhook.
+(() => {
+  const fig = document.getElementById("seq");
+  const g = fig.querySelector("#seqG"), txt = fig.querySelector("#seqText"), r = fig.querySelector("#seqInt");
+  const X = (t) => 100 + (t / 60) * 520;
+  const EV = [7, 8.5, 23, 41, 52];
+  const TOP = 50, BOT = 160;
+  fig.querySelector("#seqAxis").innerHTML = [0, 10, 20, 30, 40, 50, 60].map((t) => `<text class="small" x="${X(t)}" y="218" text-anchor="middle">${t}s</text>`).join("");
+  let mode = "poll";
+  const arr = (x1, y1, x2, y2, news) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${news ? "var(--accent)" : "var(--muted)"}" stroke-width="${news ? 2.5 : 1.3}" marker-end="url(#${news ? "ahS2" : "ahS"})"/>`;
+  const draw = () => {
+    const iv = Number(r.value);
+    fig.querySelector("#seqIntOut").textContent = iv;
+    fig.querySelector("#seqIntL").style.display = r.style.display = mode === "poll" ? "" : "none";
+    fig.querySelector("#seqTopL").textContent = mode === "hook" ? "Cloud service" : "Device API";
+    fig.querySelector("#seqBotL").textContent = mode === "hook" ? "Your endpoint" : "Client";
+    let s = EV.map((t) => `<text x="${X(t)}" y="40" text-anchor="middle" style="fill:var(--example);font-size:16px">★</text>`).join("");
+    let msgs = 0, lat = [], extra = "";
+    if (mode === "poll") {
+      let last = 0;
+      for (let t = 0; t <= 60; t += iv) {
+        const news = EV.some((e) => e > last && e <= t) || t === 0;
+        EV.filter((e) => e > last && e <= t).forEach((e) => lat.push(t - e));
+        s += arr(X(t), BOT - 4, X(t) + 4, TOP + 6, false) + arr(X(t) + 6, TOP + 6, X(t) + 10, BOT - 4, news);
+        msgs += 2; last = t;
+      }
+      const missed = EV.filter((e) => e > last).length;
+      const perHour = Math.round(3600 / iv) * 2;
+      extra = `${msgs} messages in 60 s, about ${perHour} per hour per client. Average delay ${lat.length ? (lat.reduce((a, b) => a + b, 0) / lat.length).toFixed(1) : "–"} s, worst ${lat.length ? Math.max(...lat).toFixed(1) : "–"} s.` +
+        (missed ? ` ${missed} change(s) not yet seen at 60 s.` : "") + (iv > 1 && EV[1] - EV[0] < iv ? " The changes at 7 s and 8.5 s arrive as one value: the intermediate one is lost." : "");
+    } else if (mode === "ws") {
+      s += arr(X(0), BOT - 4, X(0) + 6, TOP + 6, false) + arr(X(0) + 8, TOP + 6, X(0) + 14, BOT - 4, false);
+      s += `<text class="small" x="${X(0) + 20}" y="${(TOP + BOT) / 2}">HTTP Upgrade → 101</text>`;
+      s += `<rect x="${X(0)}" y="${TOP + 70}" width="${X(60) - X(0)}" height="6" rx="3" class="fill-accent" opacity=".25"/>`;
+      s += `<text class="small" x="${X(30)}" y="${TOP + 64}" text-anchor="middle">connection stays open · ping/pong every 30 s</text>`;
+      EV.forEach((e) => (s += arr(X(e), TOP + 6, X(e) + 2, BOT - 4, true)));
+      [30, 60].forEach((t) => (s += `<circle cx="${X(t)}" cy="${TOP + 73}" r="4" class="fill-muted"/>`));
+      msgs = 2 + EV.length + 4;
+      extra = `${msgs} messages in 60 s (handshake, 5 pushes, 2 ping/pong pairs). Delay: milliseconds. Load scales with changes, not with time.`;
+    } else {
+      EV.forEach((e) => { s += arr(X(e), TOP + 6, X(e) + 2, BOT - 4, true) + arr(X(e) + 6, BOT - 4, X(e) + 8, TOP + 6, false); });
+      s += `<text class="small" x="${X(30)}" y="${(TOP + BOT) / 2 + 4}" text-anchor="middle">POST + 200 OK per event · no idle traffic</text>`;
+      msgs = EV.length * 2;
+      extra = `${msgs} messages in 60 s (POST + 2xx per event). Delay: milliseconds to seconds. Your endpoint must be reachable and must verify signatures.`;
+    }
+    g.innerHTML = s;
+    txt.textContent = extra;
+  };
+  fig.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+    mode = b.dataset.mode;
+    fig.querySelectorAll("[data-mode]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    draw();
+  }));
+  r.addEventListener("input", draw);
+  draw();
+})();
+
+// 5.5 SNMP operations.
+(() => {
+  const fig = document.getElementById("snmpSeq");
+  const g = fig.querySelector("#snmpG"), txt = fig.querySelector("#snmpText");
+  const L = 95, R = 545;
+  const msg = (y, toRight, label, dash) => {
+    const [a, b] = toRight ? [L, R] : [R, L];
+    return `<line x1="${a}" y1="${y}" x2="${b + (toRight ? -4 : 4)}" y2="${y}" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ahN)"${dash ? ' stroke-dasharray="6 5"' : ""}/>` +
+      `<text x="320" y="${y - 6}" text-anchor="middle" style="font-size:12px">${label}</text>`;
+  };
+  const M = {
+    get: [[[100, 1, "GetRequest upsEstimatedChargeRemaining.0 → UDP 161"], [150, 0, "GetResponse = 87 (%)"]],
+      "The manager asks for one or more OIDs and the agent answers. Over UDP: if no answer arrives, the manager times out and retries."],
+    walk: [[[95, 1, "GetNext / GetBulk 1.3.6.1.2.1.33.1.2"], [125, 0, "Response: next 10 OIDs and values"], [160, 1, "GetBulk from the last OID"], [190, 0, "Response: … until the subtree ends"]],
+      "A walk reads a whole subtree by repeatedly asking for the next OID. GetBulk (v2c and v3) returns many rows per round trip."],
+    trap: [[[110, 0, "Trap upsTrapOnBattery → manager UDP 162"], [170, 0, "(a lost trap is never resent)"]],
+      "The agent sends unsolicited notifications. A trap is not acknowledged; an inform is, and is retried until the manager confirms."],
+    set: [[[100, 1, "SetRequest outlet 4 = off (write community / v3 user)"], [150, 0, "Response: noError"]],
+      "Set writes a value: reboot an outlet on a PDU, change a UPS test schedule. Restrict it carefully, or disable writes entirely."],
+  };
+  const draw = (k) => {
+    g.innerHTML = M[k][0].map(([y, right, l], i) => msg(y, right, l, k === "trap" && i === 1)).join("");
+    txt.textContent = M[k][1];
+    fig.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === k));
+  };
+  fig.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.mode)));
+  draw("get");
+})();
+
+// 5.6 Mesh network with failure and rerouting.
+(() => {
+  const fig = document.getElementById("mesh");
+  const N = {
+    C: [300, 165, "c"], R1: [170, 95, "r"], R2: [430, 95, "r"], R3: [170, 240, "r"], R4: [430, 240, "r"],
+    R5: [300, 40, "r"], R6: [300, 295, "r"], R7: [50, 165, "r"], R8: [550, 165, "r"],
+    E1: [60, 50, "e"], E2: [540, 50, "e"], E3: [60, 285, "e"], E4: [540, 285, "e"], E5: [230, 165, "e"],
+  };
+  const LINKS = [["C", "R1"], ["C", "R2"], ["C", "R3"], ["C", "R4"], ["R1", "R5"], ["R2", "R5"], ["R1", "R3"], ["R2", "R4"], ["R3", "R6"], ["R4", "R6"], ["R7", "R1"], ["R7", "R3"], ["R8", "R2"], ["R8", "R4"]];
+  // End devices: candidate parents in radio range, in order of preference.
+  const CAND = { E1: ["R7", "R1"], E2: ["R8", "R2"], E3: ["R7", "R3"], E4: ["R4", "R8"], E5: ["C", "R1", "R3"] };
+  const dead = new Set();
+  const parent = { E1: "R7", E2: "R8", E3: "R7", E4: "R4", E5: "C" };
+  let mode = "zigbee", sel = "E1", note = "";
+  const root = "C";
+  const bfs = () => {
+    const prev = {}, seen = new Set();
+    if (dead.has(root)) return { seen, prev };
+    const q = [root]; seen.add(root);
+    while (q.length) {
+      const u = q.shift();
+      LINKS.forEach(([a, b]) => {
+        const v = a === u ? b : b === u ? a : null;
+        if (v && !dead.has(v) && !seen.has(v)) { seen.add(v); prev[v] = u; q.push(v); }
+      });
+    }
+    return { seen, prev };
+  };
+  // In Thread, routers still reach each other without the border router.
+  const meshComponent = (start) => {
+    const seen = new Set([start]), q = [start];
+    while (q.length) {
+      const u = q.shift();
+      LINKS.forEach(([a, b]) => {
+        const v = a === u ? b : b === u ? a : null;
+        if (v && !dead.has(v) && !seen.has(v)) { seen.add(v); q.push(v); }
+      });
+    }
+    return seen;
+  };
+  const render = () => {
+    const { seen, prev } = bfs();
+    const msgs = [];
+    Object.keys(CAND).forEach((e) => {
+      const ok = (p) => !dead.has(p) && (seen.has(p) || (mode === "thread" && dead.has(root)));
+      if (!ok(parent[e])) {
+        const alt = CAND[e].find(ok);
+        if (alt && alt !== parent[e]) { msgs.push(`${e} lost parent ${parent[e]} and rejoined via ${alt}.`); parent[e] = alt; }
+      }
+    });
+    const lab = (k) => (k === "C" ? (mode === "zigbee" ? "Coord" : "BR") : k);
+    fig.querySelector("#meshLinks").innerHTML =
+      LINKS.map(([a, b]) => `<line x1="${N[a][0]}" y1="${N[a][1]}" x2="${N[b][0]}" y2="${N[b][1]}" class="${dead.has(a) || dead.has(b) ? "link link-dead" : "link"}"/>`).join("") +
+      Object.keys(CAND).map((e) => `<line x1="${N[e][0]}" y1="${N[e][1]}" x2="${N[parent[e]][0]}" y2="${N[parent[e]][1]}" class="child"/>`).join("");
+    // Route for the selected end device.
+    let path = [], reach = false;
+    const p = parent[sel];
+    if (!dead.has(p) && seen.has(p)) {
+      path = [sel, p]; let u = p;
+      while (prev[u]) { u = prev[u]; path.push(u); }
+      reach = true;
+    }
+    fig.querySelector("#meshPath").innerHTML = path.length > 1 ? `<polyline points="${path.map((k) => N[k].slice(0, 2).join(",")).join(" ")}" class="path"/>` : "";
+    fig.querySelector("#meshNodes").innerHTML = Object.entries(N).map(([k, [x, y, t]]) => {
+      const cls = (t === "c" ? "node-c" : t === "r" ? "node-r" : "node-e") + (dead.has(k) ? " node-dead" : "") + (k === sel ? " node-sel" : "");
+      const r = t === "e" ? 14 : 19;
+      const fill = t === "c" && !dead.has(k) ? ' style="fill:#fff;font-weight:700"' : "";
+      return `<g role="button" tabindex="0" data-n="${k}" aria-label="${lab(k)}${dead.has(k) ? " (failed)" : ""}"><circle cx="${x}" cy="${y}" r="${r}" class="${cls}"/><text x="${x}" y="${y + 4}" text-anchor="middle" class="small"${fill}>${lab(k)}</text></g>`;
+    }).join("");
+    let status;
+    if (reach) status = `${sel} → ${path.slice(1).map(lab).join(" → ")}: ${path.length - 1} hop(s).`;
+    else if (mode === "thread" && dead.has(root)) {
+      const comp = meshComponent(parent[sel]);
+      status = `${sel} can still reach ${[...comp].filter((k) => N[k][2] === "r").length} routers inside the mesh, but no border router: no path to the IP network. Add a second border router.`;
+    } else if (dead.has(root)) status = "The Zigbee coordinator is down: no new joins, no gateway, the whole network is unreachable from the BMS. Routers may still forward existing traffic for a while.";
+    else status = `${sel} has no living parent in range: it is orphaned and its readings stop.`;
+    fig.querySelector("#meshText").textContent = [note, ...msgs, status].filter(Boolean).join(" ");
+    note = "";
+  };
+  fig.querySelector("#meshNodes").addEventListener("click", (e) => act(e.target.closest("[data-n]")));
+  fig.querySelector("#meshNodes").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(e.target.closest("[data-n]")); }
+  });
+  const act = (gEl) => {
+    if (!gEl) return;
+    const k = gEl.dataset.n;
+    if (N[k][2] === "e") sel = k;
+    else { if (dead.has(k)) { dead.delete(k); note = `${k} restored.`; } else { dead.add(k); note = `${k} failed.`; } }
+    render();
+  };
+  fig.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+    mode = b.dataset.mode;
+    fig.querySelectorAll("[data-mode]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    render();
+  }));
+  render();
+})();
+
+// 5.7 Cloud dependency chain.
+(() => {
+  const LINKS = [
+    ["Device", "Device firmware and power"],
+    ["Wi-Fi", "Local Wi-Fi access point"],
+    ["ISP", "Router and internet connection"],
+    ["DNS", "DNS resolution of the cloud host"],
+    ["Vendor cloud", "The vendor's servers and region"],
+    ["Account / token", "Developer project, access token, subscription"],
+    ["API version", "Endpoint and data model unchanged"],
+    ["Rate limit", "Within the request quota"],
+    ["BMS", "Your integration"],
+  ];
+  const LOCAL = new Set(["Device", "Wi-Fi", "BMS"]);
+  const broken = new Set();
+  const chain = document.getElementById("cloudChain"), v = document.getElementById("cloudVerdict"), loc = document.getElementById("cloudLocal");
+  chain.innerHTML = LINKS.map(([n, d], i) => `${i ? '<span class="sep" aria-hidden="true">→</span>' : ""}<button data-l="${n}" title="${d}" aria-pressed="false">${n}</button>`).join("");
+  const draw = () => {
+    chain.querySelectorAll("[data-l]").forEach((b) => { const x = broken.has(b.dataset.l); b.classList.toggle("broken", x); b.setAttribute("aria-pressed", x); });
+    const cloudOk = broken.size === 0;
+    const localOk = loc.checked && [...LOCAL].every((n) => !broken.has(n));
+    const list = [...broken].join(", ");
+    if (cloudOk) { v.className = "verdict ok"; v.textContent = "Command delivered through the cloud. Typical latency 0.5–3 s."; }
+    else if (localOk) { v.className = "verdict ok"; v.textContent = `Cloud path broken (${list}), but the local API still works. Control continues.`; }
+    else { v.className = "verdict bad"; v.textContent = `No control. Broken: ${list}. The device may be three metres from the BMS and still unreachable.`; }
+  };
+  chain.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-l]"); if (!b) return;
+    const n = b.dataset.l;
+    broken.has(n) ? broken.delete(n) : broken.add(n);
+    draw();
+  });
+  loc.addEventListener("change", draw);
+  draw();
+})();
+
+// 5.8 Haystack / Brick graph.
+(() => {
+  const fig = document.getElementById("sem");
+  const N = {
+    site: { x: 320, y: 30, l: "Site", hs: "id:@site  site  dis:\"HQ Office\"  area:4200m²", br: "bldg:HQ a brick:Building", cls: [] },
+    ahu: { x: 320, y: 110, l: "AHU-1", hs: "id:@ahu1  equip  ahu  siteRef:@site", br: "bldg:AHU1 a brick:AHU ; brick:hasLocation bldg:HQ", cls: ["equip"] },
+    sat: { x: 90, y: 110, l: "Supply temp", hs: "point  sensor  temp  air  discharge  unit:\"°C\"  equipRef:@ahu1", br: "bldg:SAT a brick:Supply_Air_Temperature_Sensor", cls: ["point", "temp"] },
+    sp: { x: 90, y: 180, l: "Supply SP", hs: "point  sp  temp  air  discharge  equipRef:@ahu1", br: "bldg:SAT_SP a brick:Supply_Air_Temperature_Setpoint", cls: ["point"] },
+    vlv: { x: 550, y: 110, l: "Htg valve", hs: "point  cmd  valve  hot  water  unit:\"%\"  equipRef:@ahu1", br: "bldg:HV a brick:Valve_Position_Command", cls: ["point"] },
+    vav1: { x: 210, y: 210, l: "VAV-1", hs: "id:@vav1  equip  vav  ahuRef:@ahu1", br: "bldg:VAV1 a brick:VAV", cls: ["equip"] },
+    vav2: { x: 430, y: 210, l: "VAV-2", hs: "id:@vav2  equip  vav  ahuRef:@ahu1", br: "bldg:VAV2 a brick:VAV", cls: ["equip"] },
+    z1: { x: 210, y: 295, l: "Zone 1", hs: "id:@z1  space  room  (VAV-1 has spaceRef:@z1)", br: "bldg:Z1 a brick:HVAC_Zone", cls: [] },
+    z2: { x: 430, y: 295, l: "Zone 2", hs: "id:@z2  space  room", br: "bldg:Z2 a brick:HVAC_Zone", cls: [] },
+    zt1: { x: 70, y: 295, l: "Zone 1 temp", hs: "point  sensor  temp  zone  air  equipRef:@vav1", br: "bldg:ZT1 a brick:Zone_Air_Temperature_Sensor", cls: ["point", "temp"] },
+    zt2: { x: 570, y: 295, l: "Zone 2 temp", hs: "point  sensor  temp  zone  air  equipRef:@vav2", br: "bldg:ZT2 a brick:Zone_Air_Temperature_Sensor", cls: ["point", "temp"] },
+  };
+  // [from, to, haystack ref, brick relation]
+  const E = [
+    ["ahu", "site", "siteRef", "hasLocation"], ["sat", "ahu", "equipRef", "isPointOf"], ["sp", "ahu", "equipRef", "isPointOf"],
+    ["vlv", "ahu", "equipRef", "isPointOf"], ["vav1", "ahu", "ahuRef", "isFedBy"], ["vav2", "ahu", "ahuRef", "isFedBy"],
+    ["vav1", "z1", "spaceRef", "feeds"], ["vav2", "z2", "spaceRef", "feeds"], ["zt1", "vav1", "equipRef", "isPointOf"], ["zt2", "vav2", "equipRef", "isPointOf"],
+  ];
+  const Q = {
+    temp: { hs: "point and sensor and temp", br: "?s a/rdfs:subClassOf* brick:Temperature_Sensor", m: (k) => N[k].cls.includes("temp") },
+    ahu: { hs: "point and equipRef==@ahu1", br: "bldg:AHU1 brick:hasPoint ?p", m: (k) => ["sat", "sp", "vlv"].includes(k) },
+    feeds: { hs: "vav and ahuRef==@ahu1  (then spaceRef->)", br: "bldg:AHU1 brick:feeds+ ?x", m: (k) => ["vav1", "vav2", "z1", "z2"].includes(k) },
+  };
+  let mode = "hs", q = null, sel = "ahu";
+  const attr = fig.querySelector("#semAttr");
+  const draw = () => {
+    fig.querySelector("#semEdges").innerHTML = E.map(([a, b, h, r]) => {
+      const A = N[a], B = N[b];
+      const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+      // Shorten the line so the arrowhead stops at the node edge.
+      const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy), k = (len - 26) / len;
+      return `<line x1="${A.x}" y1="${A.y}" x2="${A.x + dx * k}" y2="${A.y + dy * k}" class="arrow" marker-end="url(#ahG)"/>` +
+        `<text class="small" x="${mx}" y="${my - 4}" text-anchor="middle" style="paint-order:stroke;stroke:var(--surface-2);stroke-width:4px">${mode === "hs" ? h : r}</text>`;
+    }).join("");
+    fig.querySelector("#semNodes").innerHTML = Object.entries(N).map(([k, n]) => {
+      const hit = q && Q[q].m(k);
+      const w = 92;
+      return `<g role="button" tabindex="0" data-k="${k}" aria-label="${n.l}"><rect x="${n.x - w / 2}" y="${n.y - 15}" width="${w}" height="30" rx="8" class="box${hit ? " lit" : ""}${k === sel ? " hl" : ""}"/><text x="${n.x}" y="${n.y + 5}" text-anchor="middle" style="font-size:12px">${n.l}</text></g>`;
+    }).join("");
+    const n = N[sel];
+    attr.innerHTML = `<strong>${n.l}</strong><dl><dt>${mode === "hs" ? "Haystack tags" : "Brick triples"}</dt><dd>${mode === "hs" ? n.hs : n.br}</dd>` +
+      (q ? `<dt>Query</dt><dd>${mode === "hs" ? Q[q].hs : Q[q].br}</dd><dt>Matches</dt><dd>${Object.keys(N).filter(Q[q].m).map((k) => N[k].l).join(", ")}</dd>` : "") + "</dl>";
+    fig.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === mode));
+    fig.querySelectorAll("[data-q]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.q === q));
+  };
+  const pick = (gEl) => { if (gEl) { sel = gEl.dataset.k; draw(); } };
+  fig.querySelector("#semNodes").addEventListener("click", (e) => pick(e.target.closest("[data-k]")));
+  fig.querySelector("#semNodes").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(e.target.closest("[data-k]")); } });
+  fig.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => { mode = b.dataset.mode; draw(); }));
+  fig.querySelectorAll("[data-q]").forEach((b) => b.addEventListener("click", () => { q = b.dataset.q === "none" ? null : b.dataset.q; draw(); }));
+  draw();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio and AV</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .av-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .av-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .av-row input[type=range] { width: 100%; }
+  .av-in, .av-sel {
+    font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0;
+  }
+  .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; margin-top: 10px; }
+  .meter { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; min-width: 0; }
+  .meter b { display: block; font-size: 13px; }
+  .meter .v { font: 13px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+  .meter .bar { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
+  .meter .bar span { display: block; height: 100%; background: var(--ok); transition: width .2s, background .2s; }
+  .meter.hot .bar span { background: var(--example); }
+  .meter.clip { border-color: var(--bad); background: var(--bad-soft); }
+  .meter.clip .bar span { background: var(--bad); }
+  .meter.low .bar span { background: var(--muted); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-top: 10px; }
+  .stat { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; min-width: 0; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .n { font: 600 17px var(--mono); overflow-wrap: anywhere; }
+  .stat.bad { border-color: var(--bad); background: var(--bad-soft); }
+  .stat.ok { border-color: var(--ok); background: var(--ok-soft); }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .bytes { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+  .bytes span { font: 600 13px var(--mono); padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); }
+  .bytes span.h { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .bytes span.c { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
+  .bytes span.x { border-color: var(--example); background: var(--example-soft); color: var(--example); }
+  .legend { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  svg .blk { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; transition: fill .15s, stroke .15s; }
+  svg [aria-pressed=true] .blk { fill: var(--accent-soft); stroke: var(--accent); }
+  svg [role=button]:hover .blk { stroke: var(--accent); }
+  svg .pulse { transition: opacity .3s; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="14">
+<div class="content">
+  <div class="kicker">Chapter 14</div>
+  <h1>Professional audio and AV over IP</h1>
+  <p class="lead">Venues, offices and hotels now carry sound, video and control on the same Ethernet as the BMS.
+    This chapter covers levels and gain staging, DSP platforms, Dante, AES67 and ST 2110, network audio players,
+    display control, video distribution and the control systems that tie it all together.</p>
+
+  <!-- 14.1 -->
+  <section class="lesson" id="s1" data-num="14.1">
+    <h2>14.1 Audio basics: levels, gain staging, DSP</h2>
+    <p>Audio engineers talk in <strong>decibels</strong>. A decibel is a ratio on a log scale. For voltages,
+      <code>dB = 20 · log10(V / Vref)</code>. Double the voltage is +6 dB. Ten times the voltage is +20 dB. The unit
+      only means something once you know the reference, which is what the suffix tells you.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Unit</th><th>Reference</th><th>Where you see it</th></tr>
+      <tr><td><code>dBu</code></td><td>0.775 V RMS</td><td>Pro analog gear. "+4 dBu line level" = 1.228 V.</td></tr>
+      <tr><td><code>dBV</code></td><td>1.000 V RMS</td><td>Consumer gear. "−10 dBV" = 0.316 V.</td></tr>
+      <tr><td><code>dBFS</code></td><td>Digital full scale</td><td>Converters and DSP. 0 dBFS is the largest possible sample. Everything is negative.</td></tr>
+      <tr><td><code>dB SPL</code></td><td>20 µPa sound pressure</td><td>What ears and microphones see. Speech ≈ 60, a loud PA 100+.</td></tr>
+      <tr><td><code>dB</code> alone</td><td>None</td><td>A gain or a difference: "+12 dB of gain", "−3 dB cut".</td></tr>
+    </table></div>
+
+    <h3>Typical levels</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Signal</th><th>Typical level</th><th>Voltage</th></tr>
+      <tr><td>Dynamic mic, speech</td><td>about −60 to −45 dBu</td><td>about 1–4 mV</td></tr>
+      <tr><td>Consumer line (phone, TV out)</td><td>−10 dBV ≈ −7.8 dBu</td><td>0.32 V</td></tr>
+      <tr><td>Pro line, nominal</td><td>+4 dBu</td><td>1.23 V</td></tr>
+      <tr><td>Pro line, maximum before clipping</td><td>commonly +18 to +24 dBu</td><td>6–12 V</td></tr>
+      <tr><td>Amplifier output to 8 Ω speaker</td><td>watts, not dBu</td><td>tens of volts</td></tr>
+      <tr><td>100 V / 70 V line (distributed speakers)</td><td>full power</td><td>100 V or 70.7 V RMS</td></tr>
+    </table></div>
+
+    <h3>Gain staging</h3>
+    <p>Every stage in a chain has a <strong>noise floor</strong> at the bottom and a <strong>clip point</strong> at the
+      top. The space between is its dynamic range. Gain staging means setting each stage so the signal sits
+      comfortably in the middle of that window. Too low, and later gain lifts the noise with it. Too high, and the peaks
+      flatten into harsh distortion that no later stage can undo.</p>
+    <p>At the analog-to-digital boundary you need an <strong>alignment level</strong>: which dBu equals which dBFS. Two
+      common conventions are EBU R68 (0 dBu = −18 dBFS, so full scale is +18 dBu) and SMPTE RP 155
+      (+4 dBu = −20 dBFS, so full scale is +24 dBu). The 18–20 dB gap above nominal is <strong>headroom</strong> for
+      peaks. Speech and music have peaks 10–20 dB above their average.</p>
+    <p>A 24-bit converter has a theoretical range of about 144 dB. Real converters reach roughly 110–120 dB. That is why
+      digital systems can run with generous headroom: −18 dBFS average still leaves 90+ dB above the noise.</p>
+
+    <h3>Try it: stage a microphone into a DSP and amplifier</h3>
+    <figure class="viz" id="gain">
+      <div class="av-row">
+        <label>Source: <output id="gSrcO"></output>
+          <select id="gSrc" class="av-sel">
+            <option value="-55">Speech mic, −55 dBu</option>
+            <option value="-40">Loud singer mic, −40 dBu</option>
+            <option value="-8">Consumer line, −8 dBu</option>
+            <option value="4">Pro line, +4 dBu</option>
+          </select></label>
+        <label>Preamp gain: <output id="gPreO"></output>
+          <input type="range" id="gPre" min="0" max="66" step="1" value="40"></label>
+        <label>DSP fader: <output id="gFadO"></output>
+          <input type="range" id="gFad" min="-40" max="12" step="1" value="0"></label>
+        <label>Peaks above average: <output id="gCrO"></output>
+          <input type="range" id="gCr" min="6" max="24" step="1" value="14"></label>
+      </div>
+      <div class="meters" id="gMeters"></div>
+      <div class="readout" id="gText" aria-live="polite"></div>
+      <figcaption>Alignment: +4 dBu = −20 dBFS (full scale +24 dBu). Converter noise floor taken as −110 dBFS.
+        Green is healthy, amber is hot, red clips, grey is too quiet.</figcaption>
+    </figure>
+
+    <h3>What a DSP does</h3>
+    <p>A <strong>digital signal processor</strong> replaces racks of analog boxes with software blocks. Typical blocks,
+      roughly in signal order:</p>
+    <ul>
+      <li><strong>Input gain and phantom power</strong> (+48 V for condenser mics).</li>
+      <li><strong>High-pass filter</strong>, e.g. 80–100 Hz on speech mics, to remove rumble and handling noise.</li>
+      <li><strong>Parametric EQ</strong>: frequency, gain, Q per band.</li>
+      <li><strong>Dynamics</strong>: gate, compressor, limiter. A compressor with 4:1 ratio lets 1 dB out for each 4 dB over threshold.</li>
+      <li><strong>Automatic mixer</strong> (gain sharing) for many open mics, and <strong>AEC</strong> (acoustic echo cancellation) for conferencing.</li>
+      <li><strong>Matrix mixer and routing</strong>: any input to any output.</li>
+      <li><strong>Crossover and delay</strong>: split bands for sub and tops, align fill speakers by distance (about 2.9 ms per metre).</li>
+      <li><strong>Output limiter</strong> to protect amplifiers and speakers.</li>
+    </ul>
+    <p>Each block adds processing latency, usually well under a millisecond. Long FIR filters and AEC add more.</p>
+
+    <figure class="viz">
+      <svg viewBox="0 0 640 150" role="img" aria-label="Typical DSP chain from input to output">
+        <defs><marker id="a141" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <g font-size="12">
+          <rect class="box" x="6" y="40" width="70" height="50" rx="8"/><text x="41" y="62" text-anchor="middle">Input</text><text class="small" x="41" y="78" text-anchor="middle">gain · 48V</text>
+          <rect class="box" x="96" y="40" width="70" height="50" rx="8"/><text x="131" y="62" text-anchor="middle">HPF</text><text class="small" x="131" y="78" text-anchor="middle">90 Hz</text>
+          <rect class="box" x="186" y="40" width="70" height="50" rx="8"/><text x="221" y="62" text-anchor="middle">PEQ</text><text class="small" x="221" y="78" text-anchor="middle">4 bands</text>
+          <rect class="box" x="276" y="40" width="70" height="50" rx="8"/><text x="311" y="62" text-anchor="middle">Comp</text><text class="small" x="311" y="78" text-anchor="middle">4:1</text>
+          <rect class="box" x="366" y="40" width="80" height="50" rx="8"/><text x="406" y="62" text-anchor="middle">Matrix</text><text class="small" x="406" y="78" text-anchor="middle">route · mix</text>
+          <rect class="box" x="466" y="40" width="70" height="50" rx="8"/><text x="501" y="62" text-anchor="middle">Delay</text><text class="small" x="501" y="78" text-anchor="middle">+EQ</text>
+          <rect class="box" x="556" y="40" width="78" height="50" rx="8"/><text x="595" y="62" text-anchor="middle">Limiter</text><text class="small" x="595" y="78" text-anchor="middle">→ amp</text>
+        </g>
+        <path class="arrow" d="M76,65 L94,65" marker-end="url(#a141)"/><path class="arrow" d="M166,65 L184,65" marker-end="url(#a141)"/>
+        <path class="arrow" d="M256,65 L274,65" marker-end="url(#a141)"/><path class="arrow" d="M346,65 L364,65" marker-end="url(#a141)"/>
+        <path class="arrow" d="M446,65 L464,65" marker-end="url(#a141)"/><path class="arrow" d="M536,65 L554,65" marker-end="url(#a141)"/>
+        <text class="small" x="176" y="120" text-anchor="middle">per-input processing</text>
+        <text class="small" x="550" y="120" text-anchor="middle">per-output (per-zone) processing</text>
+        <line x1="6" y1="108" x2="346" y2="108" class="muted-s" stroke-dasharray="3 3"/>
+        <line x1="466" y1="108" x2="634" y2="108" class="muted-s" stroke-dasharray="3 3"/>
+      </svg>
+    </figure>
+
+    <div class="callout warn">Two common mistakes. First, compensating a weak preamp setting with a big fader boost: the noise
+      comes up with the signal. Second, running every fader at +10 dB "because it is not loud enough" when the real fix is
+      at the amplifier or the preamp. Set gain at the source, then use faders near 0 dB.</div>
+
+    <div class="callout example">In a conference room, a ceiling mic array may arrive at −45 dBu. The DSP preamp adds about
+      +45 dB so speech averages near 0 dBu (−24 dBFS with +24 dBu alignment). AEC, auto-mix and a gentle compressor follow.
+      The far-end send is limited at −6 dBFS so no codec ever clips.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">With the alignment +4 dBu = −20 dBFS, what analog level clips the converter?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="+4 dBu is the nominal level, 20 dB below full scale.">+4 dBu</button>
+        <button class="opt" data-opt="b" data-why="0 dBFS is 20 dB above −20 dBFS, so +4 + 20 = +24 dBu.">+24 dBu</button>
+        <button class="opt" data-opt="c" data-why="That would be EBU R68 alignment (0 dBu = −18 dBFS).">+18 dBu</button>
+        <button class="opt" data-opt="d" data-why="dBu and dBFS are not the same scale; they need an alignment.">0 dBu</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>dB is a ratio. The suffix (u, V, FS, SPL) gives the reference.</li>
+      <li>Set gain early, keep faders near 0 dB, leave 18–20 dB headroom above nominal.</li>
+      <li>A DSP is a chain of blocks: input, filters, dynamics, matrix, delay, limiter.</li>
+    </ul>
+  </section>
+
+  <!-- 14.2 -->
+  <section class="lesson" id="s2" data-num="14.2">
+    <h2>14.2 DSP platforms: BSS Soundweb London</h2>
+    <p>Installed-sound DSPs are configurable, not programmable in the usual sense. You draw a signal-flow design in a PC
+      tool, compile it, and send it to the hardware. The device then runs it standalone, with no PC needed. Common
+      platforms include BSS Soundweb London, Biamp Tesira, QSC Q-SYS, Symetrix and Yamaha. We use BSS Soundweb London as
+      the worked example because its control model is typical and well documented.</p>
+
+    <h3>The Soundweb London model</h3>
+    <ul>
+      <li><strong>Hardware.</strong> BLU-series units (for example BLU-100, BLU-160) with fixed or card-based analog I/O.
+        Some models add Dante or AVB, and many support <strong>BLU link</strong>, a proprietary ring that carries a large
+        number of audio channels between units over Cat5e.</li>
+      <li><strong>Software.</strong> London Architect. You drag processing objects onto a canvas, wire them and
+        assign them to devices.</li>
+      <li><strong>Control.</strong> HiQnet addressing over Ethernet. Every parameter in the design has an address.
+        Third-party systems (a BMS, a touch panel) can set and subscribe to parameters over TCP.</li>
+      <li><strong>Presets.</strong> Saved snapshots of parameters, recalled by number. "Wedding mode" or
+        "Conference mode" is usually a preset.</li>
+    </ul>
+
+    <h3>Explore a design</h3>
+    <div class="explorer">
+      <svg viewBox="0 0 300 300" aria-label="A small DSP design">
+        <g class="layer" role="button" tabindex="0" data-target="d-in" aria-label="Inputs"><rect class="blk" x="10" y="20" width="120" height="50" rx="8"/><text x="70" y="50" text-anchor="middle">Mic inputs ×8</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="d-src" aria-label="Source selector"><rect class="blk" x="170" y="20" width="120" height="50" rx="8"/><text x="230" y="50" text-anchor="middle">Source select</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="d-mix" aria-label="Matrix mixer"><rect class="blk" x="60" y="110" width="180" height="50" rx="8"/><text x="150" y="140" text-anchor="middle">Matrix mixer</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="d-zone" aria-label="Zone outputs"><rect class="blk" x="10" y="200" width="120" height="50" rx="8"/><text x="70" y="230" text-anchor="middle">Zone gain ×6</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="d-pg" aria-label="Paging and ducking"><rect class="blk" x="170" y="200" width="120" height="50" rx="8"/><text x="230" y="230" text-anchor="middle">Paging · duck</text></g>
+        <path class="arrow" d="M70,70 L110,110"/><path class="arrow" d="M230,70 L190,110"/>
+        <path class="arrow" d="M110,160 L70,200"/><path class="arrow" d="M190,160 L230,200"/>
+        <text class="small" x="150" y="285" text-anchor="middle">click a block</text>
+      </svg>
+      <div class="panel" aria-live="polite">
+        <template id="d-in"><h4>Mic inputs</h4><p>Gain, phantom, HPF, EQ, gate or compressor per channel. Exposed to control:
+          usually only mute and maybe a trim of ±10 dB. Installers lock the rest.</p><ul><li>Parameter: <code>Gain</code> (dB)</li><li>Parameter: <code>Mute</code> (on/off)</li></ul></template>
+        <template id="d-src"><h4>Source selector</h4><p>A router that picks one stereo source per zone: background music, TV, laptop.
+          A control system writes an integer index.</p><ul><li>Parameter: <code>Source</code> = 1…N</li></ul></template>
+        <template id="d-mix"><h4>Matrix mixer</h4><p>Every input to every output with a crosspoint gain. Typical for flexible rooms
+          that combine and split. Usually changed by preset, not by single crosspoints.</p><ul><li>N × M crosspoint gains</li><li>Room combine logic as presets</li></ul></template>
+        <template id="d-zone"><h4>Zone gain</h4><p>The control people touch most: volume per zone. Good designs put a
+          <strong>max limit</strong> on the user range, e.g. −40 to −6 dB, so a wall panel cannot overload the room.</p><ul><li>Parameter: <code>Gain</code> (dB), <code>Mute</code></li><li>Often controlled in percent of the allowed range</li></ul></template>
+        <template id="d-pg"><h4>Paging and ducking</h4><p>When a paging mic or an emergency message is active, music is ducked by,
+          say, 20 dB and the page goes to selected zones. Voice evacuation systems that must meet EN 54-16 use certified
+          equipment, not a general DSP alone.</p><ul><li>Trigger: logic input, GPIO or control command</li><li>Duck depth, attack, release</li></ul></template>
+      </div>
+    </div>
+
+    <h3>Addressing a parameter</h3>
+    <p>Third-party control of Soundweb London uses a binary protocol over TCP, often called <em>London Direct Inject</em>.
+      Each parameter is identified by a HiQnet-style address: a <strong>node</strong> (the device), a <strong>virtual
+      device</strong> (the audio processing section), an <strong>object</strong> (one block in the design) and a
+      <strong>parameter</strong> (one control in that block). London Architect shows these addresses for each control.</p>
+    <p>A message has a start byte, a command type, the address, a value and a checksum, then an end byte. Bytes that collide
+      with the framing characters are escaped. The main commands are <strong>set</strong>, <strong>subscribe</strong>
+      (the device then pushes changes), <strong>set percent</strong> and <strong>recall preset</strong>. Subscribing
+      is what keeps a panel in sync when someone else changes the volume.</p>
+
+    <figure class="viz" id="hiq">
+      <div class="av-row">
+        <label>Node <input id="hNode" class="av-in" value="0x1E05"></label>
+        <label>Virtual device <input id="hVd" class="av-in" value="0x03"></label>
+        <label>Object <input id="hObj" class="av-in" value="0x000102"></label>
+        <label>Parameter <input id="hPar" class="av-in" value="0x0000"></label>
+        <label>Command
+          <select id="hCmd" class="av-sel">
+            <option value="88">Set value</option>
+            <option value="89">Subscribe</option>
+            <option value="8D">Set percent</option>
+          </select></label>
+        <label>Value (raw 32-bit) <input id="hVal" class="av-in" value="0"></label>
+      </div>
+      <div class="bytes" id="hBytes"></div>
+      <div class="legend">Blue = framing and command, amber = address, green = checksum. Escaping of reserved bytes not shown.</div>
+      <div class="readout" id="hText" aria-live="polite"></div>
+      <figcaption>A simplified view of the message layout: command, 2-byte node, 1-byte virtual device, 3-byte object,
+        2-byte parameter, 4-byte value, XOR checksum. Always check the vendor's protocol document for the exact framing and
+        value encoding. Gain values, for example, use a non-linear mapping, not plain dB.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Control method</th><th>Pros</th><th>Cons</th></tr>
+      <tr><td>Native binary protocol (TCP)</td><td>Full access, subscriptions</td><td>Address management, value encoding</td></tr>
+      <tr><td>Vendor control module (Crestron, AMX, Q-SYS plug-in)</td><td>Ready-made</td><td>Ties you to that control platform</td></tr>
+      <tr><td>Logic inputs / GPIO</td><td>Simple, robust, works with a BMS relay</td><td>Few states, no feedback of values</td></tr>
+      <tr><td>Wall controllers on the vendor bus</td><td>No programming</td><td>Fixed functions</td></tr>
+    </table></div>
+
+    <div class="callout warn">Object IDs can change when the design is edited and recompiled. Treat the address list as part of
+      the design's release: export it, version it, and re-check integrations after every DSP file change.</div>
+
+    <div class="callout example">A bar and restaurant has six zones. A BMS schedule recalls preset 2 ("evening") at 18:00, which
+      raises background music by 4 dB and enables the terrace zone. A wall panel per zone sets volume within −40…−10 dB.
+      The integration subscribes to every zone gain, so the BMS dashboard always shows the true level.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A BMS sets a zone volume, and staff also change it on a wall controller. How does the BMS keep showing the right value?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="It would show its own last command, not the real state.">It remembers the last value it sent</button>
+        <button class="opt" data-opt="b" data-why="Recalling a preset changes the value; it does not report it.">It recalls a preset every minute</button>
+        <button class="opt" data-opt="c" data-why="A subscription makes the DSP push every change, from any source.">It subscribes to the parameter, so the DSP pushes changes</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>DSP designs are drawn in a PC tool, compiled, and run standalone.</li>
+      <li>Every controllable parameter has an address: node, virtual device, object, parameter.</li>
+      <li>Subscribe for feedback. Version the address list with the design.</li>
+    </ul>
+  </section>
+
+  <!-- 14.3 -->
+  <section class="lesson" id="s3" data-num="14.3">
+    <h2>14.3 Dante</h2>
+    <p><strong>Dante</strong>, from Audinate, is the most widely deployed audio-over-IP system. Thousands of products from
+      hundreds of manufacturers ship with it. It carries uncompressed audio as UDP over ordinary IP networks, with
+      sample-accurate sync and latency settable down to a fraction of a millisecond.</p>
+
+    <h3>How it works</h3>
+    <ul>
+      <li><strong>Clocking.</strong> Devices elect one <strong>leader clock</strong> using PTP (IEEE 1588). Classic Dante
+        uses PTPv1. In AES67 mode a device also speaks PTPv2. Each device's media clock locks to the leader.</li>
+      <li><strong>Discovery.</strong> Devices announce themselves with mDNS/DNS-SD. Dante Controller, the free routing tool,
+        shows them and lets you route by device and channel name.</li>
+      <li><strong>Flows.</strong> Audio travels in <em>flows</em>. A unicast flow goes to one receiver and by default carries
+        up to 4 channels. A multicast flow goes to many receivers and needs IGMP snooping on the switches.</li>
+      <li><strong>Latency.</strong> The receiver plays each sample at a fixed time after it was captured, set by the
+        latency value: for example 0.25, 0.5, 1, 2 or 5 ms. All receivers with the same setting are sample-aligned.</li>
+      <li><strong>Redundancy.</strong> Many devices have a secondary port. Primary and secondary run on separate networks, and
+        each packet is sent on both.</li>
+    </ul>
+
+    <figure class="viz">
+      <svg viewBox="0 0 640 230" role="img" aria-label="Dante network with a leader clock, switches and devices">
+        <rect class="box" x="250" y="20" width="140" height="44" rx="8"/><text x="320" y="40" text-anchor="middle">Switch (core)</text><text class="small" x="320" y="56" text-anchor="middle">QoS · IGMP snooping</text>
+        <rect class="box" x="60" y="120" width="140" height="44" rx="8"/><text x="130" y="140" text-anchor="middle">Stage box</text><text class="small" x="130" y="156" text-anchor="middle">16 mic in · leader clock</text>
+        <rect class="box" x="250" y="120" width="140" height="44" rx="8"/><text x="320" y="140" text-anchor="middle">DSP</text><text class="small" x="320" y="156" text-anchor="middle">64 × 64</text>
+        <rect class="box" x="440" y="120" width="140" height="44" rx="8"/><text x="510" y="140" text-anchor="middle">Amplifier</text><text class="small" x="510" y="156" text-anchor="middle">4 ch in</text>
+        <rect class="box" x="250" y="180" width="140" height="40" rx="8"/><text x="320" y="204" text-anchor="middle">PC: virtual soundcard</text>
+        <path class="arrow" d="M130,120 L280,64"/><path class="arrow" d="M320,120 L320,64"/><path class="arrow" d="M510,120 L360,64"/>
+        <path class="arrow" d="M390,190 C470,190 470,80 380,64"/>
+        <text class="small" x="160" y="90" fill="var(--accent)">PTP sync from leader</text>
+        <text class="small" x="430" y="96">unicast flow, 4 ch</text>
+      </svg>
+      <figcaption>One leader clock, every other device follows. Routing is just "which receiver channel listens to which transmitter channel".</figcaption>
+    </figure>
+
+    <h3>Network requirements</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Requirement</th><th>Why</th></tr>
+      <tr><td>Gigabit switches, at least between switches</td><td>100 Mb works for small devices, but large channel counts need 1 Gb.</td></tr>
+      <tr><td>QoS with DSCP, strict priority</td><td>PTP (DSCP 56, CS7) highest, audio (DSCP 46, EF) next, the rest best effort.</td></tr>
+      <tr><td>Energy Efficient Ethernet (EEE) off</td><td>Port sleep adds jitter and can break clock sync.</td></tr>
+      <tr><td>IGMP snooping and a querier, if multicast is used</td><td>Otherwise multicast floods every port.</td></tr>
+      <tr><td>Dedicated VLAN</td><td>Keeps broadcast and multicast away from office and BMS traffic.</td></tr>
+    </table></div>
+
+    <h3>Calculator: channels, bandwidth and latency</h3>
+    <figure class="viz" id="dante">
+      <div class="av-row">
+        <label>Channels: <output id="dChO"></output><input type="range" id="dCh" min="1" max="128" step="1" value="32"></label>
+        <label>Sample rate
+          <select id="dFs" class="av-sel"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option><option value="96000">96 kHz</option></select></label>
+        <label>Bit depth
+          <select id="dBits" class="av-sel"><option value="16">16</option><option value="24" selected>24</option><option value="32">32</option></select></label>
+        <label>Channels per flow
+          <select id="dPer" class="av-sel"><option value="4" selected>4 (unicast default)</option><option value="8">8</option><option value="16">16</option></select></label>
+        <label>Link speed
+          <select id="dLink" class="av-sel"><option value="100">100 Mb/s</option><option value="1000" selected>1 Gb/s</option></select></label>
+        <label>Switch hops: <output id="dHopO"></output><input type="range" id="dHop" min="1" max="10" step="1" value="3"></label>
+        <label>Latency setting
+          <select id="dLat" class="av-sel"><option value="0.25">0.25 ms</option><option value="0.5">0.5 ms</option><option value="1" selected>1 ms</option><option value="2">2 ms</option><option value="5">5 ms</option></select></label>
+      </div>
+      <div class="stats" id="dStats"></div>
+      <div class="readout" id="dText" aria-live="polite"></div>
+      <figcaption>A model, not a vendor formula. It assumes 1 ms packets and about 78 bytes of Ethernet, IP, UDP and framing
+        overhead per packet. The hop rule of thumb is roughly 10 µs per gigabit hop plus queueing; the minimum workable latency
+        setting depends on the device chipset and the network.</figcaption>
+    </figure>
+
+    <h3>Device classes</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Implementation</th><th>Typical channels</th><th>Where</th></tr>
+      <tr><td>Small module (Ultimo class)</td><td>2×2 to 4×4</td><td>Wall plates, small amps, mic adapters</td></tr>
+      <tr><td>Mid module (Broadway class)</td><td>up to 16×16</td><td>Amplifiers, small consoles</td></tr>
+      <tr><td>Large module (Brooklyn class)</td><td>up to 64×64</td><td>Consoles, DSPs, stage boxes</td></tr>
+      <tr><td>FPGA (HC class)</td><td>up to 512×512</td><td>Large consoles, routers</td></tr>
+      <tr><td>Software (virtual soundcard, embedded)</td><td>up to 64×64</td><td>PCs, players, servers</td></tr>
+    </table></div>
+    <p>Channel counts vary by product and licence, so read the datasheet.</p>
+
+    <div class="callout warn">The classic Dante fault in building networks: a switch with EEE enabled, or an IT-managed core that
+      re-marks DSCP to zero. Clock sync wobbles, Dante Controller shows clock errors, and audio clicks every few seconds. Check
+      the switch configuration first, not the audio devices.</div>
+
+    <div class="callout example">A conference centre uses Dante between a stage box, two DSPs and twelve amplifier channels, on its
+      own VLAN across three floors. Latency is set to 1 ms everywhere. The DSP is set as preferred leader, so the clock does not
+      move when the stage box is unplugged between events.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">Why do all receivers set to 1 ms latency play the same sample at the same moment?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Sync to one PTP leader plus a fixed playout offset gives sample alignment.">They share a PTP-derived clock and play out a fixed time after capture</button>
+        <button class="opt" data-opt="b" data-why="Network hop counts differ; the latency buffer hides that.">They are all the same number of switch hops away</button>
+        <button class="opt" data-opt="c" data-why="Dante is not TCP and does not acknowledge packets.">TCP retransmits late packets</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Dante = uncompressed audio over UDP/IP, PTP clocking, mDNS discovery, routing by name.</li>
+      <li>Network rules: gigabit, DSCP QoS with PTP first, EEE off, IGMP snooping for multicast.</li>
+      <li>Latency is a fixed playout delay. Choose the lowest value that is reliable on your network.</li>
+    </ul>
+  </section>
+
+  <!-- 14.4 -->
+  <section class="lesson" id="s4" data-num="14.4">
+    <h2>14.4 AES67 and SMPTE ST 2110</h2>
+    <p>Dante is a product. Several other audio-over-IP systems exist: Ravenna, Livewire+, Q-LAN and others. They do not speak
+      each other's native protocols. <strong>AES67</strong> (first published 2013) is the common denominator they all
+      agreed on, so streams can cross between them.</p>
+
+    <h3>What AES67 specifies</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Layer</th><th>AES67 choice</th></tr>
+      <tr><td>Clock</td><td>PTPv2 (IEEE 1588-2008), default or media profile</td></tr>
+      <tr><td>Transport</td><td>RTP over UDP over IP, usually multicast</td></tr>
+      <tr><td>Encoding</td><td>Linear PCM, L16 or L24, 48 kHz required</td></tr>
+      <tr><td>Packet time</td><td>1 ms required (48 samples); others optional</td></tr>
+      <tr><td>Channels</td><td>1–8 per stream at 1 ms</td></tr>
+      <tr><td>Description</td><td>SDP describes the stream</td></tr>
+      <tr><td>QoS</td><td>DSCP marking recommended for clock and media</td></tr>
+      <tr><td>Discovery</td><td><strong>Not mandated.</strong> SAP, mDNS/RTSP, SIP or manual SDP are all used.</td></tr>
+    </table></div>
+    <p>The missing discovery piece is why "AES67 compatible" does not always mean "plug and play". You often have to enable
+      AES67 mode on each device, pick a multicast address, and paste or announce the SDP yourself.</p>
+
+    <figure class="viz">
+      <svg viewBox="0 0 640 220" role="img" aria-label="Dante, Ravenna and Q-LAN devices sharing AES67 streams and a PTPv2 clock">
+        <rect class="box" x="230" y="14" width="180" height="44" rx="8"/><text x="320" y="34" text-anchor="middle">PTPv2 grandmaster</text><text class="small" x="320" y="50" text-anchor="middle">e.g. a GPS-locked clock</text>
+        <rect class="box fill-accent-soft" x="40" y="96" width="560" height="40" rx="8" style="stroke:var(--accent)"/>
+        <text x="320" y="121" text-anchor="middle">AES67: RTP · L24 · 48 kHz · 1 ms · multicast · SDP</text>
+        <rect class="box" x="40" y="166" width="160" height="44" rx="8"/><text x="120" y="186" text-anchor="middle">Dante device</text><text class="small" x="120" y="202" text-anchor="middle">AES67 mode on</text>
+        <rect class="box" x="240" y="166" width="160" height="44" rx="8"/><text x="320" y="186" text-anchor="middle">Ravenna device</text><text class="small" x="320" y="202" text-anchor="middle">native AES67</text>
+        <rect class="box" x="440" y="166" width="160" height="44" rx="8"/><text x="520" y="186" text-anchor="middle">Q-LAN / other</text><text class="small" x="520" y="202" text-anchor="middle">AES67 bridge</text>
+        <path class="arrow" d="M320,58 L320,96" stroke-dasharray="4 3"/>
+        <path class="arrow" d="M120,136 L120,166"/><path class="arrow" d="M320,136 L320,166"/><path class="arrow" d="M520,136 L520,166"/>
+      </svg>
+      <figcaption>Each platform keeps its own native protocol inside, and meets the others on AES67.</figcaption>
+    </figure>
+
+    <h3>PTP in four timestamps</h3>
+    <p>PTP measures the offset between a follower and the leader with four timestamps. The leader sends <em>Sync</em> at
+      t1, the follower receives it at t2. The follower sends <em>Delay_Req</em> at t3, the leader receives it at t4. If the
+      path is symmetric:</p>
+    <pre class="code">delay  = ((t2 − t1) + (t4 − t3)) / 2
+offset = ((t2 − t1) − (t4 − t3)) / 2</pre>
+    <p>Switches that queue packets break the symmetry. <strong>Boundary clocks</strong> and <strong>transparent clocks</strong>
+      in PTP-aware switches remove that error, which matters most for video.</p>
+    <figure class="viz" id="ptp">
+      <div class="av-row">
+        <label>True follower offset (µs): <output id="pOffO"></output><input type="range" id="pOff" min="-50" max="50" step="1" value="12"></label>
+        <label>Path delay (µs): <output id="pDelO"></output><input type="range" id="pDel" min="1" max="100" step="1" value="20"></label>
+        <label>Asymmetry, extra queueing on one direction (µs): <output id="pAsO"></output><input type="range" id="pAs" min="0" max="40" step="1" value="0"></label>
+      </div>
+      <svg viewBox="0 0 640 200" role="img" aria-label="PTP message exchange between leader and follower">
+        <defs><marker id="a144" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <text x="20" y="40">Leader</text><text x="20" y="170">Follower</text>
+        <line x1="100" y1="36" x2="620" y2="36" class="arrow"/><line x1="100" y1="166" x2="620" y2="166" class="arrow"/>
+        <line id="pM1" class="wire" stroke="var(--accent)" marker-end="url(#a144)"/>
+        <line id="pM2" class="wire" stroke="var(--accent)" marker-end="url(#a144)"/>
+        <text id="pL1" class="small"></text><text id="pL2" class="small"></text><text id="pL3" class="small"></text><text id="pL4" class="small"></text>
+        <text class="small" x="230" y="100" id="pS1">Sync</text><text class="small" x="440" y="100" id="pS2">Delay_Req</text>
+      </svg>
+      <div class="readout" id="pText" aria-live="polite"></div>
+      <figcaption>Add asymmetry and watch the measured offset drift from the true offset by half the asymmetry.</figcaption>
+    </figure>
+
+    <h3>SMPTE ST 2110</h3>
+    <p>Broadcast took the same idea further. <strong>ST 2110</strong> sends video, audio and metadata as separate RTP streams,
+      all timed by PTP. A receiver re-joins them by timestamp. This lets you route audio without touching video.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Part</th><th>Content</th></tr>
+      <tr><td>ST 2110-10</td><td>System timing (PTP via SMPTE ST 2059)</td></tr>
+      <tr><td>ST 2110-20</td><td>Uncompressed video</td></tr>
+      <tr><td>ST 2110-21</td><td>Traffic shaping of video senders</td></tr>
+      <tr><td>ST 2110-22</td><td>Compressed video, e.g. JPEG XS</td></tr>
+      <tr><td>ST 2110-30</td><td>Audio, based on AES67</td></tr>
+      <tr><td>ST 2110-31</td><td>AES3 transparent audio</td></tr>
+      <tr><td>ST 2110-40</td><td>Ancillary data (captions, timecode)</td></tr>
+    </table></div>
+    <p>Discovery and connection in ST 2110 plants are usually handled by AMWA <strong>NMOS</strong>: IS-04 for registration and
+      discovery, IS-05 for connection management. Buildings rarely need ST 2110 itself, but a venue with a broadcast truck
+      dock or a TV studio may, and the AES67 audio layer is what connects to the house system.</p>
+
+    <div class="callout warn">Dante's native clock is PTPv1 and AES67 uses PTPv2. A mixed network has two PTP domains. Make
+      sure one device bridges them deliberately, and that no second grandmaster appears by accident on the AES67 side.</div>
+
+    <div class="callout example">A radio station sends its studio console output as an AES67 stream into a building's Dante
+      network so the lobby and café can play the live programme. One Dante device has AES67 mode enabled and subscribes to
+      the console's multicast stream, using the SDP the console announces with SAP.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">Which piece does AES67 leave open, causing most interoperability headaches?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="PTPv2 is specified.">The clock protocol</button>
+        <button class="opt" data-opt="b" data-why="RTP over UDP is specified.">The transport</button>
+        <button class="opt" data-opt="c" data-why="L16/L24 at 48 kHz is specified.">The audio encoding</button>
+        <button class="opt" data-opt="d" data-why="Discovery is not mandated, so vendors use SAP, mDNS or SIP and may not see each other.">Discovery of streams</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>AES67 = PTPv2 + RTP + L24/48 kHz + 1 ms packets + SDP. Discovery is not included.</li>
+      <li>PTP computes offset from four timestamps and assumes a symmetric path.</li>
+      <li>ST 2110 splits video, audio and data into PTP-timed streams; its audio is AES67.</li>
+    </ul>
+  </section>
+
+  <!-- 14.5 -->
+  <section class="lesson" id="s5" data-num="14.5">
+    <h2>14.5 Network audio clients: Squeezelite, LMS</h2>
+    <p>Background music does not need sample-accurate sync to a mixing console. It needs to be cheap, reliable, schedulable
+      and controllable from a BMS. A popular open-source answer is the <strong>Lyrion Music Server</strong> (LMS, formerly
+      Logitech Media Server, originally SlimServer) with <strong>Squeezelite</strong> players.</p>
+
+    <h3>Architecture</h3>
+    <ul>
+      <li><strong>Server.</strong> LMS holds the library, playlists, radio stations and streaming plugins. It decodes or
+        transcodes as needed and sends the stream to each player. It runs on a NAS, a VM, a container or a Raspberry Pi.</li>
+      <li><strong>Player.</strong> Squeezelite is a small headless client for Linux, Windows and macOS. It plays to any
+        local audio device: a USB interface, a sound card, an ASIO driver, or a virtual Dante soundcard.</li>
+      <li><strong>Protocols.</strong> Players talk to the server with <em>SlimProto</em> on TCP port 3483 and fetch audio
+        over HTTP (commonly port 9000). Discovery uses UDP 3483. Control from outside uses the CLI on TCP 9090 or JSON-RPC
+        over HTTP at <code>/jsonrpc.js</code>.</li>
+      <li><strong>Sync groups.</strong> The server can group players so they play the same stream in step. Sync is good
+        enough for adjacent rooms (a few milliseconds), not for a stereo pair split across two devices.</li>
+    </ul>
+
+    <figure class="viz" id="lms">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 640 240" role="img" aria-label="LMS server, Squeezelite players and a BMS controller">
+        <rect class="box" id="l-bms" x="20" y="20" width="150" height="54" rx="8"/><text x="95" y="44" text-anchor="middle">BMS / panel</text><text class="small" x="95" y="62" text-anchor="middle">JSON-RPC client</text>
+        <rect class="box" id="l-srv" x="245" y="20" width="150" height="54" rx="8"/><text x="320" y="44" text-anchor="middle">LMS server</text><text class="small" x="320" y="62" text-anchor="middle">library · radio · sync</text>
+        <rect class="box" id="l-src" x="470" y="20" width="150" height="54" rx="8"/><text x="545" y="44" text-anchor="middle">Internet radio</text><text class="small" x="545" y="62" text-anchor="middle">or local files</text>
+        <rect class="box" id="l-p1" x="120" y="160" width="160" height="54" rx="8"/><text x="200" y="184" text-anchor="middle">Squeezelite "Lobby"</text><text class="small" x="200" y="202" text-anchor="middle">→ USB DAC → DSP</text>
+        <rect class="box" id="l-p2" x="360" y="160" width="160" height="54" rx="8"/><text x="440" y="184" text-anchor="middle">Squeezelite "Café"</text><text class="small" x="440" y="202" text-anchor="middle">→ ASIO → Dante</text>
+        <line id="lw1" class="arrow" x1="170" y1="47" x2="245" y2="47"/>
+        <line id="lw2" class="arrow" x1="470" y1="47" x2="395" y2="47"/>
+        <line id="lw3" class="arrow" x1="290" y1="74" x2="210" y2="160"/>
+        <line id="lw4" class="arrow" x1="350" y1="74" x2="430" y2="160"/>
+        <text class="small" x="208" y="38" text-anchor="middle">:9000</text>
+        <text class="small" x="225" y="120">:3483 / :9000</text>
+      </svg>
+      <div class="readout" id="lmsText" aria-live="polite"></div>
+    </figure>
+
+    <h3>A typical player command line</h3>
+    <pre class="code">squeezelite -n "Cafe" -m 02:00:00:00:00:01 -o hw:CARD=USB -a 200 -s 192.168.20.10</pre>
+    <div class="table-wrap"><table>
+      <tr><th>Option</th><th>Meaning</th></tr>
+      <tr><td><code>-n</code></td><td>Player name shown in LMS</td></tr>
+      <tr><td><code>-m</code></td><td>MAC address used as the player ID. LMS stores settings, sync groups and alarms per ID.</td></tr>
+      <tr><td><code>-o</code></td><td>Output device (list them with <code>-l</code>)</td></tr>
+      <tr><td><code>-a</code></td><td>Output buffer settings (ALSA: buffer time in ms)</td></tr>
+      <tr><td><code>-s</code></td><td>Server address. Without it the player discovers the server by broadcast.</td></tr>
+    </table></div>
+
+    <h3>Controlling it from a BMS</h3>
+    <p>The JSON-RPC interface takes a player ID and a command array. These are the same commands as the CLI:</p>
+    <pre class="code">POST http://lms:9000/jsonrpc.js
+{"id":1,"method":"slim.request",
+ "params":["02:00:00:00:00:01",["mixer","volume","35"]]}
+
+["power","1"]            switch the player on
+["playlist","play","http://stream.example/radio.mp3"]
+["sync","02:00:00:00:00:02"]   join another player's group
+["status","-","1"]       read current state</pre>
+    <p>For push updates, the CLI on port 9090 supports <code>subscribe</code> and streams events as text lines. Many home and
+      building platforms ship an LMS integration that wraps this.</p>
+
+    <div class="callout warn">Pin the player MAC with <code>-m</code>. If you let Squeezelite pick it from the network card, a
+      replaced NIC, a new VM or a Docker host change gives the player a new identity. LMS then sees a brand-new player, and
+      every schedule, group and BMS reference to the old one silently stops working.</div>
+
+    <div class="callout example">A hotel lobby, café and terrace each have a small player box feeding a DSP input. LMS runs in a
+      container. At 07:00 the BMS powers the three players, syncs them, starts a radio stream and sets volume 30. At 23:00 it
+      stops the café and terrace and keeps the lobby on at 20.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">After a server rebuild, LMS shows a new "Cafe" player and the old schedules no longer run. Most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Port changes would stop playback entirely, not create a new player.">SlimProto moved to another port</button>
+        <button class="opt" data-opt="b" data-why="LMS identifies players by MAC; a new MAC means a new player.">The player's MAC (its ID) changed</button>
+        <button class="opt" data-opt="c" data-why="The name is only a label; identity is the MAC.">The player name is different</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>LMS serves and syncs; Squeezelite plays to any local audio output.</li>
+      <li>SlimProto on TCP 3483, HTTP on 9000, CLI on 9090, JSON-RPC at <code>/jsonrpc.js</code>.</li>
+      <li>The MAC is the player identity. Pin it.</li>
+    </ul>
+  </section>
+
+  <!-- 14.6 -->
+  <section class="lesson" id="s6" data-num="14.6">
+    <h2>14.6 Displays and TV control (RS-232, IP, CEC)</h2>
+    <p>A BMS or AV system often needs to switch displays on at opening time, select inputs and switch them off at night. There
+      are four common ways, and they differ a lot in reliability.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th>Method</th><th>Transport</th><th>Feedback</th><th>Reliability</th><th>Notes</th></tr>
+      <tr><td><strong>RS-232</strong></td><td>3 wires, often 9600 8N1</td><td>Yes, replies</td><td>Very high</td><td>Works when the display's network is asleep. The pro standard.</td></tr>
+      <tr><td><strong>IP control</strong></td><td>TCP to a vendor port</td><td>Yes</td><td>High, if "network standby" is on</td><td>Power-on needs the NIC awake or Wake-on-LAN.</td></tr>
+      <tr><td><strong>HDMI-CEC</strong></td><td>One wire in the HDMI cable</td><td>Partial</td><td>Variable</td><td>Brand names: Anynet+, SimpLink, Bravia Sync. Many quirks.</td></tr>
+      <tr><td><strong>IR</strong></td><td>Infrared emitter on the sensor</td><td>None</td><td>Low</td><td>Toggles get out of step. Last resort.</td></tr>
+    </table></div>
+
+    <h3>Command examples</h3>
+    <figure class="viz" id="disp">
+      <div class="controls seg" role="group" aria-label="Protocol">
+        <button data-p="mdc" aria-pressed="true">Samsung MDC</button>
+        <button data-p="lg">LG RS-232</button>
+        <button data-p="pj">PJLink</button>
+        <button data-p="cec">HDMI-CEC</button>
+      </div>
+      <div class="av-row">
+        <label>Display ID: <output id="xIdO"></output><input type="range" id="xId" min="0" max="20" step="1" value="1"></label>
+        <label>Action
+          <select id="xAct" class="av-sel"><option value="on">Power on</option><option value="off">Power off</option><option value="q">Query power</option></select></label>
+      </div>
+      <div class="bytes" id="xBytes"></div>
+      <div class="readout" id="xText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Byte layouts as commonly documented. Command sets differ between models and firmware, so test against the
+        exact display.</figcaption>
+    </figure>
+
+    <h3>Why IP power-on fails</h3>
+    <p>In standby, many TVs turn their network interface off to meet energy rules. A TCP "power on" then has nobody to talk to.
+      Fixes, in order of preference: use RS-232; enable the display's "network standby" or "power on by network" setting
+      (this costs a watt or two); or send Wake-on-LAN, which works on some models only. Commercial "signage" displays are far
+      more predictable than consumer TVs here.</p>
+
+    <h3>Projectors and PJLink</h3>
+    <p>PJLink is a JBMIA standard for projectors and some displays. It is plain ASCII over TCP port 4352:
+      <code>%1POWR 1</code> turns on, <code>%1POWR ?</code> asks state, <code>%1INPT 31</code> selects an input. Class 2 adds
+      more commands and notifications. Projectors also report lamp hours and errors, which are worth trending in the BMS.</p>
+
+    <h3>HDMI-CEC</h3>
+    <p>CEC is a slow single-wire bus inside HDMI (pin 13), at a few hundred bits per second. Devices have logical addresses
+      (0 = TV, 4 = playback device, 15 = broadcast) and physical addresses from the HDMI topology. It is great for a media
+      player that wakes the TV when it starts playing. It is unreliable through matrix switchers, extenders and AV receivers
+      that do not pass or re-generate CEC correctly.</p>
+
+    <div class="callout warn">Every display reports "on" too early. After power-on, most ignore input commands for 5–15 seconds
+      while booting. Sequence your commands: power on, poll until the reply says on, then select the input. A control
+      system that fires both at once works on the bench and fails in the field.</div>
+
+    <div class="callout example">A museum has 18 commercial displays. Each is daisy-chained on RS-232 out/in, so a single serial
+      port with IDs 1–18 controls all of them. The BMS polls power state every minute and raises an alarm when a display is
+      off during opening hours, which catches failed panels and visitors who press the power button.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A consumer TV ignores IP "power on" but obeys IP "power off". What is happening?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A wrong port would break both commands.">The TCP port is wrong</button>
+        <button class="opt" data-opt="b" data-why="CEC is a separate wire inside HDMI.">CEC is disabled</button>
+        <button class="opt" data-opt="c" data-why="Its NIC sleeps in standby; enable network standby, use WoL or RS-232.">The network interface is off in standby</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Prefer RS-232, then IP with network standby, then CEC. IR only as last resort.</li>
+      <li>Always read state back. Wait for boot before sending input commands.</li>
+      <li>PJLink (TCP 4352) is the common projector protocol.</li>
+    </ul>
+  </section>
+
+  <!-- 14.7 -->
+  <section class="lesson" id="s7" data-num="14.7">
+    <h2>14.7 Video distribution and signage</h2>
+    <p>Moving video around a building used to mean HDMI cables and matrix switchers. Today it is either point-to-point
+      extension over twisted pair (HDBaseT) or <strong>AV over IP</strong>: an encoder at each source, a decoder at each
+      display, and an Ethernet switch as the matrix.</p>
+
+    <h3>The numbers that drive everything</h3>
+    <p>Uncompressed video bit rate is <code>width × height × frames per second × bits per pixel</code>. 1080p60 with 8-bit
+      4:2:2 is about 2 Gb/s of active picture. 4K60 with 8-bit 4:4:4 is about 12 Gb/s. A gigabit network cannot carry either
+      without compression, which is the central trade-off of AV over IP.</p>
+
+    <figure class="viz" id="vid">
+      <div class="av-row">
+        <label>Resolution
+          <select id="vRes" class="av-sel">
+            <option value="1280x720">720p</option><option value="1920x1080" selected>1080p</option>
+            <option value="3840x2160">4K UHD</option><option value="7680x4320">8K</option></select></label>
+        <label>Frame rate
+          <select id="vFps" class="av-sel"><option>25</option><option>30</option><option>50</option><option selected>60</option></select></label>
+        <label>Chroma
+          <select id="vCh" class="av-sel"><option value="3">4:4:4</option><option value="2" selected>4:2:2</option><option value="1.5">4:2:0</option></select></label>
+        <label>Bit depth
+          <select id="vBit" class="av-sel"><option selected>8</option><option>10</option><option>12</option></select></label>
+        <label>Codec
+          <select id="vCod" class="av-sel">
+            <option value="1">Uncompressed</option>
+            <option value="4">Light, e.g. JPEG XS (~4:1)</option>
+            <option value="10">Mezzanine, e.g. NDI-class (~10:1)</option>
+            <option value="100">H.264 streaming (~100:1)</option>
+            <option value="200">H.265 streaming (~200:1)</option></select></label>
+        <label>Streams on one uplink: <output id="vNO"></output><input type="range" id="vN" min="1" max="24" value="4"></label>
+      </div>
+      <div class="stats" id="vStats"></div>
+      <div class="readout" id="vText" aria-live="polite"></div>
+      <figcaption>Active picture only, no blanking, audio or packet overhead. Compression ratios are rough typical values; real
+        codecs vary with content and settings.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+      <tr><th>Approach</th><th>Network</th><th>Latency</th><th>Typical use</th></tr>
+      <tr><td>HDBaseT extender</td><td>Point-to-point Cat6, ~100 m</td><td>Near zero</td><td>Projector at the far end of a room</td></tr>
+      <tr><td>10G uncompressed/light (e.g. SDVoE)</td><td>10 GbE switch</td><td>Sub-frame</td><td>Control rooms, KVM, live events</td></tr>
+      <tr><td>1G light compression (JPEG 2000, JPEG XS, vendor codecs)</td><td>1 GbE, multicast</td><td>About one frame</td><td>Meeting rooms, classrooms, bars</td></tr>
+      <tr><td>NDI / NDI HX</td><td>1 GbE</td><td>One to a few frames</td><td>Production, cameras, streaming</td></tr>
+      <tr><td>H.264/H.265 streaming</td><td>Any IP, even WAN</td><td>Hundreds of ms to seconds</td><td>IPTV, signage feeds, overflow rooms</td></tr>
+    </table></div>
+
+    <h3>Network design for AV over IP</h3>
+    <ul>
+      <li>Every decoder joins a <strong>multicast group</strong>. Without IGMP snooping and a querier, one 800 Mb/s stream
+        floods every port and the network falls over. This is the number one AV-over-IP failure.</li>
+      <li>Use a dedicated VLAN and non-blocking switches. Check the uplink: 8 × 900 Mb/s streams need a 10 Gb uplink.</li>
+      <li>Jumbo frames are sometimes required by the vendor. Enable them consistently, or not at all.</li>
+      <li><strong>HDCP</strong> content protection still applies. Encoders and decoders negotiate it; non-HDCP displays go black.</li>
+    </ul>
+
+    <h3>Digital signage</h3>
+    <p>Signage is content scheduling, not video transport. A <strong>CMS</strong> holds playlists and schedules. A
+      <strong>player</strong> next to each screen (a dedicated device such as BrightSign, a system-on-chip inside a
+      commercial display, or a small PC running something like Xibo) downloads content in advance and plays it locally.
+      If the network drops, playback continues from cache. The BMS link is usually: power the displays on a schedule, read
+      their health, and trigger an emergency or event layout from an external input.</p>
+
+    <div class="callout warn">Signage displays run 12–24 hours a day. Consumer TVs are not rated for that, and static logos can
+      cause image retention. Use displays rated for the duty cycle, and enable pixel shift or screen savers where supported.</div>
+
+    <div class="callout example">A sports bar sends four sources (two sat boxes, a streaming box, a laptop input) to 14 screens
+      over 1G AV over IP with light compression. Each stream is about 800 Mb/s, so the encoders and decoders sit on a
+      48-port switch with IGMP snooping, and the switch has a 10 Gb uplink to the second floor's switch.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">After adding AV-over-IP decoders, office PCs on the same switch slow to a crawl. First thing to check?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Without snooping, multicast video floods every port.">IGMP snooping and querier on the AV VLAN</button>
+        <button class="opt" data-opt="b" data-why="HDCP affects the picture, not the network.">HDCP version</button>
+        <button class="opt" data-opt="c" data-why="PoE budget does not slow other ports.">The PoE budget</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Bit rate = pixels × fps × bits per pixel. 4K60 uncompressed is ~12 Gb/s.</li>
+      <li>Pick compression by latency need: 10G light, 1G mezzanine, H.264 for distance.</li>
+      <li>AV over IP is multicast: IGMP snooping, querier, VLAN, enough uplink.</li>
+    </ul>
+  </section>
+
+  <!-- 14.8 -->
+  <section class="lesson" id="s8" data-num="14.8">
+    <h2>14.8 Control systems: Crestron, Q-SYS, Extron</h2>
+    <p>An <strong>AV control system</strong> is to AV what a DDC controller is to HVAC: a processor that talks to every device
+      in its native protocol and offers one simple interface to people. A touch panel button "Presentation" might power the
+      projector, lower the screen, select the laptop input, unmute the mics, dim the lights to 30 % and close the blinds.</p>
+
+    <div class="explorer">
+      <svg class="pyr" viewBox="0 0 300 290" aria-label="Control system layers">
+        <g class="layer" role="button" tabindex="0" data-target="c-ui" aria-label="User interfaces"><polygon points="120,10 180,10 216,88 84,88"/><text x="150" y="55" text-anchor="middle" class="big">UI</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="c-proc" aria-label="Processor"><polygon points="82,92 218,92 252,168 48,168"/><text x="150" y="135" text-anchor="middle" class="big">Processor</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="c-dev" aria-label="Devices"><polygon points="46,172 254,172 290,250 10,250"/><text x="150" y="216" text-anchor="middle" class="big">Devices</text></g>
+        <text class="small" x="150" y="275" text-anchor="middle">click a layer</text>
+      </svg>
+      <div class="panel" aria-live="polite">
+        <template id="c-ui"><h4>User interfaces</h4><p>Touch panels, keypads, web apps, scheduling panels outside rooms.
+          The UI sends a <em>join</em> or event to the processor and shows feedback the processor sends back.</p>
+          <ul><li>One button = one intent, not one device command</li><li>Feedback reflects the real device state</li></ul></template>
+        <template id="c-proc"><h4>Processor</h4><p>Runs the program: state, sequences, timers and device drivers. Examples:
+          Crestron control processors, a Q-SYS Core, Extron IPCP Pro, AMX NetLinx.</p>
+          <ul><li>Programming: Crestron SIMPL / SIMPL# / C#; Q-SYS Lua and block logic; Extron Global Configurator or Python-based ControlScript</li><li>Device drivers: TCP, RS-232, IR, relays, GPIO</li></ul></template>
+        <template id="c-dev"><h4>Devices</h4><p>Displays, projectors, DSP, matrix switchers, cameras, codecs, lighting and shading
+          gateways, and often the BMS itself.</p>
+          <ul><li>Each needs a driver that knows its protocol</li><li>Polling or subscriptions for feedback</li></ul></template>
+      </div>
+    </div>
+
+    <h3>Three platforms compared</h3>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Crestron</th><th>Q-SYS</th><th>Extron</th></tr>
+      <tr><td>Core idea</td><td>Dedicated control processor plus panels; huge device ecosystem</td><td>Software DSP, control and video on one platform (Core)</td><td>Control processors plus switching, extenders, AV over IP</td></tr>
+      <tr><td>Programming</td><td>SIMPL Windows (signal logic), SIMPL#, C# on 4-Series</td><td>Designer drag-and-drop, Lua scripting, plug-ins</td><td>Global Configurator (no-code), ControlScript (Python)</td></tr>
+      <tr><td>Audio</td><td>Partner DSPs, some own</td><td>Native DSP, Q-LAN, Dante and AES67 options</td><td>Own DSP line and partner DSPs</td></tr>
+      <tr><td>External control API</td><td>Custom TCP/serial modules you write; some platforms add REST/JSON</td><td>QRC (JSON-RPC over TCP) and ECP (ASCII over TCP)</td><td>SIS (Simple Instruction Set) ASCII commands</td></tr>
+      <tr><td>Typical buyer</td><td>Corporate, residential high-end, education</td><td>Corporate, venues, education</td><td>Education, corporate</td></tr>
+    </table></div>
+    <p>Other platforms are common too, for example AMX (now part of HARMAN) and a growing number of software-only controllers.</p>
+
+    <h3>Where AV control meets the BMS</h3>
+    <p>Draw the boundary on purpose. The AV system owns room scenes and device sequencing. The BMS owns building-wide
+      schedules, energy and alarms. They exchange a small set of well-defined signals:</p>
+    <div class="classify" data-cats="AV owns,BMS owns,Exchanged">
+      <div class="item" data-cat="AV owns" data-why="Device-level sequencing is the AV processor's core job."><span class="label">Power projector, wait, select HDMI 2</span></div>
+      <div class="item" data-cat="BMS owns" data-why="Building schedules and energy belong in the BMS."><span class="label">Opening hours calendar for the whole building</span></div>
+      <div class="item" data-cat="Exchanged" data-why="Occupancy is useful to both sides; one side reads it from the other."><span class="label">Room occupied / in use</span></div>
+      <div class="item" data-cat="AV owns" data-why="Mic mutes and DSP presets are AV internals."><span class="label">Mute all microphones in room 2</span></div>
+      <div class="item" data-cat="Exchanged" data-why="Fire alarm sends an input; AV mutes programme sources (a certified voice alarm is separate)."><span class="label">Fire alarm active → stop programme audio</span></div>
+      <div class="item" data-cat="BMS owns" data-why="Alarm routing and notification is a supervisory job."><span class="label">Notify a technician that a projector lamp failed</span></div>
+      <div class="item" data-cat="Exchanged" data-why="The BMS should read device health from the AV system."><span class="label">Projector lamp hours and error state</span></div>
+    </div>
+
+    <figure class="viz">
+      <svg viewBox="0 0 640 200" role="img" aria-label="AV processor and BMS exchanging a small interface">
+        <rect class="box" x="20" y="30" width="200" height="140" rx="10"/><text class="big" x="120" y="60" text-anchor="middle">AV processor</text>
+        <text class="small" x="120" y="86" text-anchor="middle">room scenes</text><text class="small" x="120" y="104" text-anchor="middle">device drivers</text><text class="small" x="120" y="122" text-anchor="middle">touch panels</text>
+        <rect class="box" x="420" y="30" width="200" height="140" rx="10"/><text class="big" x="520" y="60" text-anchor="middle">BMS</text>
+        <text class="small" x="520" y="86" text-anchor="middle">schedules</text><text class="small" x="520" y="104" text-anchor="middle">alarms · energy</text><text class="small" x="520" y="122" text-anchor="middle">dashboards</text>
+        <rect class="box fill-accent-soft" x="250" y="50" width="140" height="100" rx="8" style="stroke:var(--accent)"/>
+        <text x="320" y="72" text-anchor="middle">Interface</text>
+        <text class="small" x="320" y="92" text-anchor="middle">room on / off</text>
+        <text class="small" x="320" y="108" text-anchor="middle">occupied</text>
+        <text class="small" x="320" y="124" text-anchor="middle">device faults</text>
+        <text class="small" x="320" y="140" text-anchor="middle">TCP · BACnet · MQTT</text>
+        <path class="arrow" d="M220,100 L250,100"/><path class="arrow" d="M390,100 L420,100"/>
+      </svg>
+      <figcaption>A narrow, documented interface beats letting both sides talk to every device.</figcaption>
+    </figure>
+
+    <div class="callout warn">Never let two controllers drive the same device independently. If the AV system and the BMS both
+      send power commands to a display, they will fight: one turns it on for a meeting, the other turns it off on schedule.
+      Pick one owner per device and let the other side request through it.</div>
+
+    <div class="callout example">A university lecture hall runs a Q-SYS Core for audio and control. The campus BMS reads
+      "room in use" over the Core's external control interface to drive ventilation, and at 22:00 sends "system off". The Core
+      then runs its own shutdown sequence: mute, projector off, wait for cool-down, amplifiers to standby.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">The BMS should switch a lecture hall's AV off at night. What is the best design?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="This bypasses the AV sequencing and creates two owners.">The BMS sends power-off to each projector and amp directly</button>
+        <button class="opt" data-opt="b" data-why="One owner per device; the AV processor runs its own safe shutdown.">The BMS sends one "system off" request to the AV processor</button>
+        <button class="opt" data-opt="c" data-why="Cutting power can damage projectors and loses state.">The BMS switches off the AV rack breaker</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>A control processor turns intents into device sequences and shows real feedback.</li>
+      <li>Crestron, Q-SYS and Extron differ in programming model and external API.</li>
+      <li>One owner per device. Exchange a small, documented interface with the BMS.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. A mic preamp is set too low, and the installer adds +20 dB on the output fader. What is the result?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Volume can be the same, but quality is not.">Identical sound, just a different setting</button>
+        <button class="opt" data-opt="b" data-why="Low gain at the input reduces, not increases, the clipping risk there.">More clipping at the converter</button>
+        <button class="opt" data-opt="c" data-why="The fader lifts the noise floor together with the signal.">More audible noise, because noise is boosted with the signal</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">2. Dante audio clicks every few seconds after a switch replacement. Most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="EEE and missing QoS are the usual Dante killers.">EEE enabled or DSCP QoS missing on the new switch</button>
+        <button class="opt" data-opt="b" data-why="Bit depth is set per device and would not change with a switch.">Wrong bit depth</button>
+        <button class="opt" data-opt="c" data-why="Dante does not use TCP for audio.">TCP window too small</button>
+        <button class="opt" data-opt="d" data-why="Device names do not affect clocking.">Device names too long</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">3. What do AES67 and ST 2110-30 share?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Neither uses TCP for media.">TCP transport</button>
+        <button class="opt" data-opt="b" data-why="Both use uncompressed PCM.">MP3 encoding</button>
+        <button class="opt" data-opt="c" data-why="Discovery is outside both; NMOS is often used with 2110.">A mandatory discovery protocol</button>
+        <button class="opt" data-opt="d" data-why="ST 2110-30 is built on AES67: PTPv2, RTP, PCM.">PTPv2 timing and RTP-carried PCM audio</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">4. Which display control method keeps working when the display's network interface sleeps in standby?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="IP needs the NIC awake.">TCP IP control</button>
+        <button class="opt" data-opt="b" data-why="The serial port stays alive in standby on pro displays.">RS-232</button>
+        <button class="opt" data-opt="c" data-why="PJLink is TCP, so same problem.">PJLink</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">5. Eight AV-over-IP streams at ~900 Mb/s must cross between two switches. What uplink do you need?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="1 Gb/s fits only one stream.">1 Gb/s</button>
+        <button class="opt" data-opt="b" data-why="2 × 1 Gb/s link aggregation still caps far below 7.2 Gb/s, and per-flow hashing limits it further.">2 × 1 Gb/s LAG</button>
+        <button class="opt" data-opt="c" data-why="8 × 0.9 = 7.2 Gb/s, which fits in 10 Gb/s with margin.">10 Gb/s</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="13-lighting.html">← Chapter 13</a>
+    <a class="btn" href="15-security.html">Chapter 15 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 14 visualizations.
+
+// 14.1 Gain staging meters.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const ALIGN = 24; // dBu at 0 dBFS
+  const NOISE = -110;
+  const fmt = (v) => (v > 0 ? "+" : "") + v.toFixed(0);
+  const meter = (name, lvl, peak, unit, clipAt, lowAt, span) => {
+    const cls = peak >= clipAt ? "clip" : peak >= clipAt - 6 ? "hot" : lvl < lowAt ? "low" : "";
+    const w = Math.max(0, Math.min(100, ((peak - (clipAt - span)) / span) * 100));
+    return `<div class="meter ${cls}"><b>${name}</b><div class="v">avg ${fmt(lvl)} · peak ${fmt(peak)} ${unit}</div><div class="bar"><span style="width:${w}%"></span></div></div>`;
+  };
+  const draw = () => {
+    const src = +$("gSrc").value, pre = +$("gPre").value, fad = +$("gFad").value, cr = +$("gCr").value;
+    $("gPreO").textContent = `+${pre} dB`;
+    $("gFadO").textContent = `${fmt(fad)} dB`;
+    $("gCrO").textContent = `${cr} dB`;
+    $("gSrcO").textContent = `${fmt(src)} dBu`;
+    const preOut = src + pre;            // dBu, preamp output
+    const adc = preOut - ALIGN;          // dBFS
+    const post = adc + fad;              // dBFS after fader
+    const snr = adc - NOISE;             // noise is fixed at the converter, so a fader cannot improve it
+    $("gMeters").innerHTML =
+      meter("Source", src, src + cr, "dBu", 99, -99, 80) +
+      meter("Preamp out", preOut, preOut + cr, "dBu", ALIGN, -10, 40) +
+      meter("Converter", adc, adc + cr, "dBFS", 0, -34, 40) +
+      meter("After fader", post, post + cr, "dBFS", 0, -34, 40);
+    let msg;
+    if (adc + cr >= 0) msg = `Converter clips: peaks reach ${fmt(adc + cr)} dBFS. Reduce preamp gain.`;
+    else if (post + cr >= 0) msg = `Output clips after the fader. Pull the fader down.`;
+    else if (adc < -34) msg = `Too quiet at the converter (${fmt(adc)} dBFS). SNR only ${snr.toFixed(0)} dB. Raising the fader will not fix that.`;
+    else msg = `Healthy. Average ${fmt(adc)} dBFS, ${(-(adc + cr)).toFixed(0)} dB peak headroom, SNR about ${snr.toFixed(0)} dB.`;
+    $("gText").textContent = msg;
+  };
+  ["gSrc", "gPre", "gFad", "gCr"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 14.2 HiQnet-style message builder.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const hex = (s, n) => {
+    const v = parseInt(String(s).trim(), String(s).trim().toLowerCase().startsWith("0x") ? 16 : 10);
+    if (!Number.isFinite(v) || v < 0 || v >= 2 ** (8 * n)) return null;
+    const out = [];
+    for (let i = n - 1; i >= 0; i--) out.push(Math.floor(v / 2 ** (8 * i)) & 0xff);
+    return out;
+  };
+  const h2 = (b) => b.toString(16).toUpperCase().padStart(2, "0");
+  const draw = () => {
+    const parts = [[$("hNode").value, 2], [$("hVd").value, 1], [$("hObj").value, 3], [$("hPar").value, 2]].map(([v, n]) => hex(v, n));
+    const val = hex($("hVal").value, 4);
+    if (parts.some((p) => !p) || !val) {
+      $("hBytes").innerHTML = "";
+      $("hText").textContent = "Enter numbers in range (hex with 0x or decimal).";
+      return;
+    }
+    const cmd = parseInt($("hCmd").value, 16);
+    const addr = parts.flat();
+    const body = [cmd, ...addr, ...(cmd === 0x89 ? [0, 0, 0, 0] : val)];
+    const sum = body.reduce((a, b) => a ^ b, 0);
+    const html = [`<span class="h">02</span>`, `<span class="h">${h2(cmd)}</span>`]
+      .concat(addr.map((b) => `<span class="x">${h2(b)}</span>`))
+      .concat(body.slice(1 + addr.length).map((b) => `<span>${h2(b)}</span>`))
+      .concat([`<span class="c">${h2(sum)}</span>`, `<span class="h">03</span>`]);
+    $("hBytes").innerHTML = html.join("");
+    const name = { 0x88: "Set", 0x89: "Subscribe", 0x8d: "Set percent" }[cmd];
+    $("hText").textContent = `${name}: ${body.length + 3} bytes, checksum 0x${h2(sum)} (XOR of command, address and value).`;
+  };
+  ["hNode", "hVd", "hObj", "hPar", "hCmd", "hVal"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 14.3 Dante bandwidth and latency calculator.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const OVERHEAD = 78; // bytes per packet: preamble, Ethernet, IP, UDP, RTP-like header, IFG
+  const draw = () => {
+    const ch = +$("dCh").value, fs = +$("dFs").value, bits = +$("dBits").value, per = +$("dPer").value;
+    const link = +$("dLink").value, hops = +$("dHop").value, lat = +$("dLat").value;
+    $("dChO").textContent = ch; $("dHopO").textContent = hops;
+    const flows = Math.ceil(ch / per);
+    const pps = 1000; // 1 ms packets
+    const payload = ch * fs * bits;
+    const total = payload + flows * pps * OVERHEAD * 8;
+    const mbps = total / 1e6;
+    const use = mbps / link * 100;
+    const perHop = link === 1000 ? 0.01 : 0.1; // ms, store-and-forward plus some queueing
+    const net = hops * perHop * (1 + use / 100 * 3);
+    const ok = net < lat * 0.6 && use < 70;
+    $("dStats").innerHTML = [
+      ["Flows", flows], ["Payload", (payload / 1e6).toFixed(1) + " Mb/s"], ["On the wire", mbps.toFixed(1) + " Mb/s"],
+      ["Link use", use.toFixed(0) + " %", use > 70 ? "bad" : ""], ["Est. network delay", (net * 1000).toFixed(0) + " µs"],
+      ["Latency budget", lat + " ms", ok ? "ok" : "bad"],
+    ].map(([k, n, c]) => `<div class="stat ${c || ""}"><div class="k">${k}</div><div class="n">${n}</div></div>`).join("");
+    $("dText").textContent = use > 100 ? "Link overloaded: use gigabit or fewer channels." :
+      use > 70 ? "Too close to link capacity. Leave room for bursts and other traffic." :
+      ok ? `Comfortable: network delay uses about ${(net / lat * 100).toFixed(0)} % of the latency setting.` :
+      "Latency setting is tight for this path. Raise it one step or reduce hops.";
+  };
+  ["dCh", "dFs", "dBits", "dPer", "dLink", "dHop", "dLat"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 14.4 PTP offset from four timestamps.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const X0 = 120, SCALE = 2.2, Y1 = 36, Y2 = 166;
+  const draw = () => {
+    const off = +$("pOff").value, d = +$("pDel").value, as = +$("pAs").value;
+    $("pOffO").textContent = off; $("pDelO").textContent = d; $("pAsO").textContent = as;
+    // Leader time is the reference. Follower clock = leader + off.
+    const t1 = 0;
+    const t2 = t1 + d + as + off;        // asymmetry added on leader → follower
+    const t3 = t2 + 60;                  // follower waits 60 µs on its own clock
+    const t4 = (t3 - off) + d;           // back in leader time
+    const delay = ((t2 - t1) + (t4 - t3)) / 2;
+    const meas = ((t2 - t1) - (t4 - t3)) / 2;
+    const x = (leaderT) => X0 + leaderT * SCALE;
+    const a = x(t1), b = x(t1 + d + as), c = x(t3 - off), e = x(t4);
+    const set = (el, o) => Object.entries(o).forEach(([k, v]) => el.setAttribute(k, v));
+    set($("pM1"), { x1: a, y1: Y1, x2: b, y2: Y2 - 4 });
+    set($("pM2"), { x1: c, y1: Y2, x2: e, y2: Y1 + 4 });
+    set($("pL1"), { x: a - 6, y: Y1 - 8 }); $("pL1").textContent = "t1 = " + t1;
+    set($("pL2"), { x: b - 6, y: Y2 + 22 }); $("pL2").textContent = "t2 = " + t2;
+    set($("pL3"), { x: c - 6, y: Y2 + 22 }); $("pL3").textContent = "t3 = " + t3;
+    set($("pL4"), { x: e - 6, y: Y1 - 8 }); $("pL4").textContent = "t4 = " + t4;
+    set($("pS1"), { x: (a + b) / 2 + 6, y: 100 }); set($("pS2"), { x: (c + e) / 2 + 6, y: 100 });
+    const err = meas - off;
+    $("pText").textContent = `Measured delay ${delay.toFixed(1)} µs, measured offset ${meas.toFixed(1)} µs (true ${off}). Error ${err.toFixed(1)} µs.`;
+  };
+  ["pOff", "pDel", "pAs"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 14.5 LMS stepper.
+(() => {
+  const fig = document.getElementById("lms");
+  const ids = ["l-bms", "l-srv", "l-src", "l-p1", "l-p2", "lw1", "lw2", "lw3", "lw4"];
+  const STEPS = [
+    { lit: ["l-p1", "l-p2", "lw3", "lw4"], txt: "1 · Each Squeezelite starts, finds the server (UDP 3483 or -s) and opens a SlimProto session on TCP 3483." },
+    { lit: ["l-bms", "lw1", "l-srv"], txt: "2 · At 07:00 the BMS sends JSON-RPC: power on, sync Café to Lobby, volume 30." },
+    { lit: ["l-bms", "lw1", "l-srv", "l-src", "lw2"], txt: "3 · The BMS asks the Lobby player to play a radio URL. LMS fetches the stream from the internet." },
+    { lit: ["l-srv", "lw3", "lw4", "l-p1", "l-p2"], txt: "4 · LMS tells both players to fetch audio over HTTP (port 9000) and coordinates start times so the group plays in step." },
+    { lit: ["l-p1", "l-p2"], txt: "5 · Players decode and send PCM to their outputs: one to a USB DAC into a DSP, one through ASIO to a Dante virtual soundcard." },
+    { lit: ["l-srv", "lw1", "l-bms"], txt: "6 · Status changes (track, volume, power) are pushed to CLI subscribers or polled with the status command, so the panel stays correct." },
+  ];
+  let i = -1;
+  const render = () => {
+    const s = STEPS[i];
+    ids.forEach((id) => {
+      const el = fig.querySelector("#" + id);
+      const on = s && s.lit.includes(id);
+      el.classList.toggle(id.startsWith("lw") ? "lit-line" : "lit", on);
+    });
+    fig.querySelector("#lmsText").textContent = s ? s.txt : "Press Next to follow a morning start-up.";
+  };
+  fig.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => {
+    const a = b.dataset.act;
+    i = a === "next" ? Math.min(STEPS.length - 1, i + 1) : a === "prev" ? Math.max(-1, i - 1) : -1;
+    render();
+  }));
+  render();
+})();
+
+// 14.6 Display command builder.
+(() => {
+  const fig = document.getElementById("disp");
+  const $ = (id) => document.getElementById(id);
+  let p = "mdc";
+  const h2 = (b) => b.toString(16).toUpperCase().padStart(2, "0");
+  const span = (t, c) => `<span class="${c || ""}">${t}</span>`;
+  const draw = () => {
+    const id = +$("xId").value, act = $("xAct").value;
+    $("xIdO").textContent = id;
+    fig.querySelectorAll("[data-p]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === p));
+    let html = "", txt = "";
+    if (p === "mdc") {
+      // Header 0xAA, command 0x11 (power), ID, length, data, checksum = sum of bytes after header.
+      const body = act === "q" ? [0x11, id, 0x00] : [0x11, id, 0x01, act === "on" ? 0x01 : 0x00];
+      const cs = body.reduce((a, b) => a + b, 0) & 0xff;
+      html = span("AA", "h") + span(h2(body[0]), "h") + span(h2(id), "x") + body.slice(2).map((b) => span(h2(b))).join("") + span(h2(cs), "c");
+      txt = `Binary over RS-232 (often 9600 8N1) or TCP 1515. Header AA, command 11 = power, ID, length, data, checksum = sum of bytes after the header, mod 256 (0x${h2(cs)}).`;
+    } else if (p === "lg") {
+      const v = act === "q" ? "FF" : act === "on" ? "01" : "00";
+      const s = `ka ${h2(id)} ${v}`;
+      html = s.split(" ").map((t, k) => span(t, k === 0 ? "h" : k === 1 ? "x" : "")).join("") + span("CR", "c");
+      txt = `ASCII: two-letter command (ka = power), set ID in hex, data (FF = query). Reply like "a ${h2(id)} OK${v}x".`;
+    } else if (p === "pj") {
+      const s = act === "q" ? "%1POWR ?" : `%1POWR ${act === "on" ? 1 : 0}`;
+      html = span("%1", "h") + span("POWR") + span(s.split(" ")[1], "x") + span("CR", "c");
+      txt = "ASCII over TCP 4352. No device ID: one TCP connection per projector. Reply %1POWR=OK, or the state 0/1/2/3 for a query. A password can be required.";
+    } else {
+      // CEC: header byte = initiator << 4 | destination. 0x04 Image View On, 0x36 Standby, 0x8F Give Power Status.
+      const op = act === "on" ? 0x04 : act === "off" ? 0x36 : 0x8f;
+      const hdr = (4 << 4) | 0;
+      html = span(h2(hdr), "h") + span(h2(op), "x");
+      txt = `Header ${h2(hdr)} = from logical address 4 (playback) to 0 (TV). Opcode ${h2(op)} = ${act === "on" ? "Image View On" : act === "off" ? "Standby" : "Give Device Power Status"}. CEC has no display ID setting.`;
+    }
+    $("xBytes").innerHTML = html;
+    $("xText").textContent = txt;
+  };
+  fig.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => { p = b.dataset.p; draw(); }));
+  ["xId", "xAct"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+
+// 14.7 Video bandwidth calculator.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const fmt = (bps) => bps >= 1e9 ? (bps / 1e9).toFixed(2) + " Gb/s" : (bps / 1e6).toFixed(bps < 1e7 ? 1 : 0) + " Mb/s";
+  const draw = () => {
+    const [w, h] = $("vRes").value.split("x").map(Number);
+    const fps = +$("vFps").value, ch = +$("vCh").value, bit = +$("vBit").value, ratio = +$("vCod").value, n = +$("vN").value;
+    $("vNO").textContent = n;
+    const raw = w * h * fps * bit * ch;
+    const one = raw / ratio;
+    const all = one * n;
+    const fits = (cap) => all <= cap * 0.8;
+    const need = fits(1e9) ? "1 Gb/s" : fits(10e9) ? "10 Gb/s" : fits(25e9) ? "25 Gb/s" : fits(100e9) ? "100 Gb/s" : "> 100 Gb/s";
+    $("vStats").innerHTML = [
+      ["Uncompressed", fmt(raw)], ["Per stream", fmt(one), one > 1e9 * 0.8 ? "bad" : ""],
+      [`${n} streams`, fmt(all)], ["Uplink needed (80 % rule)", need, need === "1 Gb/s" ? "ok" : ""],
+    ].map(([k, v, c]) => `<div class="stat ${c || ""}"><div class="k">${k}</div><div class="n">${v}</div></div>`).join("");
+    $("vText").textContent = one > 0.8e9
+      ? "One stream does not fit a gigabit port. Use 10 GbE or more compression."
+      : `A gigabit port carries about ${Math.floor(0.8e9 / one)} of these streams.`;
+  };
+  ["vRes", "vFps", "vCh", "vBit", "vCod", "vN"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+})();
+</script>
+</body>
+</html>

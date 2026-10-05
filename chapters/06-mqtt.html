@@ -1,0 +1,1593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MQTT in Depth</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .mq-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; margin: 10px 0; }
+  .mq-row label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .mq-in, .mq-sel {
+    font: 14px var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0;
+  }
+  .mq-check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; margin-right: 12px; }
+  .mq-log {
+    font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; max-height: 220px; overflow: auto; margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .mq-log .ok { color: var(--ok); } .mq-log .bad { color: var(--bad); } .mq-log .ex { color: var(--example); } .mq-log .mu { color: var(--muted); }
+  .subs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 8px; margin-top: 10px; }
+  .sub { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; font-size: 13px; min-width: 0; transition: border-color .2s, background .2s; }
+  .sub b { font-family: var(--mono); overflow-wrap: anywhere; }
+  .sub .inbox { font: 12px var(--mono); color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+  .sub.flash { border-color: var(--accent); background: var(--accent-soft); }
+  .sub button { float: right; }
+  .tlist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; }
+  .tlist li { font: 13px var(--mono); padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); overflow-wrap: anywhere; }
+  .tlist li.yes { border-color: var(--ok); background: var(--ok-soft); }
+  .tlist li.yes::before { content: "✓ "; color: var(--ok); }
+  .tlist li.no::before { content: "✗ "; color: var(--muted); }
+  .verdict { font-weight: 700; padding: 8px 12px; border-radius: 8px; margin-top: 10px; display: inline-block; }
+  .verdict.ok { background: var(--ok-soft); color: var(--ok); }
+  .verdict.bad { background: var(--bad-soft); color: var(--bad); }
+  pre.code { font: 13px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; }
+  .entity-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 12px 14px; display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .entity-card .ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-size: 20px; flex: none; }
+  .entity-card .nm { font-weight: 600; }
+  .entity-card .id { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+  .entity-card .st { margin-left: auto; font: 600 15px var(--mono); }
+  svg .pkt-ok { stroke: var(--accent); stroke-width: 2; fill: none; }
+  svg .pkt-lost { stroke: var(--bad); stroke-width: 2; fill: none; stroke-dasharray: 5 4; }
+  svg .dim { opacity: .25; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="6">
+<div class="content">
+  <div class="kicker">Chapter 06</div>
+  <h1>MQTT in depth</h1>
+  <p class="lead">MQTT has become the lingua franca between gateways, controllers and supervisory software. It looks
+    trivially simple, and that is the trap: topic design, QoS, retained messages and session handling decide whether
+    a system is robust or quietly wrong. This chapter takes the protocol apart piece by piece.</p>
+
+  <!-- 6.1 -->
+  <section class="lesson" id="s1" data-num="6.1">
+    <h2>6.1 Publish/subscribe model and why it fits buildings</h2>
+    <p>Most building protocols you met in Chapters 04 and 05 are <strong>request/response</strong>: a client asks
+      "what is holding register 40001?" and a server answers. The client must know every server, must poll on a timer
+      and must repeat the question even when nothing has changed.</p>
+    <p><strong>MQTT</strong> (originally "MQ Telemetry Transport", now just MQTT) inverts this. Clients never talk to
+      each other. Every client opens one TCP connection to a central <strong>broker</strong>. A client
+      <em>publishes</em> a message to a <strong>topic</strong>, a UTF-8 string such as
+      <code>site/ahu1/supply_temp</code>. Other clients <em>subscribe</em> to topic filters. The broker routes each
+      message to every matching subscriber. Publishers do not know who listens; subscribers do not know who
+      publishes.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Decoupling</th><th>Meaning</th><th>Why it helps in a building</th></tr>
+      <tr><td>Space</td><td>Publisher and subscriber never know each other's address.</td><td>Add a dashboard, a historian or an energy app without touching the gateway.</td></tr>
+      <tr><td>Time</td><td>With retained messages and persistent sessions, they need not be online together.</td><td>A front end that restarts gets the last known state at once.</td></tr>
+      <tr><td>Synchronisation</td><td>Publishing does not block on consumers.</td><td>A slow historian cannot stall the lighting gateway.</td></tr>
+    </table></div>
+    <p>MQTT is standardised by OASIS. Version 3.1.1 (2014) is also ISO/IEC 20922:2016. Version 5.0 (2019) added
+      reason codes, properties and more (see 6.13). The default ports are <strong>1883</strong> (plain TCP) and
+      <strong>8883</strong> (TLS). WebSocket transport is common for browsers. The fixed header is just 2 bytes,
+      so a small sensor value fits in a packet of a few dozen bytes.</p>
+
+    <h3>Try it: polling mesh vs broker star</h3>
+    <figure class="viz" id="mesh">
+      <div class="mq-row">
+        <label>Data sources (gateways, controllers) <input type="range" min="2" max="12" value="5" data-k="p"></label>
+        <label>Consumers (UI, historian, alerts…) <input type="range" min="1" max="6" value="3" data-k="c"></label>
+      </div>
+      <div class="controls seg" role="group" aria-label="Architecture">
+        <button data-m="poll" aria-pressed="true">Polling</button>
+        <button data-m="mqtt">MQTT broker</button>
+      </div>
+      <svg viewBox="0 0 600 260" role="img" aria-label="Connections between data sources and consumers"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Polling needs a link from every consumer to every source (P × C). A broker needs one link per client (P + C), and each value travels once from its source.</figcaption>
+    </figure>
+
+    <h3>Event-driven, report by exception</h3>
+    <p>A well-behaved MQTT device publishes <em>on change</em> (with a deadband, e.g. 0.1 K) plus an occasional
+      heartbeat. A room sensor that is stable for an hour sends almost nothing. Compare a BMS polling 2000 Modbus
+      points every 5 s: 400 requests per second, almost all returning the same value.</p>
+
+    <div class="callout example">A 40-room hotel has a lighting gateway, a heating controller per floor and a meter
+      gateway. Each publishes to one broker. The front desk tablet, a historian and an alerting service subscribe.
+      When an energy consultant later wants the meter data, they add one subscriber with read-only rights. No
+      gateway is reconfigured.</div>
+
+    <div class="callout warn">The broker is now a single point through which everything flows. It must be
+      monitored, backed up and, for critical sites, made highly available (6.15). Control loops must still never
+      depend on it.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">8 gateways and 4 consumers. How many TCP connections does a broker architecture need?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is P × C, the polling mesh.">32</button>
+        <button class="opt" data-opt="b" data-why="Every client connects once to the broker: 8 + 4.">12</button>
+        <button class="opt" data-opt="c" data-why="Clients do connect to the broker, even subscribers.">8</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Clients talk only to the broker. Topics, not addresses, connect producers and consumers.</li>
+      <li>Pub/sub decouples space, time and synchronisation.</li>
+      <li>Report by exception plus heartbeat beats blind polling.</li>
+    </ul>
+  </section>
+
+  <!-- 6.2 -->
+  <section class="lesson" id="s2" data-num="6.2">
+    <h2>6.2 Brokers: Mosquitto, EMQX, HiveMQ</h2>
+    <p>The broker is the only server in MQTT. It accepts connections, authenticates clients, checks permissions,
+      matches topics, stores retained messages and queues messages for offline persistent sessions. Brokers differ
+      mostly in scale, clustering and management, not in protocol behaviour.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Broker</th><th>Language / licence</th><th>Strengths</th><th>Typical fit</th></tr>
+      <tr><td><strong>Eclipse Mosquitto</strong></td><td>C, EPL/EDL open source</td><td>Tiny (a few MB RAM), simple config file, plugin auth, bridge support. Single-threaded, no native clustering.</td><td>One building, an edge box, a Raspberry Pi, a Home Assistant add-on.</td></tr>
+      <tr><td><strong>EMQX</strong></td><td>Erlang/OTP, open source core + enterprise</td><td>Masterless clustering, millions of connections, rule engine, dashboard, many auth back ends.</td><td>Campus or portfolio of buildings, cloud ingestion.</td></tr>
+      <tr><td><strong>HiveMQ</strong></td><td>Java, commercial + community edition</td><td>Clustering, extension SDK, strong enterprise support, Sparkplug tooling.</td><td>Industrial and enterprise deployments.</td></tr>
+      <tr><td>Others</td><td>VerneMQ, NanoMQ, RabbitMQ MQTT plugin, cloud IoT services</td><td>Varying MQTT 5 coverage. Check the feature list.</td><td>Special cases.</td></tr>
+    </table></div>
+
+    <h3>Inside a broker</h3>
+    <figure class="viz" id="brokerInside">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 620 240" role="img" aria-label="Pipeline inside a broker from connection to delivery">
+        <defs><marker id="ah6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="bi0" x="10" y="90" width="90" height="56" rx="8"/><text x="55" y="114" text-anchor="middle">Listener</text><text class="small" x="55" y="132" text-anchor="middle">1883 / 8883</text>
+        <rect class="box" id="bi1" x="130" y="90" width="90" height="56" rx="8"/><text x="175" y="114" text-anchor="middle">Auth</text><text class="small" x="175" y="132" text-anchor="middle">user / cert</text>
+        <rect class="box" id="bi2" x="250" y="90" width="90" height="56" rx="8"/><text x="295" y="114" text-anchor="middle">ACL</text><text class="small" x="295" y="132" text-anchor="middle">may publish?</text>
+        <rect class="box" id="bi3" x="370" y="90" width="100" height="56" rx="8"/><text x="420" y="114" text-anchor="middle">Topic tree</text><text class="small" x="420" y="132" text-anchor="middle">match filters</text>
+        <rect class="box" id="bi4" x="370" y="10" width="100" height="50" rx="8"/><text x="420" y="32" text-anchor="middle">Retained</text><text class="small" x="420" y="48" text-anchor="middle">store</text>
+        <rect class="box" id="bi5" x="370" y="176" width="100" height="50" rx="8"/><text x="420" y="198" text-anchor="middle">Session queue</text><text class="small" x="420" y="214" text-anchor="middle">offline clients</text>
+        <rect class="box" id="bi6" x="510" y="90" width="100" height="56" rx="8"/><text x="560" y="114" text-anchor="middle">Subscribers</text><text class="small" x="560" y="132" text-anchor="middle">QoS min()</text>
+        <path class="arrow" d="M100,118 L128,118" marker-end="url(#ah6)"/>
+        <path class="arrow" d="M220,118 L248,118" marker-end="url(#ah6)"/>
+        <path class="arrow" d="M340,118 L368,118" marker-end="url(#ah6)"/>
+        <path class="arrow" d="M420,90 L420,62" marker-end="url(#ah6)"/>
+        <path class="arrow" d="M420,146 L420,174" marker-end="url(#ah6)"/>
+        <path class="arrow" d="M470,118 L508,118" marker-end="url(#ah6)"/>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>A minimal Mosquitto configuration</h3>
+    <pre class="code"># /etc/mosquitto/mosquitto.conf  (Mosquitto 2.x)
+per_listener_settings false
+listener 1883 127.0.0.1        # local plain, for on-host services only
+listener 8883                  # TLS for everyone else
+certfile /etc/mosquitto/certs/server.crt
+keyfile  /etc/mosquitto/certs/server.key
+allow_anonymous false          # default since 2.0
+password_file /etc/mosquitto/passwd
+acl_file /etc/mosquitto/acl
+persistence true               # keep retained + sessions across restarts
+persistence_location /var/lib/mosquitto/</pre>
+    <p>Since Mosquitto 2.0 a listener without explicit configuration only binds to localhost and anonymous access is
+      off. Many "it worked on 1.6" problems come from that change.</p>
+
+    <div class="callout example">A typical single-building edge server runs Mosquitto in a container next to the
+      supervisory software. It holds 50–200 client connections and a few thousand retained topics, using under
+      20 MB of RAM. A property group with 60 sites instead runs a three-node EMQX cluster in a data centre, and each
+      site's edge broker bridges selected topics up to it.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Which feature most clearly separates EMQX/HiveMQ from Mosquitto?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="All three implement QoS 0, 1 and 2.">Support for QoS 2</button>
+        <button class="opt" data-opt="b" data-why="Mosquitto supports retained messages.">Retained messages</button>
+        <button class="opt" data-opt="c" data-why="Mosquitto has bridges but no native multi-node cluster with a shared session state.">Native clustering across nodes</button>
+        <button class="opt" data-opt="d" data-why="Mosquitto supports TLS.">TLS</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The broker authenticates, authorises, routes, retains and queues.</li>
+      <li>Mosquitto for one site; EMQX or HiveMQ when you need clustering and scale.</li>
+      <li>Mosquitto 2.x is secure by default: configure listeners and auth explicitly.</li>
+    </ul>
+  </section>
+
+  <!-- 6.3 -->
+  <section class="lesson" id="s3" data-num="6.3">
+    <h2>6.3 Topic design and naming conventions</h2>
+    <p>A topic is a UTF-8 string of up to 65,535 bytes, split into <strong>levels</strong> by <code>/</code>.
+      Topics are case-sensitive, need no prior declaration and cost nothing to create. That freedom is why topic
+      design is the most important decision in an MQTT system: it is your data model and your permission model at
+      once.</p>
+
+    <h3>Wildcards (subscriptions only)</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Wildcard</th><th>Matches</th><th>Example filter</th><th>Matches</th><th>Does not match</th></tr>
+      <tr><td><code>+</code></td><td>exactly one level</td><td><code>site/+/temp</code></td><td><code>site/r101/temp</code></td><td><code>site/f1/r101/temp</code></td></tr>
+      <tr><td><code>#</code></td><td>zero or more levels; MUST be last</td><td><code>site/f1/#</code></td><td><code>site/f1</code>, <code>site/f1/r101/temp</code></td><td><code>site/f2/r201</code></td></tr>
+    </table></div>
+    <p>Edge cases: <code>#</code> also matches the parent level itself. An empty level is valid
+      (<code>a//b</code> has three levels). A leading slash creates an empty first level, so <code>/site/x</code> and
+      <code>site/x</code> are different topics. Topics starting with <code>$</code> (such as <code>$SYS/…</code>)
+      are not matched by filters beginning with <code>#</code> or <code>+</code>.</p>
+
+    <h3>Try it: wildcard matcher</h3>
+    <figure class="viz" id="matcher">
+      <div class="mq-row"><label>Subscription filter <input class="mq-in" value="hotel/+/room/+/temp" aria-label="Topic filter"></label></div>
+      <div class="controls">
+        <button class="chip" data-f="hotel/+/room/+/temp">+ / + temp</button>
+        <button class="chip" data-f="hotel/f2/#">f2/#</button>
+        <button class="chip" data-f="hotel/+/+/+/+">+ +</button>
+        <button class="chip" data-f="#">#</button>
+        <button class="chip" data-f="hotel/#/temp">invalid #</button>
+        <button class="chip" data-f="+/f1/room/101/temp">+ first</button>
+      </div>
+      <ul class="tlist"></ul>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>A naming convention that scales</h3>
+    <p>A good pattern goes from general to specific, then splits state from commands:</p>
+    <pre class="code">&lt;site&gt;/&lt;area&gt;/&lt;device&gt;/&lt;point&gt;[/set]
+
+hotel/f2/room214/temp            21.4      state, retained
+hotel/f2/room214/setpoint        21.0      state, retained
+hotel/f2/room214/setpoint/set    22.0      command, not retained
+hotel/f2/room214/availability    online    LWT (6.6)</pre>
+    <ul>
+      <li>Use lowercase, ASCII, no spaces. <code>snake_case</code> for multi-word levels.</li>
+      <li>Keep identifiers stable. Use an asset ID, not a display name that a client might rename.</li>
+      <li>Never put changing values in the topic (no <code>…/temp/21.4</code>), and avoid timestamps or random IDs in levels: every unique topic costs broker memory.</li>
+      <li>Separate <strong>state</strong> topics (what is) from <strong>command</strong> topics (what someone wants). The device publishes the state after acting on the command. This closes the loop and shows failures.</li>
+      <li>Design so that ACLs follow the tree: "the lighting gateway may write <code>hotel/+/lighting/#</code>".</li>
+    </ul>
+
+    <div class="callout warn">Avoid a subscriber on <code>#</code> in production. On a busy broker it receives every
+      message, including high-rate telemetry it does not need, and it bypasses any thinking about ACLs.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">Which topic does the filter <code>site/+/ahu/#</code> match?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="+ needs exactly one level between site and ahu.">site/ahu/fan</button>
+        <button class="opt" data-opt="b" data-why="Two levels between site and ahu; + matches only one.">site/b1/f2/ahu/fan</button>
+        <button class="opt" data-opt="c" data-why="Case matters: Site ≠ site.">Site/b1/ahu/fan</button>
+        <button class="opt" data-opt="d" data-why="+ takes b1, and # matches zero levels too.">site/b1/ahu</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li><code>+</code> is one level, <code>#</code> is the rest (including zero levels) and must be last.</li>
+      <li>General to specific; state and command topics separated.</li>
+      <li>The topic tree is also the permission tree. Design both together.</li>
+    </ul>
+  </section>
+
+  <!-- 6.4 -->
+  <section class="lesson" id="s4" data-num="6.4">
+    <h2>6.4 QoS levels 0, 1, 2</h2>
+    <p>Quality of Service is agreed <strong>per hop</strong>: publisher → broker, and separately broker →
+      subscriber. The broker delivers to each subscriber at the <em>lower</em> of the published QoS and the QoS the
+      subscriber asked for. TCP already guarantees ordered delivery on a live connection; QoS is about what happens
+      when the connection breaks mid-message.</p>
+    <div class="table-wrap"><table>
+      <tr><th>QoS</th><th>Guarantee</th><th>Packets</th><th>Use for</th></tr>
+      <tr><td><strong>0</strong> at most once</td><td>Fire and forget. Lost if the link drops.</td><td>PUBLISH</td><td>High-rate telemetry where the next value replaces the old one.</td></tr>
+      <tr><td><strong>1</strong> at least once</td><td>Resent until acknowledged. May arrive twice.</td><td>PUBLISH, PUBACK</td><td>Most state and commands. Make handlers idempotent.</td></tr>
+      <tr><td><strong>2</strong> exactly once</td><td>Four-step handshake removes duplicates.</td><td>PUBLISH, PUBREC, PUBREL, PUBCOMP</td><td>Counters or events where a duplicate is harmful (e.g. "add 1 to the visitor count").</td></tr>
+    </table></div>
+    <p>Each QoS 1/2 message carries a 16-bit <strong>packet identifier</strong>. On a resend after reconnect, the
+      sender sets the <code>DUP</code> flag. The receiver of QoS 2 remembers the packet ID between PUBREC and PUBREL,
+      so a resent PUBLISH is acknowledged but not delivered again.</p>
+
+    <h3>Try it: handshakes with packet loss</h3>
+    <figure class="viz" id="qos">
+      <div class="controls seg" role="group" aria-label="QoS level">
+        <button data-q="0" aria-pressed="true">QoS 0</button>
+        <button data-q="1">QoS 1</button>
+        <button data-q="2">QoS 2</button>
+      </div>
+      <div class="controls seg" role="group" aria-label="Loss scenario">
+        <button data-l="none" aria-pressed="true">No loss</button>
+        <button data-l="pub">Lose PUBLISH</button>
+        <button data-l="ack">Lose first ack</button>
+      </div>
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 560 330" role="img" aria-label="Sequence diagram between sender and receiver"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>Sender on the left, receiver on the right. Dashed red arrows are lost when the connection drops; resends happen after reconnect.</figcaption>
+    </figure>
+
+    <div class="callout example">An office AHU gateway publishes supply temperature every 10 s at QoS 0: a lost
+      sample is replaced 10 s later. Its alarm topic uses QoS 1 with retain, so a "filter dirty" alarm survives a
+      Wi-Fi hiccup. A people-counter that publishes "+1" events uses QoS 2, or better, publishes an absolute total at
+      QoS 1 so duplicates cannot do harm.</div>
+
+    <div class="callout warn">QoS is not end-to-end. A QoS 2 publish to a broker that delivers to a QoS 0 subscriber
+      gives that subscriber QoS 0. And "exactly once" only covers MQTT; if the subscriber crashes after receiving but
+      before writing to its database, the message is gone.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A device publishes at QoS 2. A dashboard subscribed with QoS 1. What does the dashboard get?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Delivery QoS is the minimum of publish and subscribe QoS.">QoS 1: at least once, duplicates possible</button>
+        <button class="opt" data-opt="b" data-why="The broker downgrades, it does not upgrade.">QoS 2: exactly once</button>
+        <button class="opt" data-opt="c" data-why="Mismatched QoS is normal and allowed.">Nothing; the subscription is rejected</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>QoS is per hop; delivered QoS = min(published, subscribed).</li>
+      <li>QoS 1 is the workhorse. Make consumers idempotent.</li>
+      <li>Prefer absolute values over increments; then duplicates are harmless.</li>
+    </ul>
+  </section>
+
+  <!-- 6.5 -->
+  <section class="lesson" id="s5" data-num="6.5">
+    <h2>6.5 Retained messages and their traps</h2>
+    <p>A PUBLISH with the <strong>retain</strong> flag tells the broker: store this as the last known value of the
+      topic. The broker keeps exactly one retained message per topic. When a client later subscribes to a matching
+      filter, the broker sends the retained message immediately. This is what makes MQTT feel like a live state
+      database: a dashboard that reconnects shows every value at once instead of waiting for the next change.</p>
+    <p>To delete a retained message, publish an <strong>empty payload</strong> (zero bytes) with retain set. The
+      broker removes it and delivers nothing to new subscribers.</p>
+
+    <h3>Try it: an in-browser broker</h3>
+    <figure class="viz" id="sim">
+      <div class="mq-row">
+        <label>Topic <input class="mq-in" data-k="topic" value="hotel/f2/room214/temp"></label>
+        <label>Payload <input class="mq-in" data-k="payload" value="21.4"></label>
+        <label>QoS <select class="mq-sel" data-k="qos"><option>0</option><option selected>1</option><option>2</option></select></label>
+      </div>
+      <div class="controls">
+        <label class="mq-check"><input type="checkbox" data-k="retain" checked> retain</label>
+        <button class="btn" data-act="pub">Publish</button>
+        <button class="btn secondary" data-act="clear">Clear retained (empty + retain)</button>
+      </div>
+      <div class="mq-row">
+        <label>New subscriber filter <input class="mq-in" data-k="filter" value="hotel/+/+/temp"></label>
+        <label>Subscribe QoS <select class="mq-sel" data-k="sqos"><option>0</option><option selected>1</option><option>2</option></select></label>
+      </div>
+      <div class="controls"><button class="btn secondary" data-act="sub">Add subscriber</button>
+        <button class="btn secondary" data-act="cmd">Example: publish a retained command</button></div>
+      <div class="subs"></div>
+      <div class="mq-log" aria-live="polite"></div>
+      <figcaption>Retained store and live delivery. Add a subscriber after publishing with retain to see the stored value arrive immediately.</figcaption>
+    </figure>
+
+    <h3>The traps</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Trap</th><th>What happens</th><th>Fix</th></tr>
+      <tr><td>Retained <strong>commands</strong></td><td><code>…/boiler/set ON</code> is retained. Months later the boiler controller reboots, subscribes, and gets "ON" again, even though someone switched it off locally.</td><td>Never retain commands. Retain state only.</td></tr>
+      <tr><td><strong>Stale</strong> values</td><td>A sensor dies. Its last retained "21.4" stays forever and looks healthy.</td><td>Pair with availability/LWT (6.6), add timestamps, or use MQTT 5 message expiry.</td></tr>
+      <tr><td><strong>Ghost</strong> topics</td><td>A renamed device leaves its old retained topics behind. Dashboards show phantom devices.</td><td>Clear with empty retained publishes during decommissioning.</td></tr>
+      <tr><td>Events retained</td><td>A "doorbell pressed" event retained replays on every reconnect.</td><td>Events are not state: do not retain.</td></tr>
+      <tr><td>Persistence off</td><td>The broker restarts and every retained value is lost until devices publish again.</td><td>Enable broker persistence, or make devices republish on reconnect.</td></tr>
+    </table></div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">How do you remove a retained message from <code>site/ahu1/mode</code>?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That would store the string 'null' as the retained value.">Publish the text "null" with retain</button>
+        <button class="opt" data-opt="b" data-why="Unsubscribing affects only your client.">Unsubscribe every client</button>
+        <button class="opt" data-opt="c" data-why="A zero-length retained payload deletes the stored message.">Publish a zero-byte payload with retain set</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Retain = last known value, one per topic, delivered on subscribe.</li>
+      <li>Retain state, never commands or events.</li>
+      <li>Empty payload + retain clears it. Pair retained state with availability.</li>
+    </ul>
+  </section>
+
+  <!-- 6.6 -->
+  <section class="lesson" id="s6" data-num="6.6">
+    <h2>6.6 Last Will, birth messages, availability</h2>
+    <p>A retained value tells you what a device last said. It does not tell you whether the device is still alive.
+      MQTT solves this with the <strong>Last Will and Testament (LWT)</strong>. In its CONNECT packet a client gives
+      the broker a will topic, payload, QoS and retain flag. If the connection ends <em>ungracefully</em>, the broker
+      publishes the will on the client's behalf.</p>
+    <p>"Ungraceful" means: keepalive timeout (6.7), TCP reset, a protocol error, or the network vanishing. A clean
+      DISCONNECT packet discards the will (in MQTT 5 a client may ask for it to be sent anyway with reason code
+      0x04).</p>
+    <p>The common pattern is a <strong>birth/will pair</strong> on one retained availability topic:</p>
+    <ol>
+      <li>CONNECT with will <code>…/availability</code> = <code>offline</code>, retain, QoS 1.</li>
+      <li>Immediately after CONNACK, publish <code>…/availability</code> = <code>online</code>, retain (the birth message).</li>
+      <li>Before a planned shutdown, publish <code>offline</code> yourself, then DISCONNECT.</li>
+    </ol>
+
+    <h3>Try it: kill the gateway</h3>
+    <figure class="viz" id="lwt">
+      <div class="controls seg" role="group" aria-label="Gateway action">
+        <button data-a="connect">Connect + birth</button>
+        <button data-a="graceful">Graceful shutdown</button>
+        <button data-a="crash">Pull the cable</button>
+        <button data-a="nobirth">Connect, forget birth</button>
+      </div>
+      <svg viewBox="0 0 600 200" role="img" aria-label="Gateway, broker and dashboard with availability state">
+        <defs><marker id="ahL" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="lw-gw" x="20" y="60" width="140" height="70" rx="10"/>
+        <text x="90" y="90" text-anchor="middle">DALI gateway</text><text class="small" x="90" y="110" text-anchor="middle" id="lw-gwst">disconnected</text>
+        <rect class="box" x="230" y="50" width="140" height="90" rx="10"/>
+        <text x="300" y="78" text-anchor="middle">Broker</text>
+        <text class="small" x="300" y="98" text-anchor="middle">will held:</text>
+        <text class="small" x="300" y="116" text-anchor="middle" id="lw-will">none</text>
+        <rect class="box" id="lw-ui" x="440" y="60" width="140" height="70" rx="10"/>
+        <text x="510" y="90" text-anchor="middle">Dashboard</text><text class="small" x="510" y="110" text-anchor="middle" id="lw-uist">unknown</text>
+        <line id="lw-l1" class="arrow" x1="160" y1="95" x2="228" y2="95"/>
+        <line class="arrow" x1="370" y1="95" x2="438" y2="95" marker-end="url(#ahL)"/>
+        <text class="small" x="300" y="175" text-anchor="middle" id="lw-ret">retained availability: (none)</text>
+      </svg>
+      <div class="mq-log" aria-live="polite"></div>
+    </figure>
+
+    <div class="callout example">A lighting gateway bridging a Helvar or DALI bus to MQTT publishes
+      <code>lighting/gw1/availability</code>. A supervisory UI greys out every light of that gateway when it reads
+      <code>offline</code>, instead of showing stale "on" states that nobody can change. An alerting rule fires if
+      it stays offline for 2 minutes, and sends a "cleared" message when it is back.</div>
+
+    <div class="callout warn">The will is published only after the broker detects the loss. With a 60 s
+      keepalive, that can take up to 90 s. Do not expect instant offline detection.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A gateway sends a clean DISCONNECT before rebooting for an update. What happens to its will?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A clean DISCONNECT (reason 0x00) discards the will.">The broker publishes it</button>
+        <button class="opt" data-opt="b" data-why="Correct, so the gateway should publish 'offline' itself before disconnecting.">It is discarded; the gateway should publish offline itself first</button>
+        <button class="opt" data-opt="c" data-why="Wills are not delivered after reconnect.">It is delivered when the gateway reconnects</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>LWT = message the broker sends for you if you vanish.</li>
+      <li>Birth "online" + will "offline", both retained, on one availability topic.</li>
+      <li>Detection time depends on keepalive: up to 1.5 × keepalive.</li>
+    </ul>
+  </section>
+
+  <!-- 6.7 -->
+  <section class="lesson" id="s7" data-num="6.7">
+    <h2>6.7 Sessions, keepalive, reconnect behaviour</h2>
+    <h3>Keepalive</h3>
+    <p>In CONNECT the client declares a keepalive in seconds (0–65,535; 0 disables it). If the client has nothing
+      else to send, it sends PINGREQ and the broker answers PINGRESP. If the broker hears nothing from the client for
+      <strong>1.5 × keepalive</strong>, it closes the connection and publishes the will. The client, in turn, treats
+      a missing PINGRESP as a dead link and reconnects.</p>
+    <p>Why bother when TCP exists? A cable pulled on a switch two hops away does not reset the TCP connection.
+      Without application keepalive, both sides can believe a dead connection is alive for many minutes, until TCP
+      retransmission timeouts expire.</p>
+
+    <figure class="viz" id="keepalive">
+      <div class="mq-row">
+        <label>Keepalive: <output>30</output> s <input type="range" min="5" max="120" step="5" value="30"></label>
+      </div>
+      <svg viewBox="0 0 600 170" role="img" aria-label="Timeline of pings and the time at which the broker declares the client dead"></svg>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>The client pings every keepalive interval when idle. At t = 50 s the cable is pulled. The broker waits 1.5 × keepalive after the last packet it heard.</figcaption>
+    </figure>
+
+    <h3>Sessions</h3>
+    <p>A <strong>session</strong> is the state the broker keeps for a client ID: its subscriptions, QoS 1/2 messages
+      in flight, and messages queued while offline. Whether it survives a disconnect depends on the CONNECT flags:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Version</th><th>Setting</th><th>Effect</th></tr>
+      <tr><td>3.1.1</td><td><code>cleanSession = 1</code></td><td>New session each time; discarded on disconnect.</td></tr>
+      <tr><td>3.1.1</td><td><code>cleanSession = 0</code></td><td>Persistent session. Subscriptions remain; QoS 1/2 messages queue while offline. Kept until the broker's own expiry, if any.</td></tr>
+      <tr><td>5.0</td><td><code>Clean Start</code> + <code>Session Expiry Interval</code></td><td>Separated: Clean Start decides whether to resume, Session Expiry (seconds) decides how long the broker keeps it after disconnect.</td></tr>
+    </table></div>
+    <p>The broker replies in CONNACK with <code>Session Present</code>. A client that sees 0 MUST re-subscribe.
+      A robust client simply re-subscribes after every connect.</p>
+
+    <h3>Reconnect behaviour</h3>
+    <ul>
+      <li><strong>Back off.</strong> Retry 1 s, 2 s, 4 s … up to 30–60 s, plus random jitter. After a broker restart, 300 gateways reconnecting in the same second can overload it.</li>
+      <li><strong>Unique client IDs.</strong> Two clients with the same ID kick each other off in a loop (the broker MUST disconnect the existing one). A classic symptom is a device that connects and disconnects every few seconds.</li>
+      <li><strong>Republish state</strong> after reconnect, especially the birth message.</li>
+      <li><strong>Bounded queues.</strong> A persistent session for a client that never returns will grow. Set broker limits (Mosquitto <code>max_queued_messages</code>) and session expiry.</li>
+    </ul>
+
+    <div class="callout example">A historian uses a persistent session at QoS 1 with client ID
+      <code>historian-01</code>. During a 10-minute database maintenance it is offline; the broker queues around
+      6,000 messages and delivers them when it returns, so no samples are lost. The dashboards use clean sessions:
+      they only care about the present, which retained messages provide.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Keepalive is 60 s. The client's network silently dies right after its last ping. When does the broker publish the will, at the latest?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The broker allows 1.5 × keepalive.">After 60 s</button>
+        <button class="opt" data-opt="b" data-why="That is 2 ×; the specification says one and a half.">After 120 s</button>
+        <button class="opt" data-opt="c" data-why="1.5 × 60 s = 90 s without any packet.">After about 90 s</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Broker drops a silent client after 1.5 × keepalive.</li>
+      <li>Persistent sessions queue QoS 1/2 messages for offline clients; bound them.</li>
+      <li>Unique client IDs, exponential back-off with jitter, re-subscribe and republish on connect.</li>
+    </ul>
+  </section>
+
+  <!-- 6.8 -->
+  <section class="lesson" id="s8" data-num="6.8">
+    <h2>6.8 Payloads: plain values, JSON, schemas</h2>
+    <p>MQTT does not care what the payload is. It is a byte array of up to 256 MB (268,435,455 bytes, limited by
+      the remaining-length field). Brokers usually set a far lower limit. The format is a contract between
+      publishers and subscribers that you must define yourself.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Style</th><th>Example</th><th>Pros</th><th>Cons</th></tr>
+      <tr><td>Plain value, one topic per point</td><td><code>…/temp</code> → <code>21.4</code></td><td>Trivial to consume, fine-grained retain and ACL, easy to read in tools.</td><td>Unit, quality, timestamp must live elsewhere; many topics.</td></tr>
+      <tr><td>JSON object per device</td><td><code>…/state</code> → <code>{"temp":21.4,"rh":45}</code></td><td>Atomic snapshot, self-describing, carries metadata.</td><td>Consumers must parse; one field change resends all.</td></tr>
+      <tr><td>Binary (Protobuf, CBOR)</td><td>Sparkplug B (6.11)</td><td>Compact, typed, schema-enforced.</td><td>Not human-readable; needs tooling.</td></tr>
+    </table></div>
+
+    <h3>Try it: what does each format cost?</h3>
+    <figure class="viz" id="payload">
+      <div class="controls seg" role="group" aria-label="Payload format">
+        <button data-f="plain" aria-pressed="true">Plain value</button>
+        <button data-f="json">JSON minimal</button>
+        <button data-f="rich">JSON rich</button>
+      </div>
+      <pre class="code" aria-live="polite"></pre>
+      <div class="bars"></div>
+      <div class="readout"></div>
+      <figcaption>Approximate bytes on the wire for one sample of 3 points from a room controller (MQTT 3.1.1, QoS 0, fixed + variable header + payload).</figcaption>
+    </figure>
+
+    <h3>Rules that save you later</h3>
+    <ul>
+      <li>Use SI units and say which, in the payload, the topic or a documented schema. "21.4" in °F vs °C has broken real projects.</li>
+      <li>Use ISO 8601 UTC timestamps (<code>2026-03-01T08:15:00Z</code>) or epoch milliseconds. Never local time without an offset.</li>
+      <li>Send numbers as JSON numbers, booleans as <code>true</code>/<code>false</code>, not <code>"ON"</code> in one place and <code>1</code> in another.</li>
+      <li>Version the schema: <code>{"v":2,…}</code> or a topic level <code>…/v2/…</code>.</li>
+      <li>Validate with JSON Schema at the consumer, and drop or flag invalid messages instead of crashing.</li>
+      <li>Add a quality flag when the source can be unreliable (<code>"q":"good"|"stale"|"fault"</code>).</li>
+    </ul>
+
+    <div class="callout example">Zigbee2MQTT publishes one JSON object per device
+      (<code>{"temperature":21.4,"humidity":45,"battery":87,"linkquality":120}</code>). Many Modbus gateways instead
+      publish one plain value per register topic. Both work; mixing them without documentation is what hurts.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A JSON device payload changes one field out of 20 every second. What is the main cost?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The whole object is resent and reparsed for one changed field.">Every message carries all 20 fields</button>
+        <button class="opt" data-opt="b" data-why="JSON payloads can be retained like any other.">It cannot be retained</button>
+        <button class="opt" data-opt="c" data-why="256 MB is far away.">It hits the MQTT payload size limit</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The payload format is your contract; MQTT does not define it.</li>
+      <li>Plain values are simple; JSON adds atomic metadata; binary adds compactness and types.</li>
+      <li>Units, UTC timestamps, real types, versioning, validation.</li>
+    </ul>
+  </section>
+
+  <!-- 6.9 -->
+  <section class="lesson" id="s9" data-num="6.9">
+    <h2>6.9 Home Assistant MQTT discovery</h2>
+    <p>MQTT gives you data but no metadata: a subscriber does not know that <code>…/temp</code> is a temperature in
+      °C from a device called "Room 214 sensor". <strong>Discovery</strong> conventions fix that by publishing a
+      description on a well-known topic. Home Assistant's discovery format is the most widely implemented (Tasmota,
+      ESPHome, Zigbee2MQTT, many gateways).</p>
+    <p>The config topic is:</p>
+    <pre class="code">&lt;discovery_prefix&gt;/&lt;component&gt;/[&lt;node_id&gt;/]&lt;object_id&gt;/config
+homeassistant/sensor/room214/temp/config</pre>
+    <p>The payload is retained JSON. It names the state topic, device class, unit, a <code>unique_id</code> (needed
+      for the entity to be editable in the UI) and a <code>device</code> block that groups entities. Abbreviations
+      such as <code>stat_t</code> for <code>state_topic</code> are allowed to save bytes. An empty retained payload
+      on the config topic removes the entity. Newer Home Assistant versions also support a single device-level
+      discovery message (<code>homeassistant/device/&lt;id&gt;/config</code>) with a <code>components</code> map.</p>
+    <p>Home Assistant publishes its own birth message, <code>online</code> on <code>homeassistant/status</code>.
+      Devices should resend their discovery configs when they see it, because a restarted Home Assistant may have
+      lost non-retained ones.</p>
+
+    <h3>Try it: from config to entity</h3>
+    <figure class="viz" id="disco">
+      <div class="controls seg" role="group" aria-label="Component">
+        <button data-c="sensor" aria-pressed="true">sensor</button>
+        <button data-c="binary_sensor">binary_sensor</button>
+        <button data-c="switch">switch</button>
+        <button data-c="climate">climate</button>
+      </div>
+      <pre class="code"></pre>
+      <div class="entity-card"><div class="ic" aria-hidden="true"></div><div><div class="nm"></div><div class="id"></div></div><div class="st"></div></div>
+      <div class="readout" aria-live="polite"></div>
+      <figcaption>The config message on the left creates the entity card below. The state comes from the state topic, not from the config.</figcaption>
+    </figure>
+
+    <div class="callout warn">Discovery configs are retained. If you change an <code>object_id</code> or
+      <code>unique_id</code> without clearing the old config, you get duplicate entities. Clear old configs with an
+      empty retained publish.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">Why should a device listen to <code>homeassistant/status</code>?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Commands come on the device's own command topics.">To receive commands</button>
+        <button class="opt" data-opt="b" data-why="When Home Assistant restarts it publishes 'online'; the device resends discovery and current state.">To republish discovery and state after Home Assistant restarts</button>
+        <button class="opt" data-opt="c" data-why="Discovery has no authentication of its own.">To authenticate with Home Assistant</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Discovery = retained JSON on <code>homeassistant/&lt;component&gt;/…/config</code>.</li>
+      <li><code>unique_id</code> and a <code>device</code> block make entities manageable.</li>
+      <li>Empty retained config deletes; resend configs on <code>homeassistant/status = online</code>.</li>
+    </ul>
+  </section>
+
+  <!-- 6.10 -->
+  <section class="lesson" id="s10" data-num="6.10">
+    <h2>6.10 Bridging fieldbus to MQTT (Modbus, DALI/Helvar)</h2>
+    <p>Few field devices speak MQTT natively. A <strong>gateway</strong> sits between a fieldbus and the broker: it
+      polls or listens on the bus, converts raw values to engineering units, publishes on change, and turns MQTT
+      commands into bus writes. The gateway is where most integration bugs live, so it deserves care.</p>
+
+    <h3>Try it: one Modbus register on its way to MQTT</h3>
+    <figure class="viz" id="gw">
+      <div class="mq-row">
+        <label>Raw register (int16) <input class="mq-in" type="number" data-k="raw" value="214" min="-32768" max="32767"></label>
+        <label>Scale <select class="mq-sel" data-k="scale"><option value="0.1" selected>× 0.1</option><option value="1">× 1</option><option value="0.01">× 0.01</option></select></label>
+        <label>Deadband (°C) <input class="mq-in" type="number" data-k="db" value="0.2" step="0.1" min="0"></label>
+      </div>
+      <div class="controls">
+        <button class="btn" data-act="poll">Poll once</button>
+        <button class="btn secondary" data-act="fail">Bus timeout ×3</button>
+      </div>
+      <svg viewBox="0 0 620 150" role="img" aria-label="Modbus device to gateway to broker">
+        <defs><marker id="ahG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="g-dev" x="10" y="40" width="150" height="70" rx="8"/><text x="85" y="66" text-anchor="middle">Heat meter</text><text class="small" x="85" y="86" text-anchor="middle">Modbus RTU id 7</text><text class="small" x="85" y="101" text-anchor="middle" id="g-raw">IR 30001 = 214</text>
+        <rect class="box" id="g-gw" x="235" y="30" width="150" height="90" rx="8"/><text x="310" y="56" text-anchor="middle">Gateway</text><text class="small" x="310" y="76" text-anchor="middle" id="g-calc">214 × 0.1 = 21.4</text><text class="small" x="310" y="94" text-anchor="middle" id="g-db">last sent: —</text>
+        <rect class="box" id="g-br" x="460" y="40" width="150" height="70" rx="8"/><text x="535" y="66" text-anchor="middle">Broker</text><text class="small" x="535" y="86" text-anchor="middle" id="g-top">plant/meter7/flow_temp</text><text class="small" x="535" y="101" text-anchor="middle" id="g-val">—</text>
+        <path class="arrow" id="g-a1" d="M160,75 L233,75" marker-end="url(#ahG)"/>
+        <path class="arrow" id="g-a2" d="M385,75 L458,75" marker-end="url(#ahG)"/>
+        <text class="small" x="196" y="66" text-anchor="middle">poll 5 s</text>
+        <text class="small" x="422" y="66" text-anchor="middle">on change</text>
+      </svg>
+      <div class="mq-log" aria-live="polite"></div>
+    </figure>
+    <p>The register address shown uses the common "3xxxx" notation for an input register; on the wire it is offset 0.
+      Chapter 04 covers the off-by-one trap in detail.</p>
+
+    <h3>Design checklist for a gateway</h3>
+    <ul>
+      <li><strong>Scaling and type</strong> in a documented point map: register, data type (int16, uint32, float32), word order, scale, unit.</li>
+      <li><strong>Deadband + heartbeat:</strong> publish when the value moves by more than the deadband, and at least every N minutes.</li>
+      <li><strong>Per-point quality.</strong> After repeated bus timeouts, publish an unavailable state for that device instead of freezing the last value.</li>
+      <li><strong>Command path:</strong> subscribe to <code>…/set</code>, validate range, write, read back, then publish the confirmed state.</li>
+      <li><strong>Gateway availability</strong> via LWT, and separate per-device availability for bus devices.</li>
+    </ul>
+
+    <h3>DALI and Helvar style lighting</h3>
+    <p>Lighting gateways map a different model. DALI addresses up to 64 control gear, 16 groups and 16 scenes per
+      bus. A gateway typically exposes topics per group or per area such as <code>lighting/f2/meeting1/level</code>
+      (0–100 %) and <code>lighting/f2/meeting1/scene/set</code>. Helvar routers organise lighting in groups and
+      blocks with scenes; their gateways usually publish the active scene per group rather than every driver level.
+      Publishing per-driver levels for hundreds of fittings floods the broker during a scene recall, when every
+      fitting changes at once.</p>
+
+    <div class="callout example">In a typical office, a Modbus TCP gateway polls 12 heat meters and 4 AHU controllers
+      every 5 s (about 400 points). With a 0.2 K deadband and 10-minute heartbeat it publishes around 3 messages per
+      second on average, instead of 80 if it published every poll.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A Modbus device stops answering. What should the gateway publish?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Silence leaves the retained last value looking healthy.">Nothing; keep the last retained value</button>
+        <button class="opt" data-opt="b" data-why="Zero is a valid temperature and will be trended as real data.">The value 0</button>
+        <button class="opt" data-opt="c" data-why="Consumers can then grey it out and alert.">The device's availability as offline, or a quality flag</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The gateway owns scaling, deadband, heartbeat and quality.</li>
+      <li>Commands: validate, write, read back, publish confirmed state.</li>
+      <li>Lighting: publish at group/scene level to avoid storms.</li>
+    </ul>
+  </section>
+
+  <!-- 6.11 -->
+  <section class="lesson" id="s11" data-num="6.11">
+    <h2>6.11 Sparkplug B for industrial MQTT</h2>
+    <p>Plain MQTT leaves topic structure, payload format and state awareness to you. <strong>Sparkplug</strong>, an
+      Eclipse Foundation specification (version 3.0, also ISO/IEC 20237:2023), defines all three for industrial
+      use. It is popular in SCADA and manufacturing and appears in larger building and campus projects.</p>
+    <h3>Topic namespace</h3>
+    <pre class="code">spBv1.0/&lt;group_id&gt;/&lt;message_type&gt;/&lt;edge_node_id&gt;[/&lt;device_id&gt;]
+spBv1.0/campus/DDATA/plantroom_gw/boiler2</pre>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>Sent by</th><th>Meaning</th></tr>
+      <tr><td><code>NBIRTH</code> / <code>DBIRTH</code></td><td>Edge node</td><td>Node / device is online. Lists every metric with name, alias, datatype and current value.</td></tr>
+      <tr><td><code>NDATA</code> / <code>DDATA</code></td><td>Edge node</td><td>Changed metrics only (report by exception), usually by alias.</td></tr>
+      <tr><td><code>NDEATH</code> / <code>DDEATH</code></td><td>Broker (will) / edge node</td><td>Node or device offline. NDEATH is registered as the MQTT will.</td></tr>
+      <tr><td><code>NCMD</code> / <code>DCMD</code></td><td>Host application</td><td>Write a metric or ask for a rebirth.</td></tr>
+      <tr><td><code>STATE</code></td><td>Primary host</td><td>Host online/offline, on <code>spBv1.0/STATE/&lt;host_id&gt;</code> (retained JSON).</td></tr>
+    </table></div>
+    <p>Payloads are Google Protocol Buffers with typed metrics, timestamps and a sequence number <code>seq</code>
+      (0–255, wraps) on every message. A <code>bdSeq</code> number links each NBIRTH with the NDEATH registered in the
+      same connection. Sparkplug messages are not retained (except STATE); state comes from births.</p>
+
+    <h3>Try it: edge node state machine</h3>
+    <figure class="viz" id="spb">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 600 200" role="img" aria-label="Sparkplug edge node states">
+        <defs><marker id="ahS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" id="sp0" x="10" y="70" width="110" height="56" rx="28"/><text x="65" y="102" text-anchor="middle">Offline</text>
+        <rect class="box" id="sp1" x="160" y="70" width="120" height="56" rx="28"/><text x="220" y="94" text-anchor="middle">Connected</text><text class="small" x="220" y="112" text-anchor="middle">will = NDEATH</text>
+        <rect class="box" id="sp2" x="320" y="70" width="120" height="56" rx="28"/><text x="380" y="94" text-anchor="middle">Born</text><text class="small" x="380" y="112" text-anchor="middle">NBIRTH + DBIRTH</text>
+        <rect class="box" id="sp3" x="470" y="70" width="120" height="56" rx="28"/><text x="530" y="94" text-anchor="middle">Reporting</text><text class="small" x="530" y="112" text-anchor="middle">DDATA by exception</text>
+        <path class="arrow" d="M120,98 L158,98" marker-end="url(#ahS)"/>
+        <path class="arrow" d="M280,98 L318,98" marker-end="url(#ahS)"/>
+        <path class="arrow" d="M440,98 L468,98" marker-end="url(#ahS)"/>
+        <path class="arrow" d="M530,128 C530,185 65,185 65,128" marker-end="url(#ahS)"/>
+        <text class="small" x="300" y="176" text-anchor="middle">link lost → broker publishes NDEATH</text>
+        <path class="arrow" d="M530,68 C530,20 380,20 380,68" marker-end="url(#ahS)"/>
+        <text class="small" x="455" y="22" text-anchor="middle">NCMD "Rebirth"</text>
+      </svg>
+      <pre class="code" aria-live="polite"></pre>
+    </figure>
+
+    <div class="callout example">A campus energy centre has an edge node per plant room. The SCADA host
+      subscribes to <code>spBv1.0/campus/#</code>. On connect it reads all DBIRTH messages and instantly knows every
+      boiler metric, its type and unit, without a hand-made point list. When a plant room loses its uplink the
+      broker publishes NDEATH and the host marks all its metrics stale in one step.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A host application sees a DDATA with a <code>seq</code> gap (got 17 after 15). What should it do?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A gap means a missed message; a rebirth resynchronises all metric values.">Send an NCMD asking the node to rebirth</button>
+        <button class="opt" data-opt="b" data-why="The host would then hold a possibly wrong value.">Ignore it</button>
+        <button class="opt" data-opt="c" data-why="Sparkplug data messages are not retained.">Read the retained DDATA</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Sparkplug B fixes topic layout, Protobuf payloads and online/offline state.</li>
+      <li>BIRTH declares metrics; DATA sends changes; DEATH (as the will) marks offline.</li>
+      <li><code>seq</code> and <code>bdSeq</code> detect gaps and stale deaths.</li>
+    </ul>
+  </section>
+
+  <!-- 6.12 -->
+  <section class="lesson" id="s12" data-num="6.12">
+    <h2>6.12 Security: users, ACLs, TLS</h2>
+    <p>An open broker on a building network lets anyone read every value and, worse, write every command topic.
+      Shodan regularly lists tens of thousands of anonymous MQTT brokers on the internet. Three layers close this:</p>
+    <ol>
+      <li><strong>Authentication</strong>: who is this? Username/password (hashed on the broker, e.g. PBKDF2-SHA512 in Mosquitto's password file), client certificates (mutual TLS), or a plugin to LDAP, a database or JWT.</li>
+      <li><strong>Authorisation (ACL)</strong>: what may this identity read and write? Per user, per topic pattern.</li>
+      <li><strong>Encryption</strong>: TLS on 8883 (or WSS) so passwords and values cannot be sniffed, and the client can verify the broker's certificate.</li>
+    </ol>
+
+    <h3>Mosquitto ACL syntax</h3>
+    <pre class="code"># applies to all users
+pattern read  site/+/+/availability
+pattern readwrite clients/%c/#          # %c = client id, %u = username
+
+user dali_gw
+topic readwrite lighting/#
+
+user dashboard
+topic read  site/#
+topic write site/+/+/setpoint/set
+
+user historian
+topic read  #</pre>
+    <p>Access is denied unless a rule allows it. <code>topic deny …</code> explicitly blocks a subtree. Wildcard
+      subscriptions are checked against the rules too: a <code>read site/#</code> rule covers a subscription to
+      <code>site/+/temp</code>. Exact edge cases differ between brokers and versions, so test them.</p>
+
+    <h3>Try it: ACL tester</h3>
+    <figure class="viz" id="acl">
+      <div class="mq-row">
+        <label>User <select class="mq-sel" data-k="user"><option>dali_gw</option><option selected>dashboard</option><option>historian</option><option>guest</option></select></label>
+        <label>Action <select class="mq-sel" data-k="act"><option value="write">publish (write)</option><option value="read">subscribe (read)</option></select></label>
+        <label>Topic <input class="mq-in" data-k="topic" value="site/f2/room214/setpoint/set"></label>
+      </div>
+      <div class="verdict" aria-live="polite"></div>
+      <div class="readout"></div>
+      <figcaption>Uses the ACL file above. Client id is assumed equal to the username for <code>%c</code>.</figcaption>
+    </figure>
+
+    <h3>Practical rules</h3>
+    <ul>
+      <li>One identity per device or service. Never share one "bms" account across all gateways.</li>
+      <li>Least privilege: gateways write their own subtree, UIs read state and write only <code>…/set</code>.</li>
+      <li>Keep plain 1883 bound to localhost, or remove it. Expose only 8883.</li>
+      <li>Put the broker on the OT network segment, never port-forward it to the internet. Use a VPN or a bridge with an outbound TLS connection for remote sites (6.15).</li>
+      <li>Rotate credentials when staff or contractors change; certificates make that easier at scale.</li>
+    </ul>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">With the ACL above, may <code>dashboard</code> publish to <code>site/f2/room214/temp</code>?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="read site/# allows reading, not writing.">Yes, it has site/#</button>
+        <button class="opt" data-opt="b" data-why="It may write only …/setpoint/set; temp is a state topic owned by the device.">No, it may only write setpoint/set topics</button>
+        <button class="opt" data-opt="c" data-why="%c patterns apply to clients/…, not site/….">Yes, via the %c pattern</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Authenticate every client, authorise per topic, encrypt with TLS.</li>
+      <li>One identity per device; least privilege along the topic tree.</li>
+      <li>Never expose a broker directly to the internet.</li>
+    </ul>
+  </section>
+
+  <!-- 6.13 -->
+  <section class="lesson" id="s13" data-num="6.13">
+    <h2>6.13 MQTT 5 features</h2>
+    <p>MQTT 5.0 kept the same packets and model but added <strong>properties</strong> (typed key-value fields in
+      packet headers) and <strong>reason codes</strong> on every acknowledgement. Most modern brokers and client
+      libraries support it; many embedded devices still use 3.1.1, and the two versions coexist on one broker.</p>
+
+    <div class="explorer">
+      <div class="layers">
+        <button class="layer" data-target="m5-reason">Reason codes</button>
+        <button class="layer" data-target="m5-expiry">Session &amp; message expiry</button>
+        <button class="layer" data-target="m5-shared">Shared subscriptions</button>
+        <button class="layer" data-target="m5-alias">Topic aliases</button>
+        <button class="layer" data-target="m5-rr">Request / response</button>
+        <button class="layer" data-target="m5-user">User properties</button>
+        <button class="layer" data-target="m5-sub">Subscription options</button>
+      </div>
+      <div class="panel" aria-live="polite">
+        <template id="m5-reason"><h4>Reason codes</h4>
+          <p>Every ACK (CONNACK, PUBACK, SUBACK, DISCONNECT…) carries a one-byte reason. 3.1.1 had only a few CONNACK codes and silent failures.</p>
+          <ul><li><code>0x00</code> Success</li><li><code>0x87</code> Not authorized (e.g. ACL denies a publish)</li><li><code>0x97</code> Quota exceeded</li><li><code>0x8E</code> Session taken over (duplicate client ID)</li><li><code>0x04</code> Disconnect with will message</li></ul>
+          <p>In 3.1.1 a denied publish was simply dropped; in 5.0 a QoS 1 publisher gets PUBACK 0x87 and can log it.</p></template>
+        <template id="m5-expiry"><h4>Session and message expiry</h4>
+          <p><strong>Session Expiry Interval</strong> (seconds) says how long the broker keeps a session after disconnect. No more sessions that live forever.</p>
+          <p><strong>Message Expiry Interval</strong> on a PUBLISH drops the message, and a retained copy, after N seconds. A retained temperature with 600 s expiry vanishes if the sensor stops updating, instead of lying forever.</p>
+          <p><strong>Will Delay Interval</strong> delays the will, so a quick reconnect does not flap "offline".</p></template>
+        <template id="m5-shared"><h4>Shared subscriptions</h4>
+          <p><code>$share/historians/site/#</code>: messages are load-balanced between all members of group <code>historians</code>, each message to one member. Scale consumers horizontally without duplicates.</p></template>
+        <template id="m5-alias"><h4>Topic aliases</h4>
+          <p>After the first PUBLISH, a long topic can be replaced by a 2-byte integer alias for that connection. Saves bandwidth on cellular links with long topic names.</p></template>
+        <template id="m5-rr"><h4>Request / response</h4>
+          <p>A PUBLISH may carry a <strong>Response Topic</strong> and <strong>Correlation Data</strong>. The responder publishes its answer there with the same correlation data. Useful for "set and confirm" commands.</p></template>
+        <template id="m5-user"><h4>User properties</h4>
+          <p>Arbitrary UTF-8 key-value pairs, like HTTP headers: <code>unit=°C</code>, <code>source=gw1</code>, <code>trace-id=…</code>. Metadata without changing the payload.</p>
+          <p>Also new: <strong>Content Type</strong> and <strong>Payload Format Indicator</strong> (UTF-8 or bytes).</p></template>
+        <template id="m5-sub"><h4>Subscription options</h4>
+          <ul><li><strong>No Local</strong>: do not send me my own publishes. Avoids echo loops in bridges.</li>
+            <li><strong>Retain As Published</strong>: keep the retain flag on forwarded messages.</li>
+            <li><strong>Retain Handling</strong>: 0 send retained on subscribe, 1 only if new subscription, 2 never.</li>
+            <li><strong>Subscription Identifier</strong>: tells the client which of its subscriptions matched.</li></ul>
+          <p>Flow control: <strong>Receive Maximum</strong> caps unacknowledged QoS 1/2 messages in flight.</p></template>
+      </div>
+    </div>
+
+    <h3>Try it: message expiry on a retained value</h3>
+    <figure class="viz" id="expiry">
+      <div class="mq-row"><label>Seconds since the sensor last published: <output>120</output> s <input type="range" min="0" max="1200" step="30" value="120"></label></div>
+      <div class="controls"><label class="mq-check"><input type="checkbox" checked> Message Expiry Interval = 600 s</label></div>
+      <div class="entity-card"><div class="ic" aria-hidden="true">🌡</div><div><div class="nm">Room 214 temperature</div><div class="id">hotel/f2/room214/temp</div></div><div class="st"></div></div>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Three historian instances should share the load of <code>site/#</code> without each storing every message. Which feature?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Aliases save bandwidth, they do not distribute messages.">Topic aliases</button>
+        <button class="opt" data-opt="b" data-why="No Local suppresses your own messages only.">No Local</button>
+        <button class="opt" data-opt="c" data-why="$share/group/filter delivers each message to one member of the group.">Shared subscription $share/historians/site/#</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>MQTT 5 = properties + reason codes, same model.</li>
+      <li>Expiry intervals fix stale retained data and immortal sessions.</li>
+      <li>Shared subscriptions scale consumers; request/response tidies commands.</li>
+    </ul>
+  </section>
+
+  <!-- 6.14 -->
+  <section class="lesson" id="s14" data-num="6.14">
+    <h2>6.14 Tools and debugging: mosquitto_sub, MQTT Explorer</h2>
+    <p>Because MQTT is plain and observable, most problems can be found by watching the broker. Two tools cover
+      90 % of the work.</p>
+    <h3>mosquitto_sub and mosquitto_pub</h3>
+    <p>The command-line clients from the Mosquitto project. Useful flags:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Flag</th><th>Meaning</th></tr>
+      <tr><td><code>-h -p</code></td><td>Host and port.</td></tr>
+      <tr><td><code>-u -P</code></td><td>Username and password (prefer a config file to avoid shell history).</td></tr>
+      <tr><td><code>-t</code></td><td>Topic filter (repeatable).</td></tr>
+      <tr><td><code>-v</code></td><td>Print the topic before each payload.</td></tr>
+      <tr><td><code>-F '%I %t %r %q %p'</code></td><td>Custom format: ISO time, topic, retain flag, QoS, payload.</td></tr>
+      <tr><td><code>--retained-only</code></td><td>Print only retained messages, then exit when a non-retained one arrives.</td></tr>
+      <tr><td><code>-W 5</code> / <code>-C 10</code></td><td>Exit after 5 s / after 10 messages.</td></tr>
+      <tr><td><code>--cafile</code></td><td>CA certificate for TLS.</td></tr>
+      <tr><td><code>-V mqttv5</code></td><td>Use MQTT 5.</td></tr>
+    </table></div>
+
+    <h3>Try it: build a command</h3>
+    <figure class="viz" id="cmd">
+      <div class="controls seg" role="group" aria-label="Goal">
+        <button data-g="watch" aria-pressed="true">Watch a floor</button>
+        <button data-g="retained">List retained</button>
+        <button data-g="clear">Clear a ghost</button>
+        <button data-g="sys">Broker stats</button>
+        <button data-g="set">Send a command</button>
+      </div>
+      <pre class="code" aria-live="polite"></pre>
+      <div class="readout"></div>
+    </figure>
+
+    <h3>MQTT Explorer and friends</h3>
+    <p><strong>MQTT Explorer</strong> is a free desktop client that shows the whole topic tree, message counts,
+      retained flags, a diff of JSON payloads and a small chart per numeric topic. It is the fastest way to answer
+      "what is actually on this broker?". Alternatives: MQTTX (cross-platform, MQTT 5 friendly), and the web
+      dashboards of EMQX and HiveMQ.</p>
+
+    <h3>Common symptoms</h3>
+    <div class="classify" data-cats="Client ID,Retain,ACL,Keepalive">
+      <div class="item" data-cat="Client ID" data-why="Two clients with one ID take the session from each other in a loop."><span class="label">A device connects, then disconnects, every 2–3 seconds.</span></div>
+      <div class="item" data-cat="Retain" data-why="A retained command replays on every subscribe."><span class="label">After each reboot the pump controller switches the pump on by itself.</span></div>
+      <div class="item" data-cat="ACL" data-why="Under 3.1.1 a denied publish is silently dropped by many brokers."><span class="label">A gateway's publishes never appear, but it reports no error.</span></div>
+      <div class="item" data-cat="Keepalive" data-why="1.5 × a long keepalive makes the will very late."><span class="label">A dead sensor still shows online for about 15 minutes.</span></div>
+      <div class="item" data-cat="Retain" data-why="Old retained topics remain after renaming."><span class="label">The dashboard lists a device that was removed last year.</span></div>
+    </div>
+
+    <div class="callout example">An installer suspects a heating gateway. Running
+      <code>mosquitto_sub -v -t 'heating/#' -F '%I %t %r %p'</code> for a minute shows timestamps, which values are
+      retained, and that the gateway publishes the same value every second with no deadband. The fix is in the
+      gateway, found in 60 seconds without opening its configuration.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">You want broker statistics like connected clients and message rates from Mosquitto. Which topic?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="# does not match topics starting with $.">#</button>
+        <button class="opt" data-opt="b" data-why="Not a standard topic.">broker/stats</button>
+        <button class="opt" data-opt="c" data-why="That is a shared subscription prefix.">$share/stats/#</button>
+        <button class="opt" data-opt="d" data-why="Mosquitto publishes statistics under $SYS/broker/…, which you must subscribe to explicitly.">$SYS/#</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li><code>mosquitto_sub -v -F</code> answers most questions in seconds.</li>
+      <li>MQTT Explorer shows the whole tree, retained flags and history.</li>
+      <li>Connect/disconnect loops, ghost devices and silent drops each have a typical cause.</li>
+    </ul>
+  </section>
+
+  <!-- 6.15 -->
+  <section class="lesson" id="s15" data-num="6.15">
+    <h2>6.15 Bridges, clustering, broker high availability</h2>
+    <p>One broker is a single point of failure and a single location. Two different mechanisms address this, and
+      they solve different problems.</p>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Bridge</th><th>Cluster</th></tr>
+      <tr><td>What</td><td>A broker acts as a client of another broker and forwards chosen topics.</td><td>Several broker nodes behave as one logical broker with shared routing and sessions.</td></tr>
+      <tr><td>Goal</td><td>Connect sites (edge ↔ cloud), filter and rename topics.</td><td>Scale and survive the loss of a node.</td></tr>
+      <tr><td>State</td><td>Each broker has its own sessions and retained store.</td><td>Sessions and subscriptions replicated across nodes.</td></tr>
+      <tr><td>Examples</td><td>Mosquitto <code>connection</code> blocks, EMQX/HiveMQ bridges</td><td>EMQX, HiveMQ, VerneMQ</td></tr>
+    </table></div>
+    <pre class="code"># edge mosquitto.conf: bridge to the central broker
+connection central
+address central.example.net:8883
+bridge_cafile /etc/mosquitto/ca.crt
+remote_username site12
+remote_clientid site12-bridge
+cleansession false
+# topic &lt;pattern&gt; &lt;direction&gt; &lt;qos&gt; &lt;local prefix&gt; &lt;remote prefix&gt;
+topic # out 1 site/ portfolio/site12/
+topic cmd/# in 1 site/ portfolio/site12/</pre>
+
+    <h3>Try it: edge bridge during an outage</h3>
+    <figure class="viz" id="bridge">
+      <div class="controls seg" role="group" aria-label="WAN link">
+        <button data-w="up" aria-pressed="true">WAN up</button>
+        <button data-w="down">WAN down</button>
+        <button data-w="back">WAN restored</button>
+      </div>
+      <svg viewBox="0 0 600 220" role="img" aria-label="Local devices, edge broker, WAN bridge and central broker">
+        <defs><marker id="ahB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="10" y="20" width="120" height="40" rx="8"/><text x="70" y="45" text-anchor="middle">Gateways</text>
+        <rect class="box" x="10" y="160" width="120" height="40" rx="8"/><text x="70" y="185" text-anchor="middle">Local UI</text>
+        <rect class="box" id="br-edge" x="180" y="70" width="140" height="80" rx="10"/><text x="250" y="100" text-anchor="middle">Edge broker</text><text class="small" x="250" y="120" text-anchor="middle" id="br-q">queue: 0</text>
+        <rect class="box" id="br-c" x="440" y="70" width="150" height="80" rx="10"/><text x="515" y="100" text-anchor="middle">Central broker</text><text class="small" x="515" y="120" text-anchor="middle" id="br-cst">up to date</text>
+        <path class="arrow" d="M130,40 C160,40 170,80 180,90" marker-end="url(#ahB)"/>
+        <path class="arrow" d="M180,130 C170,150 160,180 132,180" marker-end="url(#ahB)"/>
+        <line id="br-wan" x1="320" y1="110" x2="438" y2="110" class="wire" stroke="var(--ok)" marker-end="url(#ahB)"/>
+        <text class="small" x="379" y="100" text-anchor="middle" id="br-wt">TLS bridge</text>
+      </svg>
+      <div class="readout" aria-live="polite"></div>
+    </figure>
+
+    <h3>High availability options</h3>
+    <ul>
+      <li><strong>Single broker, fast restart.</strong> Container with restart policy, persistence on disk, monitoring. Often enough for one building: a 10-second outage is absorbed by client reconnect logic.</li>
+      <li><strong>Active/standby pair.</strong> Two brokers behind a virtual IP (keepalived/VRRP). Retained state and sessions are not shared unless you add it, so clients must republish on reconnect.</li>
+      <li><strong>Cluster</strong> of 3+ nodes behind a load balancer. Sessions survive a node loss. Odd node counts avoid split-brain.</li>
+      <li><strong>Edge + central.</strong> Each site keeps a local broker so local control and UI keep working when the WAN fails; a bridge forwards to the centre and queues while offline.</li>
+    </ul>
+
+    <div class="callout warn">Bridge loops: if two brokers both bridge <code>#</code> in both directions without
+      prefixes, a message can bounce forever. Use distinct prefixes or MQTT 5 No Local, and forward only what is
+      needed.</div>
+
+    <div class="callout example">A retail chain with 120 stores runs Mosquitto on each store's edge server. Each
+      bridges <code>store/#</code> out to a central EMQX cluster as <code>chain/&lt;store_id&gt;/…</code>, and
+      receives only <code>cmd/#</code> back. When a store's internet is down for an hour, its HVAC and lighting UI work
+      as normal and the central dashboard catches up when the bridge returns.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">What keeps a building's local dashboard working when the WAN link to the central broker fails?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A cluster spanning a WAN link would itself be split.">A cluster node in the cloud</button>
+        <button class="opt" data-opt="b" data-why="Local clients talk to the local broker; the bridge just queues.">A local edge broker with a bridge to the centre</button>
+        <button class="opt" data-opt="c" data-why="QoS 2 does not help a client reach a broker it cannot connect to.">QoS 2 on every topic</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Bridges connect brokers; clusters make several nodes act as one.</li>
+      <li>Edge broker + bridge keeps a site autonomous during WAN loss.</li>
+      <li>Prefix bridged topics and forward only what is needed to avoid loops.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">1. A UI publishes <code>site/boiler/set = ON</code> with retain. What is the risk?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Retain does not change the QoS.">The command is delivered at QoS 0</button>
+        <button class="opt" data-opt="b" data-why="Retained messages are delivered immediately.">The boiler will receive it late</button>
+        <button class="opt" data-opt="c" data-why="Every time the controller resubscribes it gets ON again, even after a local switch-off.">The boiler gets ON again after every reconnect</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">2. Which filter matches both <code>b1/f1/r101/co2</code> and <code>b1/f2/r205/co2</code> but not <code>b1/f1/r101/temp</code>?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="# must be the last level.">b1/#/co2</button>
+        <button class="opt" data-opt="b" data-why="Each + takes exactly one level.">b1/+/+/co2</button>
+        <button class="opt" data-opt="c" data-why="That also matches temp.">b1/#</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Which combination lets a dashboard show a gateway as offline when its power fails?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The broker publishes the retained will when keepalive expires.">Will "offline" (retained) + birth "online" (retained) + keepalive</button>
+        <button class="opt" data-opt="b" data-why="QoS 2 does not detect dead clients.">QoS 2 on all state topics</button>
+        <button class="opt" data-opt="c" data-why="A clean session says nothing about liveness.">A clean session</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">4. Two gateways were cloned and both use client ID <code>gw-01</code>. What do you see?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The broker cannot merge them.">Their messages merge into one stream</button>
+        <button class="opt" data-opt="b" data-why="Client IDs are not tied to TLS.">TLS handshake errors</button>
+        <button class="opt" data-opt="c" data-why="Subscribing is unrelated.">Subscriptions rejected</button>
+        <button class="opt" data-opt="d" data-why="Each new connection with the same ID makes the broker drop the other one.">They kick each other off in a connect/disconnect loop</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">5. In Sparkplug B, how does a host learn a new device's metrics and their data types?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Sparkplug does not use Home Assistant discovery.">From a homeassistant/…/config topic</button>
+        <button class="opt" data-opt="b" data-why="Data messages are not retained and only carry changes.">From retained DDATA messages</button>
+        <button class="opt" data-opt="c" data-why="DBIRTH lists every metric with name, alias, datatype and value.">From the DBIRTH message</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="05-ip-iot-protocols.html">← Chapter 05</a>
+    <a class="btn" href="07-integration.html">Chapter 07 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 6 visualizations.
+
+// Shared MQTT topic matcher. Returns null for an invalid filter.
+const mqttMatch = (filter, topic) => {
+  const f = filter.split("/"), t = topic.split("/");
+  for (let i = 0; i < f.length; i++) {
+    if (f[i] === "#" && i !== f.length - 1) return null;
+    if ((f[i].includes("#") && f[i] !== "#") || (f[i].includes("+") && f[i] !== "+")) return null;
+  }
+  // $-topics MUST NOT match a leading wildcard.
+  if (topic.startsWith("$") && (f[0] === "#" || f[0] === "+")) return false;
+  for (let i = 0; i < f.length; i++) {
+    if (f[i] === "#") return true;
+    if (i >= t.length) return false;
+    if (f[i] !== "+" && f[i] !== t[i]) return false;
+  }
+  return f.length === t.length;
+};
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pressSeg = (fig, attr, val) => fig.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute("aria-pressed", b.getAttribute(attr) === val));
+
+// 6.1 Polling mesh vs broker star.
+(() => {
+  const fig = document.getElementById("mesh");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  let mode = "poll";
+  const draw = () => {
+    const P = +fig.querySelector('[data-k="p"]').value, C = +fig.querySelector('[data-k="c"]').value;
+    const py = (i) => 20 + (i + 0.5) * (220 / P), cy = (i) => 20 + (i + 0.5) * (220 / C);
+    let s = "";
+    if (mode === "poll") {
+      for (let i = 0; i < P; i++) for (let j = 0; j < C; j++) s += `<line x1="140" y1="${py(i)}" x2="460" y2="${cy(j)}" class="arrow" style="stroke-width:1"/>`;
+    } else {
+      for (let i = 0; i < P; i++) s += `<line x1="140" y1="${py(i)}" x2="270" y2="130" class="arrow" style="stroke:var(--accent)"/>`;
+      for (let j = 0; j < C; j++) s += `<line x1="330" y1="130" x2="460" y2="${cy(j)}" class="arrow" style="stroke:var(--accent)"/>`;
+      s += `<rect class="box lit" x="270" y="105" width="60" height="50" rx="8"/><text x="300" y="135" text-anchor="middle">Broker</text>`;
+    }
+    for (let i = 0; i < P; i++) s += `<rect class="box" x="20" y="${py(i) - 8}" width="120" height="16" rx="4"/><text class="small" x="80" y="${py(i) + 4}" text-anchor="middle">source ${i + 1}</text>`;
+    for (let j = 0; j < C; j++) s += `<rect class="box" x="460" y="${cy(j) - 10}" width="120" height="20" rx="4"/><text class="small" x="520" y="${cy(j) + 4}" text-anchor="middle">consumer ${j + 1}</text>`;
+    svg.innerHTML = s;
+    out.textContent = mode === "poll"
+      ? `Polling: ${P} × ${C} = ${P * C} connections. Each value is read ${C} times.`
+      : `Broker: ${P} + ${C} = ${P + C} connections. Each value is sent once and fanned out by the broker.`;
+  };
+  fig.querySelectorAll("input").forEach((i) => i.addEventListener("input", draw));
+  fig.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { mode = b.dataset.m; pressSeg(fig, "data-m", mode); draw(); }));
+  draw();
+})();
+
+// 6.2 Inside a broker stepper.
+(() => {
+  const fig = document.getElementById("brokerInside");
+  const out = fig.querySelector(".readout");
+  const STEPS = [
+    [["bi0"], "1 · A gateway opens TCP/TLS to port 8883 and sends CONNECT with client ID, keepalive, will and credentials."],
+    [["bi1"], "2 · The broker checks the username/password or client certificate and answers CONNACK."],
+    [["bi2"], "3 · The gateway sends PUBLISH lighting/f2/meeting1/level = 80. The ACL decides whether this user may write that topic."],
+    [["bi3"], "4 · The topic tree finds every subscription whose filter matches."],
+    [["bi4"], "5 · If the retain flag is set, the message replaces the stored retained value of that topic."],
+    [["bi5"], "6 · Offline clients with a persistent session and QoS ≥ 1 get it queued."],
+    [["bi6"], "7 · Online subscribers receive it at min(publish QoS, subscription QoS)."],
+  ];
+  let k = 0;
+  const draw = () => {
+    for (let i = 0; i <= 6; i++) fig.querySelector("#bi" + i).classList.toggle("lit", STEPS[k][0].includes("bi" + i));
+    out.textContent = STEPS[k][1];
+  };
+  fig.querySelector('[data-act="next"]').addEventListener("click", () => { k = Math.min(STEPS.length - 1, k + 1); draw(); });
+  fig.querySelector('[data-act="prev"]').addEventListener("click", () => { k = Math.max(0, k - 1); draw(); });
+  fig.querySelector('[data-act="reset"]').addEventListener("click", () => { k = 0; draw(); });
+  draw();
+})();
+
+// 6.3 Wildcard matcher.
+(() => {
+  const fig = document.getElementById("matcher");
+  const inp = fig.querySelector("input"), list = fig.querySelector(".tlist"), out = fig.querySelector(".readout");
+  const TOPICS = ["hotel/f1/room/101/temp", "hotel/f1/room/101/humidity", "hotel/f2/room/214/temp", "hotel/f2/room/214/setpoint/set",
+    "hotel/f2", "hotel/f2/corridor/lighting", "hotel/lobby/temp", "Hotel/f1/room/101/temp", "$SYS/broker/clients/connected"];
+  const draw = () => {
+    const f = inp.value.trim();
+    const res = TOPICS.map((t) => [t, f ? mqttMatch(f, t) : false]);
+    if (res.some(([, r]) => r === null)) {
+      list.innerHTML = TOPICS.map((t) => `<li class="no">${esc(t)}</li>`).join("");
+      out.textContent = "Invalid filter: # must be the last level, and + or # must fill a whole level.";
+      return;
+    }
+    list.innerHTML = res.map(([t, r]) => `<li class="${r ? "yes" : "no"}">${esc(t)}</li>`).join("");
+    out.textContent = `${res.filter(([, r]) => r).length} of ${TOPICS.length} topics match.`;
+  };
+  inp.addEventListener("input", draw);
+  fig.querySelectorAll("[data-f]").forEach((b) => b.addEventListener("click", () => { inp.value = b.dataset.f; draw(); }));
+  draw();
+})();
+
+// 6.4 QoS handshake stepper with loss.
+(() => {
+  const fig = document.getElementById("qos");
+  const svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  let q = "0", loss = "none", k = 0;
+  // Each step: [from 'S'|'R'|'note', label, lost?, explanation].
+  const script = () => {
+    const S = [];
+    const pub = (dup) => ["S", dup ? "PUBLISH (DUP=1, id 42)" : "PUBLISH (id 42)"];
+    if (q === "0") {
+      if (loss === "pub") S.push(["S", "PUBLISH", true, "The link drops while PUBLISH is in flight."], ["note", "", false, "QoS 0 has no ack and no resend. The value is lost; the next sample will replace it."]);
+      else S.push(["S", "PUBLISH", false, "Sent once, no acknowledgement. Delivered if the TCP connection holds."]);
+      if (loss === "ack") S.push(["note", "", false, "QoS 0 has no ack to lose. Nothing changes."]);
+      return S;
+    }
+    if (q === "1") {
+      if (loss === "pub") S.push([...pub(false), true, "PUBLISH lost. The sender keeps it, waiting for PUBACK."], ["note", "", false, "Connection drops and is re-established (same session)."], [...pub(true), false, "Resent with DUP set."], ["R", "PUBACK (id 42)", false, "Delivered once. Done."]);
+      else if (loss === "ack") S.push([...pub(false), false, "Receiver gets the message and delivers it to the application."], ["R", "PUBACK (id 42)", true, "PUBACK lost. The sender does not know it arrived."], ["note", "", false, "Reconnect with the same session."], [...pub(true), false, "Resent with DUP. The receiver cannot tell it is the same message…"], ["R", "PUBACK (id 42)", false, "…so it is delivered a second time. At least once = duplicates possible."]);
+      else S.push([...pub(false), false, "Sender stores the message until acknowledged."], ["R", "PUBACK (id 42)", false, "Acknowledged. The sender discards its copy."]);
+      return S;
+    }
+    if (loss === "pub") S.push([...pub(false), true, "PUBLISH lost."], ["note", "", false, "Reconnect with the same session."], [...pub(true), false, "Resent with DUP."], ["R", "PUBREC (id 42)", false, "Receiver stores packet ID 42 and delivers once."], ["S", "PUBREL (id 42)", false, "Sender releases."], ["R", "PUBCOMP (id 42)", false, "Complete. Exactly once."]);
+    else if (loss === "ack") S.push([...pub(false), false, "Receiver stores packet ID 42 and delivers the message once."], ["R", "PUBREC (id 42)", true, "PUBREC lost."], ["note", "", false, "Reconnect with the same session."], [...pub(true), false, "Resent with DUP. The receiver still remembers ID 42, so it does NOT deliver again."], ["R", "PUBREC (id 42)", false, "Acknowledges again."], ["S", "PUBREL (id 42)", false, "Sender releases."], ["R", "PUBCOMP (id 42)", false, "Receiver forgets ID 42. Exactly once."]);
+    else S.push([...pub(false), false, "Receiver stores packet ID 42 and may deliver."], ["R", "PUBREC (id 42)", false, "Received."], ["S", "PUBREL (id 42)", false, "Release: sender will not resend PUBLISH."], ["R", "PUBCOMP (id 42)", false, "Complete. Both sides discard the state."]);
+    return S;
+  };
+  const draw = () => {
+    const S = script();
+    k = Math.min(k, S.length - 1);
+    let s = `<text class="big" x="90" y="24" text-anchor="middle">Sender</text><text class="big" x="470" y="24" text-anchor="middle">Receiver</text>
+      <line x1="90" y1="34" x2="90" y2="320" class="arrow"/><line x1="470" y1="34" x2="470" y2="320" class="arrow"/>`;
+    const dy = Math.min(48, 270 / S.length);
+    S.forEach((st, i) => {
+      const y = 50 + i * dy, cls = i > k ? "dim" : "";
+      if (st[0] === "note") {
+        s += `<g class="${cls}"><text class="small" x="280" y="${y + 4}" text-anchor="middle">${st[3].startsWith("Connection") || st[3].startsWith("Reconnect") ? "⟳ reconnect" : "—"}</text></g>`;
+        return;
+      }
+      const x1 = st[0] === "S" ? 90 : 470, x2 = st[2] ? 280 : (st[0] === "S" ? 466 : 94);
+      s += `<g class="${cls}"><line x1="${x1}" y1="${y}" x2="${x2}" y2="${y + 14}" class="${st[2] ? "pkt-lost" : "pkt-ok"}"/>
+        ${st[2] ? `<text x="${x2 + (st[0] === "S" ? 8 : -8)}" y="${y + 18}" text-anchor="${st[0] === "S" ? "start" : "end"}" class="fill-bad" style="fill:var(--bad)">✗</text>` : `<circle cx="${x2}" cy="${y + 14}" r="3" class="fill-accent"/>`}
+        <text class="small" x="280" y="${y - 2}" text-anchor="middle">${st[1]}</text></g>`;
+    });
+    svg.innerHTML = s;
+    out.textContent = `Step ${k + 1}/${S.length} · ${S[k][3]}`;
+  };
+  fig.querySelectorAll("[data-q]").forEach((b) => b.addEventListener("click", () => { q = b.dataset.q; k = 0; pressSeg(fig, "data-q", q); draw(); }));
+  fig.querySelectorAll("[data-l]").forEach((b) => b.addEventListener("click", () => { loss = b.dataset.l; k = 0; pressSeg(fig, "data-l", loss); draw(); }));
+  fig.querySelector('[data-act="next"]').addEventListener("click", () => { k = Math.min(script().length - 1, k + 1); draw(); });
+  fig.querySelector('[data-act="prev"]').addEventListener("click", () => { k = Math.max(0, k - 1); draw(); });
+  fig.querySelector('[data-act="reset"]').addEventListener("click", () => { k = 0; draw(); });
+  draw();
+})();
+
+// 6.5 In-browser broker simulator.
+(() => {
+  const fig = document.getElementById("sim");
+  const $ = (k) => fig.querySelector(`[data-k="${k}"]`);
+  const subsEl = fig.querySelector(".subs"), log = fig.querySelector(".mq-log");
+  const retained = new Map();
+  let subs = [], nextId = 1;
+  const say = (html) => { log.insertAdjacentHTML("afterbegin", html + "\n"); };
+  const renderSubs = () => {
+    subsEl.innerHTML = subs.map((s) => `<div class="sub" data-id="${s.id}"><button class="icon-btn" style="width:26px;height:26px;font-size:12px" aria-label="Remove subscriber" data-rm="${s.id}">✕</button>
+      <div>Sub ${s.id} · QoS ${s.qos}</div><b>${esc(s.filter)}</b><div class="inbox">${s.inbox.slice(-4).map(esc).join("<br>") || "(nothing yet)"}</div></div>`).join("")
+      || `<div class="sub"><div class="inbox">No subscribers. Add one above.</div></div>`;
+  };
+  const flash = (id) => { const el = subsEl.querySelector(`[data-id="${id}"]`); if (el) { el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 700); } };
+  const publish = (topic, payload, qos, retain) => {
+    if (!topic || /[+#]/.test(topic)) { say(`<span class="bad">✗ Topic names MUST NOT contain wildcards.</span>`); return; }
+    if (retain) {
+      if (payload === "") { retained.delete(topic); say(`<span class="ex">retained store: cleared ${esc(topic)}</span>`); }
+      else { retained.set(topic, { payload, qos }); say(`<span class="ex">retained store: ${esc(topic)} = ${esc(payload)}</span>`); }
+    }
+    say(`<span class="mu">PUBLISH</span> ${esc(topic)} "${esc(payload)}" QoS ${qos}${retain ? " retain" : ""}`);
+    let n = 0;
+    subs.forEach((s) => {
+      if (mqttMatch(s.filter, topic)) {
+        const dq = Math.min(qos, s.qos);
+        s.inbox.push(`${topic} = ${payload === "" ? "(empty)" : payload} · q${dq}`);
+        n++;
+        say(`  <span class="ok">→ Sub ${s.id}</span> (${esc(s.filter)}) at QoS ${dq}`);
+        setTimeout(() => flash(s.id), 0);
+      }
+    });
+    if (!n) say(`  <span class="mu">no matching subscriber</span>`);
+    renderSubs();
+  };
+  fig.querySelector('[data-act="pub"]').addEventListener("click", () => publish($("topic").value.trim(), $("payload").value, +$("qos").value, $("retain").checked));
+  fig.querySelector('[data-act="clear"]').addEventListener("click", () => publish($("topic").value.trim(), "", 1, true));
+  fig.querySelector('[data-act="cmd"]').addEventListener("click", () => {
+    publish("hotel/plant/boiler/set", "ON", 1, true);
+    say(`<span class="bad">⚠ Retained command stored. Add a subscriber on hotel/plant/boiler/set: it receives "ON" immediately, as a rebooting boiler controller would.</span>`);
+  });
+  fig.querySelector('[data-act="sub"]').addEventListener("click", () => {
+    const filter = $("filter").value.trim(), qos = +$("sqos").value;
+    if (!filter || mqttMatch(filter, "x") === null) { say(`<span class="bad">✗ Invalid filter.</span>`); return; }
+    const s = { id: nextId++, filter, qos, inbox: [] };
+    subs.push(s);
+    say(`<span class="mu">SUBSCRIBE</span> Sub ${s.id} → ${esc(filter)} QoS ${qos}`);
+    let r = 0;
+    retained.forEach((m, t) => {
+      if (mqttMatch(filter, t)) { s.inbox.push(`${t} = ${m.payload} · q${Math.min(m.qos, qos)} [retained]`); r++; say(`  <span class="ex">→ retained</span> ${esc(t)} = ${esc(m.payload)} delivered on subscribe`); }
+    });
+    if (!r) say(`  <span class="mu">no retained messages match</span>`);
+    renderSubs();
+    flash(s.id);
+  });
+  subsEl.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-rm]");
+    if (b) { subs = subs.filter((s) => s.id !== +b.dataset.rm); renderSubs(); }
+  });
+  subs.push({ id: nextId++, filter: "hotel/#", qos: 0, inbox: [] });
+  renderSubs();
+  say(`<span class="mu">Broker started. Sub 1 listens on hotel/# at QoS 0.</span>`);
+})();
+
+// 6.6 Last Will simulation.
+(() => {
+  const fig = document.getElementById("lwt");
+  const $ = (id) => fig.querySelector("#" + id), log = fig.querySelector(".mq-log");
+  const T = "lighting/gw1/availability";
+  let connected = false, ret = null;
+  const say = (h) => log.insertAdjacentHTML("afterbegin", h + "\n");
+  const draw = () => {
+    $("lw-gwst").textContent = connected ? "connected" : "disconnected";
+    $("lw-will").textContent = connected ? `${T} = offline` : "none";
+    $("lw-l1").setAttribute("class", connected ? "arrow lit-line" : "arrow");
+    $("lw-ret").textContent = `retained ${T}: ${ret ?? "(none)"}`;
+    $("lw-uist").textContent = ret === "online" ? "● online" : ret === "offline" ? "● offline, greyed out" : "unknown";
+    $("lw-ui").classList.toggle("lit", ret === "online");
+  };
+  const act = {
+    connect() {
+      if (connected) return say(`<span class="mu">Already connected.</span>`);
+      connected = true; say(`CONNECT will=${T} "offline" retain QoS 1 · keepalive 30`);
+      ret = "online"; say(`<span class="ok">PUBLISH ${T} "online" retain</span> (birth)`);
+    },
+    nobirth() {
+      if (connected) return say(`<span class="mu">Already connected.</span>`);
+      connected = true; say(`CONNECT will=${T} "offline" retain`);
+      say(`<span class="bad">No birth message. Retained value is still "${ret ?? "none"}": the dashboard shows the wrong state.</span>`);
+    },
+    graceful() {
+      if (!connected) return say(`<span class="mu">Not connected.</span>`);
+      ret = "offline"; say(`<span class="ex">PUBLISH ${T} "offline" retain</span> (own goodbye)`);
+      connected = false; say(`DISCONNECT (0x00) · broker discards the will`);
+    },
+    crash() {
+      if (!connected) return say(`<span class="mu">Not connected.</span>`);
+      connected = false; say(`<span class="bad">✗ Cable pulled. No packets from the gateway…</span>`);
+      say(`<span class="mu">…45 s later (1.5 × 30 s keepalive) the broker gives up.</span>`);
+      ret = "offline"; say(`<span class="ex">Broker publishes will: ${T} "offline" retain</span>`);
+    },
+  };
+  fig.querySelectorAll("[data-a]").forEach((b) => b.addEventListener("click", () => { act[b.dataset.a](); pressSeg(fig, "data-a", b.dataset.a); draw(); }));
+  draw();
+  say(`<span class="mu">Gateway is off. Press "Connect + birth".</span>`);
+})();
+
+// 6.7 Keepalive timeline.
+(() => {
+  const fig = document.getElementById("keepalive");
+  const r = fig.querySelector("input"), o = fig.querySelector("output"), svg = fig.querySelector("svg"), out = fig.querySelector(".readout");
+  const W = 300; // seconds shown
+  const x = (t) => 30 + (t / W) * 550;
+  const draw = () => {
+    const k = +r.value; o.textContent = k;
+    const cut = 50;
+    let last = 0, s = `<line x1="30" y1="130" x2="580" y2="130" class="arrow"/>`;
+    for (let t = 0; t <= W; t += 60) s += `<text class="small" x="${x(t)}" y="150" text-anchor="middle">${t}s</text>`;
+    for (let t = k; t <= cut; t += k) { s += `<line x1="${x(t)}" y1="60" x2="${x(t)}" y2="100" class="pkt-ok"/><text class="small" x="${x(t)}" y="52" text-anchor="middle">ping</text>`; last = t; }
+    const dead = last + 1.5 * k;
+    s += `<line x1="${x(cut)}" y1="40" x2="${x(cut)}" y2="130" class="pkt-lost"/><text class="small" x="${x(cut)}" y="30" text-anchor="middle">cable pulled</text>`;
+    s += `<rect x="${x(last)}" y="108" width="${Math.max(1, x(Math.min(dead, W)) - x(last))}" height="14" rx="3" class="fill-accent-soft" style="stroke:var(--accent)"/>`;
+    if (dead <= W) s += `<circle cx="${x(dead)}" cy="115" r="7" class="fill-bad"/><text x="${Math.min(x(dead), 540)}" y="92" text-anchor="middle" style="fill:var(--bad)">will sent</text>`;
+    svg.innerHTML = s;
+    out.textContent = `Last packet at ${last} s. Broker timeout = 1.5 × ${k} = ${1.5 * k} s → will published at ${dead} s, ${dead - cut} s after the failure. Idle pings cost ${Math.round(3600 / k)} round trips per hour.`;
+  };
+  r.addEventListener("input", draw);
+  draw();
+})();
+
+// 6.8 Payload size comparison.
+(() => {
+  const fig = document.getElementById("payload");
+  const pre = fig.querySelector("pre"), bars = fig.querySelector(".bars"), out = fig.querySelector(".readout");
+  const F = {
+    plain: [["hotel/f2/room214/temp", "21.4"], ["hotel/f2/room214/rh", "45"], ["hotel/f2/room214/co2", "612"]],
+    json: [["hotel/f2/room214/state", '{"temp":21.4,"rh":45,"co2":612}']],
+    rich: [["hotel/f2/room214/state", '{"v":1,"ts":"2026-03-01T08:15:00Z","temp":{"value":21.4,"unit":"°C","q":"good"},"rh":{"value":45,"unit":"%","q":"good"},"co2":{"value":612,"unit":"ppm","q":"good"}}']],
+  };
+  const enc = (s) => new TextEncoder().encode(s).length;
+  // 2-byte fixed header (fine below 128 bytes), +1 above; 2-byte topic length prefix.
+  const size = ([t, p]) => { const rem = 2 + enc(t) + enc(p); return rem + (rem > 127 ? 3 : 2); };
+  const totals = Object.fromEntries(Object.entries(F).map(([k, v]) => [k, v.reduce((a, m) => a + size(m), 0)]));
+  const max = Math.max(...Object.values(totals));
+  const draw = (k) => {
+    pre.textContent = F[k].map(([t, p]) => `${t}  →  ${p}`).join("\n");
+    bars.innerHTML = Object.entries(totals).map(([n, v]) => `<div class="bar-row ${n === k ? "on" : ""}"><b>${n === "plain" ? "P" : n === "json" ? "J" : "R"}</b><div class="track"><div class="fill" style="width:${(v / max) * 100}%"></div></div><span class="v">${v} B</span></div>`).join("");
+    out.textContent = `${F[k].length} message${F[k].length > 1 ? "s" : ""}, ${totals[k]} bytes. ` +
+      (k === "plain" ? "Three topics, each retained and permissioned separately." : k === "json" ? "One atomic snapshot; smallest on the wire here." : "Self-describing with units, quality and time, at several times the size.");
+    pressSeg(fig, "data-f", k);
+  };
+  fig.querySelectorAll("[data-f]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.f)));
+  draw("plain");
+})();
+
+// 6.9 Home Assistant discovery.
+(() => {
+  const fig = document.getElementById("disco");
+  const pre = fig.querySelector("pre"), card = fig.querySelector(".entity-card"), out = fig.querySelector(".readout");
+  const dev = { identifiers: ["room214"], name: "Room 214 controller", manufacturer: "Example", model: "RC-100" };
+  const C = {
+    sensor: { topic: "homeassistant/sensor/room214/temp/config", cfg: { name: "Temperature", unique_id: "room214_temp", state_topic: "hotel/f2/room214/temp", device_class: "temperature", unit_of_measurement: "°C", state_class: "measurement", availability_topic: "hotel/f2/room214/availability", device: dev }, icon: "🌡", eid: "sensor.room_214_controller_temperature", st: "21.4 °C", note: "device_class + unit give the right icon, graphs and long-term statistics (state_class)." },
+    binary_sensor: { topic: "homeassistant/binary_sensor/room214/window/config", cfg: { name: "Window", unique_id: "room214_window", state_topic: "hotel/f2/room214/window", device_class: "window", payload_on: "open", payload_off: "closed", device: dev }, icon: "🪟", eid: "binary_sensor.room_214_controller_window", st: "Open", note: "payload_on/payload_off map your strings to on/off." },
+    switch: { topic: "homeassistant/switch/room214/fan/config", cfg: { name: "Fan coil", unique_id: "room214_fan", state_topic: "hotel/f2/room214/fan", command_topic: "hotel/f2/room214/fan/set", payload_on: "ON", payload_off: "OFF", device: dev }, icon: "🌀", eid: "switch.room_214_controller_fan_coil", st: "ON", note: "Toggling sends to command_topic; the UI shows state_topic once the device confirms." },
+    climate: { topic: "homeassistant/climate/room214/hvac/config", cfg: { name: "Thermostat", unique_id: "room214_hvac", modes: ["off", "heat"], current_temperature_topic: "hotel/f2/room214/temp", temperature_state_topic: "hotel/f2/room214/setpoint", temperature_command_topic: "hotel/f2/room214/setpoint/set", mode_state_topic: "hotel/f2/room214/mode", mode_command_topic: "hotel/f2/room214/mode/set", min_temp: 16, max_temp: 26, temp_step: 0.5, device: dev }, icon: "♨", eid: "climate.room_214_controller_thermostat", st: "21.4 → 21.0", note: "One config ties several state and command topics into a thermostat card." },
+  };
+  const draw = (k) => {
+    const c = C[k];
+    pre.textContent = `Topic: ${c.topic}  (retained)\n\n` + JSON.stringify(c.cfg, null, 2);
+    card.querySelector(".ic").textContent = c.icon;
+    card.querySelector(".nm").textContent = `${dev.name} ${c.cfg.name}`;
+    card.querySelector(".id").textContent = c.eid;
+    card.querySelector(".st").textContent = c.st;
+    out.textContent = c.note;
+    pressSeg(fig, "data-c", k);
+  };
+  fig.querySelectorAll("[data-c]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.c)));
+  draw("sensor");
+})();
+
+// 6.10 Modbus to MQTT gateway.
+(() => {
+  const fig = document.getElementById("gw");
+  const $ = (k) => fig.querySelector(`[data-k="${k}"]`), g = (id) => fig.querySelector("#" + id), log = fig.querySelector(".mq-log");
+  let last = null, fails = 0;
+  const say = (h) => log.insertAdjacentHTML("afterbegin", h + "\n");
+  const calc = () => {
+    let raw = Math.round(+$("raw").value);
+    raw = Math.max(-32768, Math.min(32767, raw));
+    const sc = +$("scale").value, dec = sc === 1 ? 0 : sc === 0.1 ? 1 : 2;
+    return { raw, val: +(raw * sc).toFixed(dec), sc, dec };
+  };
+  const show = () => {
+    const c = calc();
+    g("g-raw").textContent = `IR 30001 = ${c.raw}`;
+    g("g-calc").textContent = `${c.raw} × ${c.sc} = ${c.val.toFixed(c.dec)}`;
+    g("g-db").textContent = `last sent: ${last === null ? "—" : last}`;
+  };
+  fig.querySelector('[data-act="poll"]').addEventListener("click", () => {
+    const c = calc(), db = Math.max(0, +$("db").value || 0);
+    fails = 0;
+    g("g-dev").classList.remove("lit");
+    say(`<span class="mu">read input register 30001 → ${c.raw}</span>`);
+    if (last === null || Math.abs(c.val - last) > db) {
+      last = c.val;
+      g("g-val").textContent = `${c.val.toFixed(c.dec)} (retained)`;
+      say(`<span class="ok">PUBLISH plant/meter7/flow_temp ${c.val.toFixed(c.dec)} retain</span>`);
+    } else say(`<span class="mu">|Δ| ≤ ${db}: inside deadband, nothing published</span>`);
+    show();
+  });
+  fig.querySelector('[data-act="fail"]').addEventListener("click", () => {
+    fails = 3;
+    say(`<span class="bad">timeout · timeout · timeout (device 7)</span>`);
+    say(`<span class="ex">PUBLISH plant/meter7/availability offline retain</span>`);
+    g("g-val").textContent = "unavailable";
+    g("g-dev").classList.add("lit");
+  });
+  fig.querySelectorAll("input,select").forEach((i) => i.addEventListener("input", show));
+  show();
+  say(`<span class="mu">Set a raw value and press "Poll once". Try small changes to see the deadband.</span>`);
+})();
+
+// 6.11 Sparkplug state machine.
+(() => {
+  const fig = document.getElementById("spb");
+  const pre = fig.querySelector("pre");
+  const STEPS = [
+    ["sp0", "Edge node 'plantroom_gw' is off.\nThe primary host has published:\nspBv1.0/STATE/scada1  {\"online\":true,\"timestamp\":…}  (retained)"],
+    ["sp1", "CONNECT\n  will topic: spBv1.0/campus/NDEATH/plantroom_gw\n  will payload: { bdSeq: 7 }\nSubscribe: spBv1.0/campus/NCMD/plantroom_gw/#, DCMD …"],
+    ["sp2", "spBv1.0/campus/NBIRTH/plantroom_gw   seq 0, bdSeq 7\nspBv1.0/campus/DBIRTH/plantroom_gw/boiler2   seq 1\n  metrics:\n    flow_temp   alias 1  Float   71.5\n    return_temp alias 2  Float   54.0\n    burner_on   alias 3  Boolean true"],
+    ["sp3", "spBv1.0/campus/DDATA/plantroom_gw/boiler2   seq 2\n  alias 1 = 72.1     (only what changed)\nspBv1.0/campus/DDATA/plantroom_gw/boiler2   seq 3\n  alias 3 = false"],
+    ["sp2", "Host spots a seq gap and sends\nspBv1.0/campus/NCMD/plantroom_gw\n  Node Control/Rebirth = true\n→ node republishes NBIRTH + DBIRTH with full state"],
+    ["sp0", "Uplink lost. After keepalive the broker publishes the will:\nspBv1.0/campus/NDEATH/plantroom_gw  { bdSeq: 7 }\nHost marks every metric of the node STALE.\nbdSeq 7 matches the last NBIRTH, so this death is current."],
+  ];
+  let k = 0;
+  const draw = () => {
+    ["sp0", "sp1", "sp2", "sp3"].forEach((id) => fig.querySelector("#" + id).classList.toggle("lit", id === STEPS[k][0]));
+    pre.textContent = `Step ${k + 1}/${STEPS.length}\n` + STEPS[k][1];
+  };
+  fig.querySelector('[data-act="next"]').addEventListener("click", () => { k = Math.min(STEPS.length - 1, k + 1); draw(); });
+  fig.querySelector('[data-act="prev"]').addEventListener("click", () => { k = Math.max(0, k - 1); draw(); });
+  fig.querySelector('[data-act="reset"]').addEventListener("click", () => { k = 0; draw(); });
+  draw();
+})();
+
+// 6.12 ACL tester.
+(() => {
+  const fig = document.getElementById("acl");
+  const $ = (k) => fig.querySelector(`[data-k="${k}"]`), v = fig.querySelector(".verdict"), out = fig.querySelector(".readout");
+  const PATTERNS = [["read", "site/+/+/availability"], ["readwrite", "clients/%c/#"]];
+  const USERS = { dali_gw: [["readwrite", "lighting/#"]], dashboard: [["read", "site/#"], ["write", "site/+/+/setpoint/set"]], historian: [["read", "#"]], guest: [] };
+  const allows = (acc, act) => acc === "readwrite" || acc === act;
+  // Simplified: a subscription filter is allowed if the ACL pattern covers it as a topic.
+  const covers = (pat, topic) => { const m = mqttMatch(pat, topic); return m === true; };
+  const draw = () => {
+    const user = $("user").value, act = $("act").value, topic = $("topic").value.trim();
+    const rules = [...USERS[user].map(([a, p]) => [a, p, `user ${user}`]), ...PATTERNS.map(([a, p]) => [a, p.replace("%c", user).replace("%u", user), "pattern"])];
+    const hit = rules.find(([a, p]) => allows(a, act) && covers(p, topic));
+    if (!topic) { v.className = "verdict bad"; v.textContent = "Enter a topic"; out.textContent = ""; return; }
+    v.className = `verdict ${hit ? "ok" : "bad"}`;
+    v.textContent = hit ? "✓ Allowed" : "✗ Denied";
+    out.textContent = hit ? `Matched: ${hit[2]} · topic ${hit[0]} ${hit[1]}` : `No rule grants ${act} on this topic. Default is deny.`;
+  };
+  fig.querySelectorAll("input,select").forEach((i) => i.addEventListener("input", draw));
+  draw();
+})();
+
+// 6.13 Message expiry demo.
+(() => {
+  const fig = document.getElementById("expiry");
+  const r = fig.querySelector('input[type=range]'), cb = fig.querySelector('input[type=checkbox]'), o = fig.querySelector("output");
+  const st = fig.querySelector(".st"), out = fig.querySelector(".readout");
+  const draw = () => {
+    const t = +r.value; o.textContent = t;
+    const gone = cb.checked && t >= 600;
+    st.textContent = gone ? "unknown" : "21.4 °C";
+    st.style.color = gone ? "var(--muted)" : (t >= 600 ? "var(--bad)" : "var(--text)");
+    out.textContent = gone
+      ? "The broker dropped the expired retained message. New subscribers get nothing, so the UI shows 'unknown'."
+      : t >= 600 ? "Without expiry the retained 21.4 °C is served forever, although the sensor stopped 10+ minutes ago."
+      : `Fresh enough. ${cb.checked ? `A new subscriber gets the message with a remaining expiry of ${600 - t} s.` : ""}`;
+  };
+  r.addEventListener("input", draw); cb.addEventListener("change", draw);
+  draw();
+})();
+
+// 6.14 Command builder.
+(() => {
+  const fig = document.getElementById("cmd");
+  const pre = fig.querySelector("pre"), out = fig.querySelector(".readout");
+  const base = "-h broker.local -p 8883 --cafile ca.crt -u tech -P '…'";
+  const G = {
+    watch: [`mosquitto_sub ${base} \\\n  -t 'hotel/f2/#' -v -F '%I %t r=%r q=%q %p'`, "Live stream of floor 2 with time, retain flag and QoS on every line."],
+    retained: [`mosquitto_sub ${base} \\\n  -t 'hotel/#' --retained-only -v -W 3`, "Dumps every retained value under hotel/ and exits after 3 s idle."],
+    clear: [`mosquitto_pub ${base} \\\n  -t 'hotel/f9/room999/temp' -r -n`, "-n sends an empty (null) payload, -r makes it retained: the ghost is deleted."],
+    sys: [`mosquitto_sub ${base} \\\n  -t '$SYS/broker/clients/connected' -t '$SYS/broker/load/messages/received/1min' -v`, "$SYS topics must be named explicitly; # does not include them."],
+    set: [`mosquitto_pub ${base} \\\n  -t 'hotel/f2/room214/setpoint/set' -m 22.0 -q 1`, "Command at QoS 1, not retained. Then watch …/setpoint to see the device confirm."],
+  };
+  const draw = (k) => { pre.textContent = G[k][0]; out.textContent = G[k][1]; pressSeg(fig, "data-g", k); };
+  fig.querySelectorAll("[data-g]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.g)));
+  draw("watch");
+})();
+
+// 6.15 Bridge outage.
+(() => {
+  const fig = document.getElementById("bridge");
+  const g = (id) => fig.querySelector("#" + id), out = fig.querySelector(".readout");
+  const S = {
+    up: ["var(--ok)", "TLS bridge", "queue: 0", "up to date", "Messages flow out as they arrive. Local UI reads the edge broker directly."],
+    down: ["var(--bad)", "✗ link down", "queue: 1,840 (QoS 1)", "stale since 10:02", "The edge broker keeps serving local gateways and the UI. QoS 1 bridged messages queue in the bridge's persistent session."],
+    back: ["var(--accent)", "reconnected", "queue: draining…", "catching up", "The bridge reconnects (cleansession false) and delivers the queue. Central history is complete; retained values update to current state."],
+  };
+  fig.querySelectorAll("[data-w]").forEach((b) => b.addEventListener("click", () => {
+    const s = S[b.dataset.w];
+    g("br-wan").setAttribute("stroke", s[0]);
+    g("br-wan").setAttribute("stroke-dasharray", b.dataset.w === "down" ? "6 5" : "");
+    g("br-wt").textContent = s[1]; g("br-q").textContent = s[2]; g("br-cst").textContent = s[3];
+    g("br-c").classList.toggle("lit", b.dataset.w !== "down");
+    out.textContent = s[4];
+    pressSeg(fig, "data-w", b.dataset.w);
+  }));
+  out.textContent = S.up[4];
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Networking for OT</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .bits { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 2px; margin: 10px 0; }
+  .bits span { font: 11px var(--mono); text-align: center; padding: 4px 0; border-radius: 3px; background: var(--surface); border: 1px solid var(--border); }
+  .bits span.n { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .bits span.gap { margin-left: 4px; }
+  @media (max-width: 600px) { .bits { grid-template-columns: repeat(16, minmax(0, 1fr)); } .bits span.gap { margin-left: 0; } }
+  .calc-in { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; }
+  @media (max-width: 600px) { .calc-in { grid-template-columns: minmax(0, 1fr); } }
+  .calc-in input[type=text] { width: 100%; font: 15px var(--mono); padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+  .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; font: 14px var(--mono); margin-top: 10px; }
+  .kv b { font-family: var(--font); font-weight: 600; color: var(--muted); }
+  .kv span { overflow-wrap: anywhere; }
+  .dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 10px; }
+  .dev { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--surface); font-size: 14px; }
+  .dev b { display: block; margin-bottom: 6px; }
+  .reach { font-size: 14px; margin-top: 10px; }
+  .reach li.ok { color: var(--ok); } .reach li.no { color: var(--bad); }
+  .step-nav { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .q-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 70px; gap: 8px; align-items: center; font-size: 13px; margin: 6px 0; }
+  .q-row .slots { display: flex; gap: 2px; min-height: 18px; flex-wrap: wrap; }
+  .q-row .slots i { display: block; width: 10px; height: 18px; border-radius: 2px; background: var(--muted); }
+  .q-row .slots i.rt { background: var(--accent); }
+  .q-row .v { font-family: var(--mono); text-align: right; }
+  .risk { display: inline-block; font: 600 12px var(--font); padding: 2px 8px; border-radius: 10px; }
+  .risk.hi { background: var(--bad-soft); color: var(--bad); }
+  .risk.md { background: var(--example-soft); color: var(--example); }
+  .risk.lo { background: var(--ok-soft); color: var(--ok); }
+  svg .v10 { stroke: var(--accent); } svg .v20 { stroke: var(--ok); } svg .v30 { stroke: var(--example); }
+  svg .vf10 { fill: var(--accent-soft); stroke: var(--accent); } svg .vf20 { fill: var(--ok-soft); stroke: var(--ok); } svg .vf30 { fill: var(--example-soft); stroke: var(--example); }
+  svg .bad-line { stroke: var(--bad); stroke-width: 3; fill: none; }
+  svg .ok-line { stroke: var(--ok); stroke-width: 3; fill: none; }
+  svg .dash { stroke-dasharray: 5 4; }
+  svg .faint { opacity: .25; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="3">
+<div class="content">
+  <div class="kicker">Chapter 03</div>
+  <h1>Networking for OT</h1>
+  <p class="lead">Almost every modern building controller speaks IP. This chapter covers the network beneath it:
+    addressing, segmentation, switches and Wi-Fi, multicast, time sync, quality of service, remote access and
+    finding out what is actually plugged in. OT (operational technology) networks use the same Ethernet as an
+    office, but with different priorities: availability and predictability come before speed.</p>
+
+  <!-- 3.1 -->
+  <section class="lesson" id="s1" data-num="3.1">
+    <h2>3.1 IP, subnets, DHCP, DNS</h2>
+    <p>An IPv4 address is a 32-bit number, written as four decimal octets: <code>192.168.10.25</code>. A
+      <strong>prefix length</strong> (CIDR notation, <code>/24</code>) says how many leading bits name the
+      <em>network</em>. The rest name the <em>host</em> within it. The same information as a dotted
+      <strong>subnet mask</strong> is <code>255.255.255.0</code>.</p>
+    <p>Two devices in the same subnet talk directly. The sender uses ARP to find the target's MAC address and
+      sends an Ethernet frame. A device in another subnet is reached through the <strong>default gateway</strong>, a
+      router. This is why a controller with a wrong mask or gateway often "works locally but not from the server":
+      it can reach neighbours but not the supervisory system two subnets away.</p>
+
+    <h3>Reserved addresses in each subnet</h3>
+    <ul>
+      <li><strong>Network address</strong>: all host bits 0. Names the subnet, not assignable.</li>
+      <li><strong>Broadcast address</strong>: all host bits 1. A packet to it reaches every host in the subnet.
+        BACnet/IP discovery (Who-Is) relies on it.</li>
+      <li>Usable hosts: 2<sup>(32 − prefix)</sup> − 2. A <code>/24</code> gives 254, a <code>/26</code> gives 62,
+        a <code>/30</code> gives 2. (<code>/31</code> point-to-point links and <code>/32</code> host routes are special cases.)</li>
+    </ul>
+    <p>Private ranges (RFC 1918) are <code>10.0.0.0/8</code>, <code>172.16.0.0/12</code> and
+      <code>192.168.0.0/16</code>. Building networks almost always use these. Avoid <code>192.168.0.x</code> and
+      <code>192.168.1.x</code>: they collide with home routers, which breaks VPN access later.</p>
+
+    <h3>Try it: subnet calculator</h3>
+    <figure class="viz" id="subnet">
+      <div class="calc-in">
+        <label>IP address<br><input type="text" id="snIp" value="10.20.30.77" spellcheck="false" aria-label="IP address"></label>
+        <div class="demo" style="margin:0">
+          <label for="snPre">Prefix length: <output id="snPreOut">/24</output></label>
+          <input type="range" id="snPre" min="8" max="30" value="24">
+        </div>
+      </div>
+      <div class="bits" id="snBits" aria-hidden="true"></div>
+      <div class="kv" id="snOut" aria-live="polite"></div>
+      <figcaption>Blue bits are the network part, grey bits the host part. Move the slider and watch the
+        boundary, network and broadcast address shift.</figcaption>
+    </figure>
+
+    <h3>DHCP: four messages to an address</h3>
+    <p>DHCP hands out addresses automatically. The client has no address yet, so it starts with broadcasts:
+      UDP from port 68 to port 67. The exchange is called <strong>DORA</strong>.</p>
+    <figure class="viz" id="dora">
+      <svg viewBox="0 0 600 260" role="img" aria-label="DHCP Discover, Offer, Request, Acknowledge sequence">
+        <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="30" y="10" width="150" height="40" rx="8"/><text x="105" y="35" text-anchor="middle" class="big">Controller</text>
+        <rect class="box" x="420" y="10" width="150" height="40" rx="8"/><text x="495" y="35" text-anchor="middle" class="big">DHCP server</text>
+        <line class="arrow dash" x1="105" y1="50" x2="105" y2="250"/><line class="arrow dash" x1="495" y1="50" x2="495" y2="250"/>
+        <g data-step="0"><path class="arrow" d="M105,80 L493,95" marker-end="url(#ah3)"/><text x="300" y="78" text-anchor="middle">1 Discover</text></g>
+        <g data-step="1"><path class="arrow" d="M495,125 L107,140" marker-end="url(#ah3)"/><text x="300" y="123" text-anchor="middle">2 Offer 10.20.30.77</text></g>
+        <g data-step="2"><path class="arrow" d="M105,170 L493,185" marker-end="url(#ah3)"/><text x="300" y="168" text-anchor="middle">3 Request 10.20.30.77</text></g>
+        <g data-step="3"><path class="arrow" d="M495,215 L107,230" marker-end="url(#ah3)"/><text x="300" y="213" text-anchor="middle">4 ACK, lease 24 h</text></g>
+      </svg>
+      <div class="step-nav"><button class="btn secondary" id="doraPrev" aria-label="Previous step">◀</button><button class="btn" id="doraNext" aria-label="Next step">▶</button><span class="small" id="doraN"></span></div>
+      <div class="readout" id="doraText" aria-live="polite" style="font-family:var(--font)"></div>
+    </figure>
+    <p>The lease expires. At 50 % of the lease time (T1) the client tries to renew with a unicast request to the same
+      server. If a controller's switch port is down at that moment, it keeps its address until expiry, then loses it.</p>
+    <p>For OT, the rule is simple: <strong>infrastructure gets fixed addresses</strong>. Controllers, gateways, servers
+      and PLCs are referenced by IP in other devices' configuration (a Modbus master polls <code>10.20.30.40</code>), so the
+      address must never change. Two ways to do it:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Method</th><th>How</th><th>Good for</th><th>Pitfall</th></tr>
+      <tr><td>Static on the device</td><td>IP typed into the controller's web page or tool</td><td>Devices that must work with no DHCP server alive</td><td>Undocumented, collides with the DHCP pool</td></tr>
+      <tr><td>DHCP reservation</td><td>Server always hands the same IP to a MAC address</td><td>Central overview, easy readdressing</td><td>Swapping hardware changes the MAC</td></tr>
+    </table></div>
+    <p>Keep the DHCP pool and the static range apart, for example <code>.10–.99</code> static, <code>.100–.250</code> pool.</p>
+
+    <h3>DNS</h3>
+    <p>DNS maps names to addresses: <code>ahu-01.bms.example.lan → 10.20.30.41</code>. Using names in the supervisory
+      software makes readdressing easier, but each lookup is a dependency. If DNS is down, a server that polls by
+      name loses every device at once. Many OT systems therefore poll by IP and use DNS only for people and
+      for cloud endpoints. <strong>mDNS</strong> (<code>.local</code> names, multicast to 224.0.0.251 port 5353) works
+      without a server but only inside one subnet.</p>
+
+    <div class="callout example">A typical office building: plant controllers on <code>10.20.30.0/24</code>,
+      fixed addresses <code>.10–.99</code> recorded in a spreadsheet and also as DHCP reservations, a small DHCP pool for
+      service laptops, and the BMS server polling every controller by IP. The server itself has a DNS name so
+      engineers can reach its web UI.</div>
+    <div class="callout warn">Two devices with the same static IP cause intermittent faults: the one that answered
+      ARP most recently wins. Symptoms look like a flaky device. Check the ARP table for a MAC that keeps changing.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">A controller is at <code>10.20.30.77/26</code>. Which address is in the same subnet?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="/26 blocks are 64 wide: .64–.127. .50 is in the .0–.63 block.">10.20.30.50</button>
+        <button class="opt" data-opt="b" data-why=".130 is in the .128–.191 block.">10.20.30.130</button>
+        <button class="opt" data-opt="c" data-why="The subnet is .64–.127 (.64 network, .127 broadcast). .120 is a usable host.">10.20.30.120</button>
+        <button class="opt" data-opt="d" data-why="Different third octet, different network.">10.20.31.77</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="b">
+      <p class="q">Why is the first DHCP message a broadcast?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Broadcast is not about speed.">Broadcasts are faster than unicast</button>
+        <button class="opt" data-opt="b" data-why="It has no address and does not know the server's. Broadcast is the only option.">The client has no IP and does not know where the server is</button>
+        <button class="opt" data-opt="c" data-why="DHCP gives no security; any host can answer.">So that only authorised servers can reply</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Prefix length splits the 32 bits into network and host. Network and broadcast addresses are not usable.</li>
+      <li>Same subnet: direct via ARP. Different subnet: via the gateway.</li>
+      <li>Infrastructure gets fixed addresses, documented and kept outside the DHCP pool.</li>
+      <li>DNS is a dependency. Poll devices by IP when reliability matters.</li>
+    </ul>
+  </section>
+
+  <!-- 3.2 -->
+  <section class="lesson" id="s2" data-num="3.2">
+    <h2>3.2 VLANs and segmentation</h2>
+    <p>A <strong>VLAN</strong> (IEEE 802.1Q) splits one physical switch into several logical ones. Each VLAN is its
+      own broadcast domain and normally its own IP subnet. Devices in different VLANs cannot talk at layer 2. To cross
+      between them, traffic must go through a router or firewall, which is exactly where you want to put rules.</p>
+
+    <h3>Access ports and trunk ports</h3>
+    <ul>
+      <li><strong>Access port</strong>: belongs to one VLAN. The device sends normal untagged frames and does not know
+        VLANs exist. Most controllers, cameras and sensors sit on access ports.</li>
+      <li><strong>Trunk port</strong>: carries many VLANs between switches, or to a router or hypervisor. Each frame
+        gets a 4-byte 802.1Q tag inserted after the source MAC. The tag holds a 12-bit VLAN ID (1–4094 usable) and a
+        3-bit priority (PCP), used for QoS in 3.6.</li>
+      <li><strong>Native VLAN</strong>: the one VLAN sent untagged on a trunk. Keep it unused or consistent on both ends;
+        a mismatch silently bridges two VLANs.</li>
+    </ul>
+    <figure class="viz">
+      <svg viewBox="0 0 600 110" role="img" aria-label="Ethernet frame with 802.1Q tag">
+        <g font-size="12">
+          <rect class="box" x="10" y="30" width="90" height="40"/><text x="55" y="55" text-anchor="middle">Dest MAC 6</text>
+          <rect class="box" x="100" y="30" width="90" height="40"/><text x="145" y="55" text-anchor="middle">Src MAC 6</text>
+          <rect class="box lit" x="190" y="30" width="90" height="40"/><text x="235" y="55" text-anchor="middle">802.1Q 4</text>
+          <rect class="box" x="280" y="30" width="80" height="40"/><text x="320" y="55" text-anchor="middle">Type 2</text>
+          <rect class="box" x="360" y="30" width="170" height="40"/><text x="445" y="55" text-anchor="middle">Payload 46–1500</text>
+          <rect class="box" x="530" y="30" width="60" height="40"/><text x="560" y="55" text-anchor="middle">FCS 4</text>
+        </g>
+        <text class="small" x="235" y="20" text-anchor="middle">TPID 0x8100 · PCP 3 · DEI 1 · VID 12 bits</text>
+        <text class="small" x="300" y="95" text-anchor="middle">sizes in bytes; the tag exists only on trunks, the switch removes it on access ports</text>
+      </svg>
+    </figure>
+
+    <h3>Try it: who can talk to whom?</h3>
+    <p>Two switches joined by a trunk that carries VLANs 10, 20 and 30. Put each device on a VLAN and see which pairs
+      reach each other at layer 2. Then allow routing through the firewall.</p>
+    <figure class="viz" id="vlan">
+      <svg viewBox="0 0 600 230" role="img" aria-label="Two switches, trunk, firewall and four devices">
+        <rect class="box" x="230" y="10" width="140" height="36" rx="8"/><text x="300" y="33" text-anchor="middle">Firewall / router</text>
+        <line class="arrow" id="vlUp" x1="300" y1="46" x2="160" y2="100"/>
+        <rect class="box" x="80" y="100" width="150" height="36" rx="8"/><text x="155" y="123" text-anchor="middle">Switch 1</text>
+        <rect class="box" x="370" y="100" width="150" height="36" rx="8"/><text x="445" y="123" text-anchor="middle">Switch 2</text>
+        <line class="lit-line" x1="230" y1="118" x2="370" y2="118"/><text class="small" x="300" y="110" text-anchor="middle">trunk 10,20,30</text>
+        <g id="vlLinks"></g>
+        <g id="vlDevs"></g>
+      </svg>
+      <div class="controls" style="margin-top:8px"><div class="seg" id="vlRoute"><button aria-pressed="true" data-v="0">No inter-VLAN routing</button><button data-v="1">Firewall allows BMS → controllers</button></div></div>
+      <div class="dev-grid" id="vlCtl"></div>
+      <ul class="reach" id="vlReach" aria-live="polite"></ul>
+      <figcaption>Colour = VLAN (blue 10 controllers, green 20 BMS servers, amber 30 cameras).</figcaption>
+    </figure>
+
+    <h3>A sensible segmentation plan</h3>
+    <div class="table-wrap"><table>
+      <tr><th>VLAN</th><th>Purpose</th><th>Allowed to reach</th></tr>
+      <tr><td>10 HVAC controllers</td><td>AHU, boiler, room controllers</td><td>Nothing outbound except NTP; answered from BMS VLAN</td></tr>
+      <tr><td>20 BMS servers</td><td>Supervisory software, historian, broker</td><td>Controller VLANs on their protocol ports only</td></tr>
+      <tr><td>30 CCTV</td><td>Cameras, NVR</td><td>NVR only; never the internet</td></tr>
+      <tr><td>40 Lighting</td><td>DALI/KNX IP gateways</td><td>Answered from BMS VLAN</td></tr>
+      <tr><td>50 Management</td><td>Switch, AP and firewall admin interfaces</td><td>Admin laptops only</td></tr>
+      <tr><td>99 Guest Wi-Fi</td><td>Visitors</td><td>Internet only, client isolation on</td></tr>
+    </table></div>
+    <p>The idea behind this is the <strong>zones and conduits</strong> model from IEC 62443: group devices with similar
+      trust and risk into zones, and control every path (conduit) between zones. A compromised camera then cannot scan
+      the boiler controller, and a broadcast storm in one VLAN stays inside it.</p>
+    <div class="callout example">A 40-room hotel: guest Wi-Fi, front-desk PCs, room controllers, CCTV and the BMS
+      server all on one flat <code>/24</code> is still common. One infected guest phone can then see every room
+      thermostat. Splitting into five VLANs with a firewall between them costs a few hours of configuration on the
+      same hardware.</div>
+    <div class="callout warn">VLANs are not a security boundary on their own. If the firewall between them allows
+      "any to any", segmentation only limits broadcasts. Write rules by source, destination and port, and deny the rest.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A room controller on an access port in VLAN 10 sends a frame. What does it contain?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Access ports carry untagged frames. The switch adds the tag only when the frame leaves on a trunk.">An ordinary untagged Ethernet frame</button>
+        <button class="opt" data-opt="b" data-why="End devices on access ports do not tag.">An 802.1Q tag with VID 10</button>
+        <button class="opt" data-opt="c" data-why="The VLAN is not in the IP header.">The VLAN number in the IP header</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>One VLAN = one broadcast domain = normally one subnet.</li>
+      <li>Access ports are untagged, trunks carry 802.1Q tags.</li>
+      <li>Between VLANs, traffic passes a router or firewall: that is where policy lives.</li>
+      <li>Segment by trust and function, then allow only the flows you need.</li>
+    </ul>
+  </section>
+
+  <!-- 3.3 -->
+  <section class="lesson" id="s3" data-num="3.3">
+    <h2>3.3 Managed switches and Wi-Fi</h2>
+    <p>An unmanaged switch learns MAC addresses and forwards frames. That is all. A <strong>managed switch</strong>
+      adds the features this chapter depends on: VLANs, IGMP snooping, QoS, port statistics, port mirroring, LLDP,
+      SNMP and often PoE control. For anything beyond a single cabinet, managed switches are the baseline.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Feature</th><th>Why OT needs it</th></tr>
+      <tr><td>VLANs (802.1Q)</td><td>Segmentation (3.2)</td></tr>
+      <tr><td>IGMP snooping + querier</td><td>Stops multicast audio, video or PTP flooding every port (3.4)</td></tr>
+      <tr><td>QoS (802.1p, DSCP), strict priority</td><td>Keeps real-time traffic ahead of bulk (3.6)</td></tr>
+      <tr><td>Spanning tree (RSTP, 802.1w)</td><td>Prevents loops; a looped cable can take down a flat network in seconds</td></tr>
+      <tr><td>PoE / PoE+ (802.3af/at, 15.4 / 30 W at the port)</td><td>Powers APs, cameras, panels; remote power-cycle of a hung device</td></tr>
+      <tr><td>Port counters, errors, mirroring</td><td>Troubleshooting: CRC errors point at a bad cable</td></tr>
+      <tr><td>LLDP, SNMP, syslog</td><td>Inventory and monitoring (3.8)</td></tr>
+      <tr><td>Energy-efficient Ethernet (802.3az)</td><td>Usually <em>disable</em> on real-time ports: wake-up delays add jitter</td></tr>
+    </table></div>
+    <p>Industrial switches add DIN-rail mounting, wide temperature ranges, redundant 24 V DC inputs and ring
+      protocols with fast recovery. Office-grade managed switches are fine in a clean, cooled comms room.</p>
+    <p><strong>Controller-based platforms</strong> (Ubiquiti UniFi, Cisco Meraki, TP-Link Omada, Aruba Instant On and
+      others) manage all switches and access points from one interface. That is convenient. The trade-off: some
+      settings the platform does not expose (for example per-VLAN IGMP querier details or detailed QoS queue maps),
+      and an update may change behaviour across the whole site at once. Check the exact feature list before you
+      rely on it for real-time traffic.</p>
+
+    <h3>Wi-Fi for building devices</h3>
+    <p>Wi-Fi is shared, half-duplex radio. Only one station transmits on a channel at a time, and every retry costs
+      airtime. For sensors and occasional control it works. For anything time-critical, use cable.</p>
+    <ul>
+      <li><strong>2.4 GHz</strong>: longer range, better through walls. Only three non-overlapping 20 MHz channels
+        (1, 6, 11). Many IoT devices only support this band.</li>
+      <li><strong>5 GHz</strong>: many more channels, less interference, shorter range. Some channels need DFS
+        (radar detection), which can force an AP to move channel at runtime.</li>
+      <li><strong>6 GHz</strong> (Wi-Fi 6E/7): plenty of clean spectrum, but few building devices support it yet.</li>
+    </ul>
+    <h3>Try it: a 2.4 GHz channel plan</h3>
+    <figure class="viz" id="wifi">
+      <div class="controls"><div class="seg" id="wfPlan"><button aria-pressed="true" data-p="0">Channels 1 / 6 / 11</button><button data-p="1">Channels 1 / 4 / 8 / 11</button><button data-p="2">All APs on auto → 6</button></div></div>
+      <svg viewBox="0 0 600 190" role="img" aria-label="2.4 GHz channel overlap">
+        <g id="wfG"></g>
+        <line class="arrow" x1="20" y1="160" x2="580" y2="160"/>
+        <g id="wfAxis"></g>
+      </svg>
+      <div class="readout" id="wfText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Each 2.4 GHz channel is ~20 MHz wide but channel numbers are only 5 MHz apart. Partial overlap is worse than full overlap: the radios cannot decode each other and just see noise.</figcaption>
+    </figure>
+    <div class="callout example">A typical office AHU's touch panel and a few wireless room sensors share the
+      building Wi-Fi with 200 laptops. Put building devices on their own SSID mapped to the OT VLAN, use WPA2/WPA3
+      with per-device credentials where possible, and keep the 2.4 GHz band on 1/6/11 at modest transmit power.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A network loop appears when someone plugs both ends of a patch cable into the same switch. What prevents an outage?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="IGMP is about multicast group membership.">IGMP snooping</button>
+        <button class="opt" data-opt="b" data-why="Spanning tree (or loop protection) blocks one port of the loop.">Spanning tree / loop protection</button>
+        <button class="opt" data-opt="c" data-why="DHCP has nothing to do with frame forwarding.">A DHCP reservation</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Managed switches are the baseline: VLANs, IGMP, QoS, RSTP, counters.</li>
+      <li>Controller-based platforms are convenient; check which low-level features they expose.</li>
+      <li>Wi-Fi is shared airtime. Cable anything time-critical.</li>
+      <li>2.4 GHz: channels 1, 6, 11 only.</li>
+    </ul>
+  </section>
+
+  <!-- 3.4 -->
+  <section class="lesson" id="s4" data-num="3.4">
+    <h2>3.4 Multicast and IGMP snooping</h2>
+    <p>Three ways to send a packet: <strong>unicast</strong> to one host, <strong>broadcast</strong> to every host
+      in the subnet, <strong>multicast</strong> to a group of hosts that asked for it. IPv4 multicast uses
+      <code>224.0.0.0/4</code>. Typical users in buildings: AES67 and Dante audio, IP video, PTP time sync
+      (224.0.1.129), mDNS (224.0.0.251), KNX IP routing (224.0.23.12) and BACnet/IP in some designs.</p>
+    <p>A host joins a group by sending an <strong>IGMP</strong> Membership Report (IGMPv2 or v3). On Ethernet the group
+      maps to a MAC address <code>01:00:5e:xx:xx:xx</code> using the low 23 bits of the IP, so 32 IP groups share each
+      MAC.</p>
+    <p>The catch: a plain switch does not understand IGMP. It treats multicast frames like broadcasts and
+      <strong>floods them to every port</strong> in the VLAN. One 48-channel audio stream at 48 kHz/24-bit is roughly
+      55 Mbit/s with overhead. Flood a few of those and a 100 Mbit/s controller port, or a Wi-Fi AP, is saturated.</p>
+
+    <h3>Try it: flooding vs snooping</h3>
+    <figure class="viz" id="igmp">
+      <div class="controls"><div class="seg" id="igSn"><button aria-pressed="true" data-v="0">Snooping off</button><button data-v="1">Snooping on</button></div>
+        <div class="seg" id="igQ"><button aria-pressed="true" data-v="1">Querier present</button><button data-v="0">No querier</button></div></div>
+      <svg viewBox="0 0 600 250" role="img" aria-label="Switch forwarding a multicast stream">
+        <rect class="box" x="220" y="100" width="160" height="50" rx="8"/><text x="300" y="130" text-anchor="middle" class="big">Switch</text>
+        <g id="igG"></g>
+      </svg>
+      <div class="readout" id="igText" aria-live="polite" style="font-family:var(--font)"></div>
+    </figure>
+    <p>With <strong>IGMP snooping</strong> on, the switch listens to the joins and forwards each group only to ports
+      that asked for it, plus the port towards the multicast router or querier. Snooping needs an
+      <strong>IGMP querier</strong> in the VLAN: a router or switch that sends a General Query periodically (default
+      125 s). Without queries, hosts stop re-sending reports, membership entries time out (about 260 s by default),
+      and the stream stops or the switch falls back to flooding, depending on the vendor.</p>
+    <div class="callout warn">"Audio drops out after about four minutes" is the classic symptom of snooping enabled
+      without a querier. Exactly one querier per VLAN, ideally on the core switch.</div>
+    <div class="callout example">A conference centre runs Dante audio across a building. Snooping on all switches,
+      a querier on the core, and the audio VLAN kept separate from Wi-Fi. Without that, the APs would rebroadcast the
+      multicast at the lowest data rate and the guest Wi-Fi would collapse.</div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">Snooping is on but there is no querier. What happens?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The switch has no reason to switch to unicast.">The switch converts multicast to unicast</button>
+        <button class="opt" data-opt="b" data-why="Joins still work at first; the problem appears later.">Nothing ever reaches the receivers</button>
+        <button class="opt" data-opt="c" data-why="IGMP is not related to DHCP.">The receivers lose their IP addresses</button>
+        <button class="opt" data-opt="d" data-why="Without queries, hosts stop reporting and the membership times out after a few minutes.">It works for a few minutes, then group membership times out</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Multicast = one sender, many subscribed receivers, 224.0.0.0/4.</li>
+      <li>Without snooping, switches flood multicast to every port.</li>
+      <li>Snooping needs one querier per VLAN.</li>
+    </ul>
+  </section>
+
+  <!-- 3.5 -->
+  <section class="lesson" id="s5" data-num="3.5">
+    <h2>3.5 Time sync: NTP and PTP</h2>
+    <p>Every timestamp in a BMS depends on clocks: alarm order, trends, schedules, energy meter intervals and logs.
+      A controller that drifts 3 minutes starts the heating 3 minutes late and puts its alarms in the wrong order.
+      A crystal oscillator drifts typically 10–50 ppm, which is 1–4 seconds per day.</p>
+    <div class="table-wrap"><table>
+      <tr><th></th><th>NTP</th><th>PTP (IEEE 1588)</th></tr>
+      <tr><td>Typical accuracy</td><td>1–10 ms on a LAN, tens of ms over the internet</td><td>Below 1 µs with hardware timestamping</td></tr>
+      <tr><td>Transport</td><td>UDP 123, unicast</td><td>UDP 319/320 multicast, or raw Ethernet</td></tr>
+      <tr><td>Timestamps</td><td>Software, in the OS</td><td>Hardware, in the NIC or switch</td></tr>
+      <tr><td>Hierarchy</td><td>Strata: stratum 1 has a reference clock (GPS)</td><td>Best Master Clock Algorithm picks a grandmaster</td></tr>
+      <tr><td>Used for</td><td>Controllers, servers, logs, schedules</td><td>Audio (AES67 uses PTPv2), video, power systems</td></tr>
+    </table></div>
+    <p>Both protocols solve the same problem: estimate the offset between two clocks when the network delay is unknown.
+      They exchange four timestamps and assume the path is <strong>symmetric</strong>, that is, it takes as long one way as
+      the other.</p>
+
+    <h3>Try it: the PTP delay request-response exchange</h3>
+    <figure class="viz" id="ptp">
+      <svg viewBox="0 0 600 260" role="img" aria-label="PTP Sync, Follow_Up, Delay_Req, Delay_Resp sequence">
+        <defs><marker id="ah5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <text x="120" y="22" text-anchor="middle" class="big">Grandmaster</text><text x="480" y="22" text-anchor="middle" class="big">Follower</text>
+        <line class="arrow" x1="120" y1="32" x2="120" y2="250"/><line class="arrow" x1="480" y1="32" x2="480" y2="250"/>
+        <path class="arrow" d="M120,55 L478,95" marker-end="url(#ah5)"/><text x="300" y="66" text-anchor="middle">Sync</text>
+        <path class="arrow dash" d="M120,105 L478,135" marker-end="url(#ah5)"/><text x="300" y="113" text-anchor="middle" class="small">Follow_Up (carries t1)</text>
+        <path class="arrow" d="M480,160 L122,200" marker-end="url(#ah5)"/><text x="300" y="172" text-anchor="middle">Delay_Req</text>
+        <path class="arrow dash" d="M120,210 L478,240" marker-end="url(#ah5)"/><text x="300" y="218" text-anchor="middle" class="small">Delay_Resp (carries t4)</text>
+        <text x="110" y="59" text-anchor="end" class="fill-accent">t1</text><text x="490" y="99" class="fill-accent">t2</text>
+        <text x="490" y="164" class="fill-accent">t3</text><text x="110" y="204" text-anchor="end" class="fill-accent">t4</text>
+      </svg>
+      <div class="demo" style="margin:8px 0 0">
+        <label for="ptOff">True follower offset: <output id="ptOffO"></output></label><input type="range" id="ptOff" min="-50" max="50" value="30">
+        <label for="ptDel">Path delay master → follower: <output id="ptDelO"></output></label><input type="range" id="ptDel" min="1" max="40" value="10">
+        <label for="ptAsy">Asymmetry (return path slower by): <output id="ptAsyO"></output></label><input type="range" id="ptAsy" min="0" max="20" value="0">
+      </div>
+      <div class="kv" id="ptOut" aria-live="polite"></div>
+      <figcaption>offset = ((t2 − t1) − (t4 − t3)) / 2 and delay = ((t2 − t1) + (t4 − t3)) / 2. Any asymmetry goes straight into the offset error: half of it.</figcaption>
+    </figure>
+    <p>A switch that queues a Sync packet behind bulk traffic adds variable delay, which breaks the symmetry
+      assumption. PTP solves this with <strong>boundary clocks</strong> (the switch is a follower on one port and a
+      master on the others) or <strong>transparent clocks</strong> (the switch adds its own residence time to a
+      correction field). Without them, PTP still works on a small network if QoS gives PTP the highest priority.</p>
+    <div class="callout example">A practical layout: the firewall or a small server runs an NTP service synced to
+      public pools or a GPS receiver, and every controller, server and switch points at it, not at the internet. The
+      AV network runs PTP separately, with one audio device or a dedicated clock elected as grandmaster.</div>
+    <div class="callout warn">Controllers in an OT VLAN without internet access often fall back to 1 January 2000 after a
+      power cut. Always give them a local NTP server and check the time zone and DST settings, which are separate from NTP.</div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">With t1 = 0, t2 = 40, t3 = 100, t4 = 80 (µs), what is the follower's offset?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That is the path delay: ((40)+(−20))/2 = 10.">10 µs</button>
+        <button class="opt" data-opt="b" data-why="((40 − 0) − (80 − 100)) / 2 = (40 + 20) / 2 = 30 µs ahead.">+30 µs</button>
+        <button class="opt" data-opt="c" data-why="Check the sign of t4 − t3.">−30 µs</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>NTP for milliseconds, PTP for microseconds and below.</li>
+      <li>Both need four timestamps and assume a symmetric path.</li>
+      <li>Give OT devices a local time source; never rely on the internet from a controller VLAN.</li>
+    </ul>
+  </section>
+
+  <!-- 3.6 -->
+  <section class="lesson" id="s6" data-num="3.6">
+    <h2>3.6 QoS for real-time traffic</h2>
+    <p>A switch port sends one frame at a time. When more traffic arrives than the port can send, frames wait in a
+      queue. That waiting time is <strong>latency</strong>; its variation is <strong>jitter</strong>. When the queue
+      is full, frames are <strong>dropped</strong>. Bandwidth is rarely the problem on a building LAN. Bursts are:
+      a camera keyframe or a backup job can fill a buffer for milliseconds, which is enough to make audio crackle.</p>
+    <p>QoS has two parts:</p>
+    <ol>
+      <li><strong>Marking</strong>: label each packet with a class. At layer 2, the 3-bit PCP in the 802.1Q tag
+        (802.1p, 0–7). At layer 3, the 6-bit DSCP field in the IP header (0–63), which survives routing.</li>
+      <li><strong>Queuing</strong>: each switch port has several hardware queues (often 4 or 8). The switch maps marks
+        to queues and serves them by strict priority or weighted round robin.</li>
+    </ol>
+    <div class="table-wrap"><table>
+      <tr><th>Traffic</th><th>Typical DSCP</th><th>Why</th></tr>
+      <tr><td>PTP event messages</td><td>56 (CS7) in Dante; AES67 recommends 46 (EF)</td><td>Time sync must not wait</td></tr>
+      <tr><td>Audio media (AES67, Dante)</td><td>46 (EF) in Dante; AES67 recommends 34 (AF41)</td><td>Fixed-size, low-latency stream</td></tr>
+      <tr><td>Voice (VoIP)</td><td>46 (EF)</td><td>Latency-sensitive</td></tr>
+      <tr><td>Video</td><td>34 (AF41)</td><td>Bandwidth and moderate latency</td></tr>
+      <tr><td>BMS control, BACnet, Modbus</td><td>0 or a low AF class</td><td>Small and tolerant of tens of ms</td></tr>
+      <tr><td>Backups, updates</td><td>0 or 8 (CS1, scavenger)</td><td>Should yield to everything</td></tr>
+    </table></div>
+    <p>Check the specific product's documentation for the exact values: audio systems differ, and the switch must be
+      configured to trust and map them.</p>
+
+    <h3>Try it: a congested port</h3>
+    <figure class="viz" id="qos">
+      <div class="controls"><div class="seg" id="qMode"><button aria-pressed="true" data-v="fifo">Single FIFO queue</button><button data-v="sp">Strict priority</button></div>
+        <button class="btn secondary" id="qBurst">Start a backup burst</button></div>
+      <div id="qRows"></div>
+      <div class="readout" id="qText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Blue = real-time packets (audio, PTP), grey = bulk. The port sends 5 packets per tick. Watch the real-time latency during a burst.</figcaption>
+    </figure>
+    <div class="callout warn">Strict priority starves lower queues if the priority class is not limited. Only put
+      small, predictable flows in it. Never mark "everything important" as EF.</div>
+    <div class="callout example">An event venue shares one switch network between CCTV, BMS and a 64-channel audio
+      system. Audio and PTP are marked by the devices, switches trust DSCP on the audio VLAN, and CCTV is left at
+      default. During a camera firmware update the audio stays clean.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Why is DSCP usually preferred over 802.1p PCP for marking?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="PCP has 8 values; DSCP has 64. But that is not the main reason.">PCP cannot express priority</button>
+        <button class="opt" data-opt="b" data-why="Both are processed by switch hardware.">DSCP is processed faster</button>
+        <button class="opt" data-opt="c" data-why="The 802.1Q tag is removed at every router and on access ports. DSCP is in the IP header and survives.">DSCP is in the IP header, so it survives routing and untagged ports</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Queues create latency and jitter; bursts matter more than average bandwidth.</li>
+      <li>Mark (DSCP/PCP), trust the marks, map to queues.</li>
+      <li>Keep the strict-priority class small: time sync and real-time media.</li>
+    </ul>
+  </section>
+
+  <!-- 3.7 -->
+  <section class="lesson" id="s7" data-num="3.7">
+    <h2>3.7 Remote access: VPN, tunnels, zero trust</h2>
+    <p>Integrators, maintenance contractors and the facility manager all want to reach the BMS from outside. How
+      that is done is the single biggest security decision for a building network. Internet scanners find exposed
+      BACnet, Modbus and controller web pages within hours of them going online.</p>
+    <h3>Compare four approaches</h3>
+    <figure class="viz" id="remote">
+      <div class="controls"><div class="seg" id="raSel"><button aria-pressed="true" data-v="0">Port forward</button><button data-v="1">VPN</button><button data-v="2">Reverse tunnel</button><button data-v="3">Zero trust</button></div></div>
+      <svg viewBox="0 0 600 200" role="img" aria-label="Remote access path diagram"><g id="raG"></g></svg>
+      <div class="readout" id="raText" aria-live="polite" style="font-family:var(--font)"></div>
+    </figure>
+    <div class="table-wrap"><table>
+      <tr><th>Approach</th><th>Inbound port?</th><th>Access scope</th><th>Examples</th></tr>
+      <tr><td>Port forward</td><td>Yes, to the device</td><td>Anyone on the internet</td><td>Router NAT rule</td></tr>
+      <tr><td>Site VPN</td><td>Yes, to the VPN endpoint only</td><td>The networks the VPN routes</td><td>WireGuard, OpenVPN, IPsec</td></tr>
+      <tr><td>Mesh / overlay VPN</td><td>No (NAT traversal, relays)</td><td>Per-device ACLs</td><td>Tailscale, ZeroTier, NetBird</td></tr>
+      <tr><td>Reverse tunnel / ZTNA</td><td>No, outbound only</td><td>One application, per user, with identity checks</td><td>Cloudflare Tunnel + Access, ngrok, Zscaler, vendor remote-access boxes</td></tr>
+    </table></div>
+    <p><strong>Zero trust</strong> means no user or device is trusted because of where it is on the network. Every
+      request is checked against identity, device state and policy. In practice for buildings it means: users sign in
+      through an identity provider with MFA, they get access to one application (the BMS web UI), not a network, and
+      every session is logged.</p>
+    <div class="callout example">A small hotel chain lets the contractor in through a VPN appliance on the firewall.
+      The VPN profile only routes to the BMS server, not to the controller VLAN. Engineering access to controllers
+      is enabled on request for a time window. The BMS web UI for managers is published through an outbound
+      tunnel with single sign-on.</div>
+    <div class="callout warn">Never port-forward a controller, a Modbus gateway or a BACnet router. These protocols
+      have no authentication: anyone who reaches the port can write setpoints.</div>
+    <div class="quiz" data-answer="b">
+      <p class="q">What is the key network difference between a reverse tunnel and a classic VPN server?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Both encrypt.">Only the tunnel is encrypted</button>
+        <button class="opt" data-opt="b" data-why="The connector dials out, so the firewall needs no inbound rule.">The tunnel needs no inbound port on the site firewall</button>
+        <button class="opt" data-opt="c" data-why="Tunnels usually depend on a third-party service; that is a trade-off.">The tunnel has no external dependency</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Never expose OT protocols to the internet.</li>
+      <li>VPN gives network access; scope it tightly.</li>
+      <li>Outbound tunnels with identity checks give per-application access with no open ports.</li>
+      <li>MFA, least privilege, logs, time-limited contractor access.</li>
+    </ul>
+  </section>
+
+  <!-- 3.8 -->
+  <section class="lesson" id="s8" data-num="3.8">
+    <h2>3.8 Network discovery and inventory tools</h2>
+    <p>You cannot secure or maintain what you do not know exists. Commissioning documents go out of date the first
+      time a contractor swaps a controller. Discovery answers three questions: what is connected, where (which switch
+      port), and what it is (vendor, model, firmware, protocol).</p>
+    <figure class="viz">
+      <svg viewBox="0 0 600 150" role="img" aria-label="Inventory pipeline">
+        <defs><marker id="ah8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="10" y="20" width="130" height="50" rx="8"/><text x="75" y="42" text-anchor="middle">Switch tables</text><text class="small" x="75" y="58" text-anchor="middle">MAC · LLDP · ARP</text>
+        <rect class="box" x="10" y="85" width="130" height="50" rx="8"/><text x="75" y="107" text-anchor="middle">DHCP leases</text><text class="small" x="75" y="123" text-anchor="middle">MAC · IP · hostname</text>
+        <rect class="box" x="170" y="20" width="130" height="50" rx="8"/><text x="235" y="42" text-anchor="middle">Active scan</text><text class="small" x="235" y="58" text-anchor="middle">ping · ports</text>
+        <rect class="box" x="170" y="85" width="130" height="50" rx="8"/><text x="235" y="107" text-anchor="middle">Protocol queries</text><text class="small" x="235" y="123" text-anchor="middle">Who-Is · mDNS · SNMP</text>
+        <rect class="box lit" x="360" y="50" width="110" height="50" rx="8"/><text x="415" y="72" text-anchor="middle">Merge by MAC</text><text class="small" x="415" y="88" text-anchor="middle">dedupe, enrich</text>
+        <rect class="box" x="500" y="50" width="90" height="50" rx="8"/><text x="545" y="80" text-anchor="middle">Inventory</text>
+        <path class="arrow" d="M142,45 L358,70" marker-end="url(#ah8)"/><path class="arrow" d="M142,110 L358,82" marker-end="url(#ah8)"/>
+        <path class="arrow" d="M302,45 L358,72" marker-end="url(#ah8)"/><path class="arrow" d="M302,110 L358,80" marker-end="url(#ah8)"/>
+        <path class="arrow" d="M472,75 L498,75" marker-end="url(#ah8)"/>
+      </svg>
+      <figcaption>The MAC address is the join key: it links a switch port, a DHCP lease, an IP and a protocol identity.</figcaption>
+    </figure>
+    <div class="table-wrap"><table>
+      <tr><th>Method</th><th>Finds</th><th>Risk to OT devices</th></tr>
+      <tr><td>Switch MAC table, LLDP neighbours, ARP table</td><td>Every active port, MAC, vendor (OUI), neighbour names</td><td>None, read from infrastructure</td></tr>
+      <tr><td>DHCP lease list</td><td>Dynamic clients and their hostnames</td><td>None</td></tr>
+      <tr><td>Ping / ARP sweep (nmap -sn, arp-scan)</td><td>Live hosts in a subnet</td><td>Low</td></tr>
+      <tr><td>TCP/UDP port scan</td><td>Services: 502 Modbus, 47808 BACnet, 1883 MQTT, 3671 KNX</td><td>Medium: old embedded stacks may hang</td></tr>
+      <tr><td>Protocol discovery (BACnet Who-Is, mDNS, SSDP, KNX search)</td><td>Device instance, model, name</td><td>Low if rate-limited</td></tr>
+      <tr><td>Passive monitoring (mirror port + Wireshark, OT IDS)</td><td>Who talks to whom, protocols, firmware</td><td>None</td></tr>
+    </table></div>
+    <div class="callout warn">Aggressive scans have crashed real PLCs and controllers. Scan OT subnets slowly
+      (nmap <code>-T2</code> or lower), during a maintenance window, and start with passive sources.</div>
+    <div class="callout example">A facility team runs a weekly job: pull MAC and LLDP tables from the switches over
+      SNMP, merge with DHCP leases and a BACnet Who-Is, and compare with last week. A new, unknown MAC on the controller
+      VLAN raises a ticket. Open-source tools such as NetBox (source of truth), LibreNMS or Zabbix (monitoring) and
+      nmap cover most of this.</div>
+    <h3>Sort the methods</h3>
+    <div class="classify" data-cats="Passive,Active scan,Protocol">
+      <div class="item" data-cat="Passive" data-why="Read from the switch; no packet reaches the device."><span class="label">Reading the switch MAC address table</span></div>
+      <div class="item" data-cat="Passive" data-why="LLDP is advertised by devices; you only read the neighbour table."><span class="label">LLDP neighbour list</span></div>
+      <div class="item" data-cat="Active scan" data-why="Sends probes to every address."><span class="label">nmap ping sweep of 10.20.30.0/24</span></div>
+      <div class="item" data-cat="Active scan" data-why="Probes ports to find services."><span class="label">Checking which hosts listen on TCP 502</span></div>
+      <div class="item" data-cat="Protocol" data-why="BACnet's own discovery service; devices answer with I-Am."><span class="label">BACnet Who-Is broadcast</span></div>
+      <div class="item" data-cat="Protocol" data-why="Service discovery over multicast DNS."><span class="label">mDNS browse for _http._tcp</span></div>
+    </div>
+    <div class="quiz" data-answer="a">
+      <p class="q">Which field best links a switch port entry to a DHCP lease and a BACnet device?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The MAC appears in all three sources.">MAC address</button>
+        <button class="opt" data-opt="b" data-why="Hostnames are often missing or duplicated on OT devices.">Hostname</button>
+        <button class="opt" data-opt="c" data-why="The switch MAC table has no IPs.">IP address</button>
+      </div>
+    </div>
+    <ul class="takeaways">
+      <li>Start passive: switch tables, LLDP, DHCP, mirror ports.</li>
+      <li>Scan OT gently; old stacks can crash.</li>
+      <li>Join sources by MAC and keep the inventory up to date automatically.</li>
+    </ul>
+  </section>
+
+  <!-- Test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+    <div class="quiz" data-answer="b">
+      <p class="q">1. How many usable hosts does a /27 subnet have?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="32 is the block size, including network and broadcast.">32</button>
+        <button class="opt" data-opt="b" data-why="2^5 − 2 = 30.">30</button>
+        <button class="opt" data-opt="c" data-why="That is a /26.">62</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="c">
+      <p class="q">2. A camera VLAN and a controller VLAN share the same switches. What stops the camera from reaching a controller?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The trunk carries both VLANs but keeps them separate; it does not filter routed traffic.">The trunk port</button>
+        <button class="opt" data-opt="b" data-why="IGMP is only about multicast.">IGMP snooping</button>
+        <button class="opt" data-opt="c" data-why="Layer 2 separation forces traffic to the router, where firewall rules decide.">VLAN separation plus firewall rules between the VLANs</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Dante audio drops every few minutes after IGMP snooping was enabled. Most likely cause?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Membership times out without periodic queries.">No IGMP querier in the VLAN</button>
+        <button class="opt" data-opt="b" data-why="DHCP leases are hours long.">DHCP lease expiry</button>
+        <button class="opt" data-opt="c" data-why="Wrong DNS would fail at the start, not periodically.">Wrong DNS server</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="d">
+      <p class="q">4. Why does network path asymmetry hurt PTP accuracy?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="PTP does not use DNS.">It breaks DNS</button>
+        <button class="opt" data-opt="b" data-why="Asymmetry does not stop messages.">The follower cannot receive Sync</button>
+        <button class="opt" data-opt="c" data-why="Not the mechanism.">It increases the number of messages</button>
+        <button class="opt" data-opt="d" data-why="The calculation assumes equal delay both ways; half the difference becomes offset error.">The offset formula assumes equal delay each way</button>
+      </div>
+    </div>
+    <div class="quiz" data-answer="b">
+      <p class="q">5. A contractor needs remote access to the BMS web UI only. Best choice?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Exposes the UI to every scanner on the internet.">Port-forward 443 to the BMS server</button>
+        <button class="opt" data-opt="b" data-why="Application-level access, identity check, no inbound ports.">An outbound tunnel with identity-based access to that one application</button>
+        <button class="opt" data-opt="c" data-why="Far more access than needed.">A VPN that routes to all building VLANs</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="02-control-theory.html">← Chapter 02</a>
+    <a class="btn" href="04-fieldbus.html">Chapter 04 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Helper for .seg groups: calls fn(value) on change.
+function segGroup(el, fn) {
+  const bs = el.querySelectorAll("button");
+  bs.forEach((b) => b.addEventListener("click", () => {
+    bs.forEach((x) => x.setAttribute("aria-pressed", x === b));
+    fn(b.dataset.v ?? b.dataset.p);
+  }));
+}
+const SVGNS = "http://www.w3.org/2000/svg";
+
+// 3.1 Subnet calculator.
+(() => {
+  const ip = document.getElementById("snIp"), pre = document.getElementById("snPre");
+  const preO = document.getElementById("snPreOut"), bits = document.getElementById("snBits"), out = document.getElementById("snOut");
+  const toStr = (n) => [24, 16, 8, 0].map((s) => (n >>> s) & 255).join(".");
+  const parse = (s) => {
+    const p = s.trim().split(".");
+    if (p.length !== 4 || p.some((x) => !/^\d{1,3}$/.test(x) || +x > 255)) return null;
+    return p.reduce((a, x) => ((a << 8) | +x) >>> 0, 0);
+  };
+  const draw = () => {
+    const n = +pre.value; preO.textContent = "/" + n;
+    const a = parse(ip.value);
+    if (a === null) { out.innerHTML = "<b>Error</b><span>Enter a valid IPv4 address</span>"; bits.innerHTML = ""; return; }
+    const mask = (0xffffffff << (32 - n)) >>> 0;
+    const net = (a & mask) >>> 0, bc = (net | ~mask) >>> 0;
+    bits.innerHTML = Array.from({ length: 32 }, (_, i) =>
+      `<span class="${i < n ? "n" : ""}${i % 8 === 0 && i ? " gap" : ""}">${(a >>> (31 - i)) & 1}</span>`).join("");
+    out.innerHTML = [
+      ["Mask", toStr(mask)], ["Network", toStr(net) + "/" + n], ["Broadcast", toStr(bc)],
+      ["Host range", toStr(net + 1) + " – " + toStr(bc - 1)], ["Usable hosts", (2 ** (32 - n) - 2).toLocaleString()],
+    ].map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("");
+  };
+  ip.addEventListener("input", draw); pre.addEventListener("input", draw); draw();
+})();
+
+// 3.1 DHCP DORA stepper.
+(() => {
+  const fig = document.getElementById("dora");
+  const steps = fig.querySelectorAll("[data-step]"), txt = document.getElementById("doraText"), nEl = document.getElementById("doraN");
+  const T = [
+    "<strong>Discover.</strong> Source 0.0.0.0:68 → 255.255.255.255:67. The client has no address and broadcasts: \"is there a DHCP server?\"",
+    "<strong>Offer.</strong> The server proposes 10.20.30.77 with mask, gateway, DNS and lease time. More than one server may offer.",
+    "<strong>Request.</strong> Still broadcast, so other servers learn their offer was declined. Carries the chosen server's ID.",
+    "<strong>Acknowledge.</strong> The address is committed. The client may probe it with ARP first to avoid a duplicate, then configures it.",
+  ];
+  let i = 0;
+  const draw = () => {
+    steps.forEach((g, k) => { g.style.opacity = k <= i ? 1 : 0.15; g.querySelector("path").classList.toggle("lit-line", k === i); });
+    txt.innerHTML = T[i]; nEl.textContent = `Step ${i + 1} / 4`;
+  };
+  document.getElementById("doraPrev").addEventListener("click", () => { i = Math.max(0, i - 1); draw(); });
+  document.getElementById("doraNext").addEventListener("click", () => { i = Math.min(3, i + 1); draw(); });
+  draw();
+})();
+
+// 3.2 VLAN reachability.
+(() => {
+  const DEV = [
+    { name: "AHU controller", sw: 0, x: 40, v: 10 },
+    { name: "BMS server", sw: 0, x: 180, v: 20 },
+    { name: "Room controller", sw: 1, x: 360, v: 10 },
+    { name: "IP camera", sw: 1, x: 490, v: 30 },
+  ];
+  let route = false;
+  const devG = document.getElementById("vlDevs"), linkG = document.getElementById("vlLinks");
+  const ctl = document.getElementById("vlCtl"), reach = document.getElementById("vlReach");
+  DEV.forEach((d, k) => {
+    const div = document.createElement("div"); div.className = "dev";
+    div.innerHTML = `<b>${d.name}</b><div class="seg">${[10, 20, 30].map((v) => `<button data-v="${v}" aria-pressed="${v === d.v}">VLAN ${v}</button>`).join("")}</div>`;
+    segGroup(div.querySelector(".seg"), (v) => { d.v = +v; draw(); });
+    ctl.appendChild(div);
+  });
+  const draw = () => {
+    devG.innerHTML = DEV.map((d) => `<rect class="vf${d.v}" stroke-width="2" x="${d.x}" y="180" width="100" height="36" rx="6"/><text x="${d.x + 50}" y="196" text-anchor="middle" font-size="11">${d.name}</text><text x="${d.x + 50}" y="209" text-anchor="middle" class="small">VLAN ${d.v}</text>`).join("");
+    linkG.innerHTML = DEV.map((d) => `<line class="wire v${d.v}" x1="${d.x + 50}" y1="180" x2="${d.sw ? 445 : 155}" y2="136"/>`).join("");
+    const out = [];
+    for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) {
+      const A = DEV[a], B = DEV[b];
+      let ok = A.v === B.v, how = ok ? "same VLAN, layer 2" : "different VLANs, blocked";
+      const bmsPair = (A.v === 20 && B.v === 10) || (A.v === 10 && B.v === 20);
+      if (!ok && route && bmsPair) { ok = true; how = "routed via firewall rule (BMS ↔ controllers)"; }
+      out.push(`<li class="${ok ? "ok" : "no"}">${ok ? "✓" : "✗"} ${A.name} ↔ ${B.name}: ${how}</li>`);
+    }
+    reach.innerHTML = out.join("");
+  };
+  segGroup(document.getElementById("vlRoute"), (v) => { route = v === "1"; draw(); });
+  draw();
+})();
+
+// 3.3 2.4 GHz channel plan.
+(() => {
+  const PLANS = [
+    [[1, 6, 11], "Clean. Three channels, no partial overlap. Neighbouring APs on the same channel share airtime politely."],
+    [[1, 4, 8, 11], "Every channel partly overlaps its neighbour. Radios see each other as noise, not as decodable Wi-Fi, so collision avoidance fails. Worse than 1/6/11."],
+    [[6, 6, 6], "All on one channel. They coordinate, but share one channel's airtime: total throughput is that of a single AP."],
+  ];
+  const g = document.getElementById("wfG"), axis = document.getElementById("wfAxis"), txt = document.getElementById("wfText");
+  const x = (ch) => 40 + (ch - 1) * 40; // 5 MHz per channel = 40 px
+  axis.innerHTML = Array.from({ length: 13 }, (_, i) => `<text class="small" x="${x(i + 1)}" y="176" text-anchor="middle">${i + 1}</text>`).join("");
+  const cls = ["v10", "v20", "v30", "v10"];
+  const draw = (p) => {
+    const [chs, t] = PLANS[p];
+    // A 20 MHz channel spans ±2 channel numbers (±80 px).
+    g.innerHTML = chs.map((c, k) => `<path class="wire ${cls[k]}" stroke-width="3" d="M${x(c) - 80},160 Q${x(c)},${10 + k * 12} ${x(c) + 80},160"/><text x="${x(c)}" y="${78 + k * 6}" text-anchor="middle" font-size="12">AP ${k + 1} · ch ${c}</text>`).join("");
+    txt.textContent = t;
+  };
+  segGroup(document.getElementById("wfPlan"), (p) => draw(+p)); draw(0);
+})();
+
+// 3.4 IGMP snooping.
+(() => {
+  const PORTS = [
+    { n: "Audio source", x: 40, y: 20, role: "src" },
+    { n: "Amplifier (joined)", x: 420, y: 20, role: "rx" },
+    { n: "Speaker DSP (joined)", x: 420, y: 190, role: "rx" },
+    { n: "Room controller", x: 40, y: 190, role: "no" },
+    { n: "Wi-Fi AP", x: 230, y: 200, role: "no" },
+  ];
+  let sn = false, q = true;
+  const g = document.getElementById("igG"), txt = document.getElementById("igText");
+  const draw = () => {
+    g.innerHTML = PORTS.map((p) => {
+      const cx = p.x + 70, cy = p.y + 18;
+      let gets = p.role === "src" || !sn || (p.role === "rx" && q);
+      const cl = p.role === "src" ? "lit-line" : gets ? (p.role === "rx" ? "ok-line" : "bad-line") : "arrow faint";
+      return `<line class="${cl}" x1="${cx}" y1="${cy}" x2="300" y2="125"/><rect class="box" x="${p.x}" y="${p.y}" width="140" height="36" rx="6"/><text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="12">${p.n}</text>`;
+    }).join("");
+    txt.innerHTML = !sn ? "<strong>Flooding.</strong> Every port in the VLAN gets the stream. Red = traffic nobody asked for: the controller's 100 Mbit/s port and the AP's airtime are wasted."
+      : q ? "<strong>Snooping with querier.</strong> Only the two ports that sent IGMP joins get the stream (green). Others are quiet."
+      : "<strong>Snooping, no querier.</strong> After the membership timeout (~260 s) the entries expire. Here the receivers lose the stream; some switches flood instead.";
+  };
+  segGroup(document.getElementById("igSn"), (v) => { sn = v === "1"; draw(); });
+  segGroup(document.getElementById("igQ"), (v) => { q = v === "1"; draw(); });
+  draw();
+})();
+
+// 3.5 PTP offset and delay.
+(() => {
+  const off = document.getElementById("ptOff"), del = document.getElementById("ptDel"), asy = document.getElementById("ptAsy"), out = document.getElementById("ptOut");
+  const draw = () => {
+    const o = +off.value, d = +del.value, a = +asy.value;
+    document.getElementById("ptOffO").textContent = `${o} µs`;
+    document.getElementById("ptDelO").textContent = `${d} µs`;
+    document.getElementById("ptAsyO").textContent = `${a} µs`;
+    // Follower clock reads master time + o.
+    const t1 = 0, t2 = t1 + d + o, t3 = 100, t4 = t3 - o + d + a;
+    const mo = ((t2 - t1) - (t4 - t3)) / 2, md = ((t2 - t1) + (t4 - t3)) / 2;
+    out.innerHTML = [["t1, t2", `${t1}, ${t2} µs`], ["t3, t4", `${t3}, ${t4} µs`], ["Measured offset", `${mo} µs`],
+      ["Measured delay", `${md} µs`], ["Offset error", `${mo - o} µs${a ? " (= −asymmetry / 2)" : ""}`]].map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("");
+  };
+  [off, del, asy].forEach((r) => r.addEventListener("input", draw)); draw();
+})();
+
+// 3.6 QoS queue simulation.
+(() => {
+  const rows = document.getElementById("qRows"), txt = document.getElementById("qText");
+  const CAP = 5, MAXQ = 40;
+  let mode = "fifo", burst = 0, fifo = [], rtQ = [], bulkQ = [], tick = 0, lat = [], drops = 0;
+  rows.innerHTML = `<div class="q-row"><span id="qL1">Queue</span><div class="slots" id="qS1"></div><span class="v" id="qV1"></span></div>
+    <div class="q-row"><span id="qL2"></span><div class="slots" id="qS2"></div><span class="v" id="qV2"></span></div>`;
+  const step = () => {
+    tick++;
+    const bulkIn = burst > 0 ? 6 : Math.random() < 0.5 ? 2 : 1; if (burst > 0) burst--;
+    const arr = [{ rt: 1, t: tick }, ...Array.from({ length: bulkIn }, () => ({ rt: 0, t: tick }))];
+    arr.sort(() => Math.random() - 0.5);
+    for (const p of arr) {
+      if (mode === "fifo") { if (fifo.length < MAXQ) fifo.push(p); else if (p.rt) drops++; }
+      else { const q = p.rt ? rtQ : bulkQ; if (q.length < MAXQ) q.push(p); }
+    }
+    for (let k = 0; k < CAP; k++) {
+      const p = mode === "fifo" ? fifo.shift() : rtQ.shift() || bulkQ.shift();
+      if (p && p.rt) lat.push(tick - p.t);
+    }
+    lat = lat.slice(-10);
+    const avg = lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0;
+    const dots = (q) => q.slice(0, MAXQ).map((p) => `<i class="${p.rt ? "rt" : ""}"></i>`).join("");
+    if (mode === "fifo") {
+      qL1.textContent = "Shared FIFO"; qS1.innerHTML = dots(fifo); qV1.textContent = fifo.length;
+      qL2.textContent = ""; qS2.innerHTML = ""; qV2.textContent = "";
+    } else {
+      qL1.textContent = "Priority queue"; qS1.innerHTML = dots(rtQ); qV1.textContent = rtQ.length;
+      qL2.textContent = "Best effort"; qS2.innerHTML = dots(bulkQ); qV2.textContent = bulkQ.length;
+    }
+    txt.textContent = `Real-time latency (last 10): ${avg.toFixed(1)} ticks · real-time drops: ${drops}${burst ? " · BURST" : ""}`;
+  };
+  segGroup(document.getElementById("qMode"), (v) => { mode = v; fifo = []; rtQ = []; bulkQ = []; lat = []; drops = 0; });
+  document.getElementById("qBurst").addEventListener("click", () => { burst = 25; });
+  const qL1 = document.getElementById("qL1"), qS1 = document.getElementById("qS1"), qV1 = document.getElementById("qV1");
+  const qL2 = document.getElementById("qL2"), qS2 = document.getElementById("qS2"), qV2 = document.getElementById("qV2");
+  step(); setInterval(step, 400);
+})();
+
+// 3.7 Remote access comparison.
+(() => {
+  const box = (x, y, w, t, s, cl = "box") => `<rect class="${cl}" x="${x}" y="${y}" width="${w}" height="44" rx="8"/><text x="${x + w / 2}" y="${y + 20}" text-anchor="middle" font-size="12">${t}</text><text class="small" x="${x + w / 2}" y="${y + 35}" text-anchor="middle">${s}</text>`;
+  const base = (fw) => box(10, 78, 110, "Remote user", "laptop / phone") + `<rect class="box" x="300" y="10" width="290" height="180" rx="10" stroke-dasharray="5 4"/><text class="small" x="445" y="28" text-anchor="middle">building network</text>` + box(230, 78, 100, "Firewall", fw) + box(460, 40, 120, "BMS server", "web UI") + box(460, 120, 120, "Controllers", "BACnet · Modbus");
+  const M = [
+    [`<line class="bad-line" x1="120" y1="100" x2="230" y2="100"/><line class="bad-line" x1="330" y1="100" x2="460" y2="142"/><text class="small" x="175" y="92" text-anchor="middle">anyone · TCP 47808</text>`, "open: NAT 47808 → controller",
+      '<span class="risk hi">High risk</span> The controller is reachable from the whole internet. OT protocols have no authentication; a scanner can write setpoints. Never do this.'],
+    [`<line class="ok-line" x1="120" y1="100" x2="230" y2="100"/><line class="lit-line" x1="330" y1="100" x2="460" y2="62"/><line class="arrow dash" x1="330" y1="100" x2="460" y2="142"/><text class="small" x="175" y="92" text-anchor="middle">encrypted tunnel</text>`, "open: UDP 51820 (VPN)",
+      '<span class="risk md">Medium risk</span> Only the VPN endpoint is exposed. Authenticated users get <em>network</em> access, so scope routes and firewall rules (dashed = blocked or time-limited). Keep the VPN patched.'],
+    [`<line class="ok-line" x1="120" y1="100" x2="230" y2="60"/><text class="small" x="160" y="58" text-anchor="middle">cloud edge</text><line class="lit-line" x1="460" y1="62" x2="330" y2="62"/><text class="small" x="395" y="56" text-anchor="middle">outbound only</text>`, "no inbound ports",
+      '<span class="risk lo">Lower risk</span> A connector on the BMS server dials out to a relay or cloud edge. Users reach that one service. Dependency on the provider, and the service must have its own login.'],
+    [`<line class="ok-line" x1="120" y1="100" x2="230" y2="60"/><text class="small" x="170" y="58" text-anchor="middle">IdP + MFA + device check</text><line class="lit-line" x1="460" y1="62" x2="330" y2="62"/>`, "no inbound ports",
+      '<span class="risk lo">Lowest risk</span> Like a reverse tunnel, plus every request is checked: identity provider, MFA, device posture, per-app policy, full session logs. Access can be granted to one contractor for one day.'],
+  ];
+  const g = document.getElementById("raG"), txt = document.getElementById("raText");
+  const draw = (i) => { const [lines, fw, t] = M[i]; g.innerHTML = lines + base(fw); txt.innerHTML = t; };
+  segGroup(document.getElementById("raSel"), (v) => draw(+v)); draw(0);
+})();
+</script>
+</body>
+</html>

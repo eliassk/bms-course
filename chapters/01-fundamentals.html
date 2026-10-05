@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automation Fundamentals</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-btn" aria-label="Open navigation">☰</button>
+  <a class="brand" href="../index.html">Building Automation Course</a>
+  <span class="spacer"></span>
+  <div class="progress-bar" title="Chapter progress"><span></span></div>
+  <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+</header>
+
+<div class="layout">
+<nav class="sidebar" aria-label="Course navigation"></nav>
+
+<main data-chapter="1">
+<div class="content">
+  <div class="kicker">Chapter 01</div>
+  <h1>Building automation fundamentals</h1>
+  <p class="lead">What a building management system is, how it is layered, what it actually reads and writes,
+    and which standards define a "good" one. Everything in later chapters hangs on this vocabulary.</p>
+
+  <!-- 1.1 -->
+  <section class="lesson" id="s1" data-num="1.1">
+    <h2>1.1 What a BMS does: monitor, control, optimise</h2>
+    <p>A <strong>building management system (BMS)</strong> is the set of controllers, networks and software that
+      watches and drives a building's technical systems: heating, ventilation, cooling, lighting, shading, power and
+      often security and AV. You will meet several names for the same idea:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Term</th><th>Meaning</th></tr>
+      <tr><td><strong>BMS</strong></td><td>Building Management System. The everyday industry term, often meaning the supervisory software.</td></tr>
+      <tr><td><strong>BAS</strong></td><td>Building Automation System. Common in North America, emphasises the control layer.</td></tr>
+      <tr><td><strong>BACS</strong></td><td>Building Automation and Control System. The term used by ISO/EN standards.</td></tr>
+      <tr><td><strong>BEMS</strong></td><td>Building Energy Management System. A BMS whose main focus is metering and energy.</td></tr>
+    </table></div>
+
+    <h3>Three jobs</h3>
+    <ol>
+      <li><strong>Monitor.</strong> Collect values and states: temperatures, pump running, filter dirty, alarm active.
+        Store history. Show it to people.</li>
+      <li><strong>Control.</strong> Act on the plant: open a valve, start a fan, switch a lighting scene. Either
+        automatically (loops, schedules, sequences) or by an operator command.</li>
+      <li><strong>Optimise.</strong> Do the same job with less energy, wear and attention: setbacks when the building
+        is empty, weather compensation, demand-controlled ventilation, alarm routing so problems are fixed early.</li>
+    </ol>
+
+    <figure class="viz">
+      <svg viewBox="0 0 600 220" role="img" aria-label="Monitor feeds control, control feeds optimise, optimise feeds back into monitoring">
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+        <rect class="box" x="20" y="40" width="150" height="80" rx="10"/>
+        <text class="big" x="95" y="74" text-anchor="middle">Monitor</text>
+        <text class="small" x="95" y="96" text-anchor="middle">read · store · show</text>
+        <rect class="box" x="225" y="40" width="150" height="80" rx="10"/>
+        <text class="big" x="300" y="74" text-anchor="middle">Control</text>
+        <text class="small" x="300" y="96" text-anchor="middle">loops · schedules · commands</text>
+        <rect class="box" x="430" y="40" width="150" height="80" rx="10"/>
+        <text class="big" x="505" y="74" text-anchor="middle">Optimise</text>
+        <text class="small" x="505" y="96" text-anchor="middle">less energy · wear · effort</text>
+        <path class="arrow" d="M172,80 L222,80" marker-end="url(#ah)"/>
+        <path class="arrow" d="M377,80 L427,80" marker-end="url(#ah)"/>
+        <path class="arrow" d="M505,122 C505,190 95,190 95,122" marker-end="url(#ah)"/>
+        <text class="small" x="300" y="180" text-anchor="middle">feedback: did the change actually work?</text>
+        <text class="small" x="300" y="22" text-anchor="middle">supervisory layer (BMS) — certified safety systems sit outside this loop</text>
+      </svg>
+      <figcaption>The three jobs form a loop. Optimisation is only as good as the monitoring that checks it.</figcaption>
+    </figure>
+
+    <h3>What a BMS is not</h3>
+    <p>A BMS coordinates systems. It is <em>not</em> the safety layer. Boiler flame supervision, gas shut-off,
+      fire detection, smoke control and emergency lighting have their own certified controllers. They keep working
+      if the BMS crashes, and a BMS may monitor them but should never be the thing that keeps people safe.</p>
+    <div class="callout warn">Rule of thumb: if losing the BMS server for a day would make the building
+      <em>unsafe</em> rather than merely <em>less comfortable</em>, the design is wrong.</div>
+
+    <h3>Try it: what keeps running?</h3>
+    <figure class="viz" id="outage">
+      <div class="controls seg" role="group" aria-label="Failure scenario">
+        <button data-sc="normal" aria-pressed="true">All normal</button>
+        <button data-sc="bms">BMS server down</button>
+        <button data-sc="network">Network down</button>
+        <button data-sc="internet">Internet down</button>
+        <button data-sc="power">Mains power lost</button>
+      </div>
+      <div class="sys-grid"></div>
+      <figcaption>A typical, well-designed building. Pick a failure and see which systems carry on.</figcaption>
+    </figure>
+
+    <div class="callout example">In a typical venue the boilers, air handling units, DALI lighting, audio DSP, intrusion panel and UPS each run on their own controller. A supervisory platform on top shows their state, lets staff send commands within their role and sends alerts. If the supervisory server stops, the boilers still heat and the fire system still protects.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">Which of these SHOULD NOT depend on the BMS server being online?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Trend history is a BMS job; losing it is an inconvenience, not a hazard.">Storing a week of room temperature history</button>
+        <button class="opt" data-opt="b" data-why="Scheduled setbacks are a classic BMS optimisation.">Lowering the heating setpoint at night</button>
+        <button class="opt" data-opt="c" data-why="Gas safety is a certified, local function. The BMS may only monitor it.">Closing the gas valve when a gas leak is detected</button>
+        <button class="opt" data-opt="d" data-why="Notifications are a supervisory job.">Sending a Telegram message when a filter is dirty</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>BMS, BAS and BACS mean the same thing. Standards say BACS.</li>
+      <li>Monitor, control, optimise.</li>
+      <li>Life-safety functions live in their own certified systems, never in the BMS alone.</li>
+    </ul>
+  </section>
+
+  <!-- 1.2 -->
+  <section class="lesson" id="s2" data-num="1.2">
+    <h2>1.2 The automation pyramid: field, automation, management</h2>
+    <p>Classic building automation is described in three levels. Each level has its own devices, its own
+      networks and its own time scale. Click a level.</p>
+
+    <div class="explorer">
+      <svg class="pyr" viewBox="0 0 300 290" aria-label="Automation pyramid">
+        <g class="layer" role="button" tabindex="0" data-target="lvl-mgmt" aria-label="Management level">
+          <polygon points="120,10 180,10 216,88 84,88"/><text x="150" y="55" text-anchor="middle" class="big">Management</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="lvl-auto" aria-label="Automation level">
+          <polygon points="82,92 218,92 252,168 48,168"/><text x="150" y="135" text-anchor="middle" class="big">Automation</text></g>
+        <g class="layer" role="button" tabindex="0" data-target="lvl-field" aria-label="Field level">
+          <polygon points="46,172 254,172 290,250 10,250"/><text x="150" y="216" text-anchor="middle" class="big">Field</text></g>
+        <text class="small" x="150" y="272" text-anchor="middle">↑ fewer devices, slower, wider view</text>
+        <text class="small" x="150" y="287" text-anchor="middle">↓ more devices, faster, physical</text>
+      </svg>
+      <div class="panel" aria-live="polite">
+        <template id="lvl-mgmt">
+          <h4>Management level</h4>
+          <p>Supervision, people and data. Seconds to years.</p>
+          <ul>
+            <li>BMS/SCADA server, operator HMI, dashboards</li>
+            <li>Trend history, reports, energy analysis</li>
+            <li>Alarm management and notifications</li>
+            <li>Users, roles, audit log</li>
+            <li>Networks: Ethernet/IP, BACnet/IP, MQTT, REST/WebSocket</li>
+          </ul>
+          <p><strong>Examples:</strong> Siemens Desigo CC, Tridium Niagara, Home Assistant, a custom web panel, an MQTT broker, SMS/Telegram alerting.</p>
+        </template>
+        <template id="lvl-auto">
+          <h4>Automation level</h4>
+          <p>Control logic. Milliseconds to minutes. Runs on its own.</p>
+          <ul>
+            <li>DDC controllers and PLCs</li>
+            <li>Control loops, sequences, interlocks, local schedules</li>
+            <li>Dedicated controllers: boiler, AHU, lighting router, DSP</li>
+            <li>Networks: BACnet, Modbus, KNX, vendor buses, Ethernet</li>
+          </ul>
+          <p><strong>Examples:</strong> Siemens Climatix/PXC, a boiler cascade controller, an AHU controller, a DALI lighting router, an audio DSP, an intrusion panel.</p>
+        </template>
+        <template id="lvl-field">
+          <h4>Field level</h4>
+          <p>Physical sensing and actuation.</p>
+          <ul>
+            <li>Sensors: temperature, humidity, CO₂, pressure, PIR, contacts</li>
+            <li>Actuators: valves, dampers, relays, drives, DALI drivers</li>
+            <li>Signals: 0–10 V, 4–20 mA, PT1000/NTC, dry contacts, DALI, M-Bus</li>
+          </ul>
+          <p><strong>Examples:</strong> room sensors, floor heating thermal actuators, circulation pumps, PIR detectors, DALI drivers, loudspeakers.</p>
+        </template>
+      </div>
+    </div>
+
+    <h3>Why the layers matter</h3>
+    <p>Each level should keep working if the one above it fails. A controller with no BMS server must still run its
+      loops with the last setpoints. A field device with no controller must still go to a safe state (a valve
+      spring-returns, a fan stops on frost alarm).</p>
+
+    <h3>Follow one value through the layers</h3>
+    <figure class="viz" id="flow">
+      <div class="controls">
+        <button class="btn secondary" data-act="prev" aria-label="Previous step">←</button>
+        <button class="btn" data-act="next">Next step →</button>
+        <button class="btn secondary" data-act="reset" aria-label="Restart">↺</button>
+      </div>
+      <svg viewBox="0 0 640 230" role="img" aria-label="A room temperature flowing from sensor to controller to BMS and a setpoint flowing back">
+        <text class="small" x="75" y="22" text-anchor="middle">FIELD</text>
+        <text class="small" x="265" y="22" text-anchor="middle">AUTOMATION</text>
+        <text class="small" x="530" y="22" text-anchor="middle">MANAGEMENT</text>
+        <line class="arrow" id="w1" x1="130" y1="68" x2="200" y2="68"/>
+        <line class="arrow" id="w2" x1="265" y1="96" x2="265" y2="150"/>
+        <line class="arrow" id="w3" x1="330" y1="68" x2="420" y2="68"/>
+        <line class="arrow" id="w4" x1="510" y1="68" x2="540" y2="68"/>
+        <rect class="box" id="n-sensor" x="20" y="40" width="110" height="56" rx="8"/>
+        <text x="75" y="64" text-anchor="middle">Room sensor</text><text class="small" x="75" y="82" text-anchor="middle" id="t-sensor">— °C</text>
+        <rect class="box" id="n-ctrl" x="200" y="40" width="130" height="56" rx="8"/>
+        <text x="265" y="64" text-anchor="middle">Controller</text><text class="small" x="265" y="82" text-anchor="middle" id="t-ctrl">SP 21 °C</text>
+        <rect class="box" id="n-valve" x="200" y="150" width="130" height="50" rx="8"/>
+        <text x="265" y="172" text-anchor="middle">Heating valve</text><text class="small" x="265" y="190" text-anchor="middle" id="t-valve">0 %</text>
+        <rect class="box" id="n-bms" x="420" y="40" width="90" height="56" rx="8"/>
+        <text x="465" y="64" text-anchor="middle">BMS</text><text class="small" x="465" y="82" text-anchor="middle" id="t-bms">trend</text>
+        <rect class="box" id="n-op" x="540" y="40" width="90" height="56" rx="8"/>
+        <text x="585" y="64" text-anchor="middle">Operator</text><text class="small" x="585" y="82" text-anchor="middle">panel</text>
+        <circle id="pkt" r="7" cx="75" cy="68" class="fill-accent" style="transition: cx .6s, cy .6s, opacity .3s; opacity:0"/>
+      </svg>
+      <div class="readout" id="flowText" aria-live="polite"></div>
+    </figure>
+
+    <h3>The pyramid is flattening</h3>
+    <p>Modern devices often speak IP directly: an AHU with a Modbus TCP port, a DALI gateway publishing to MQTT, a
+      smart thermostat with a cloud API. The boundaries blur and the gateway (Chapter 07) becomes a key piece. The
+      layering still applies as a way of thinking: <em>where does this logic run, and what happens when the layer
+      above disappears?</em></p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">An AHU's frost-protection logic (close outdoor damper, open heating valve, stop the fan) should run at which level?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Too slow and too fragile. A network glitch could freeze the coil.">Management level, as a Home Assistant automation</button>
+        <button class="opt" data-opt="b" data-why="Protection belongs in the local controller, which acts in seconds and without the network.">Automation level, inside the AHU controller</button>
+        <button class="opt" data-opt="c" data-why="A frost thermostat is part of it, but the sequence needs controller logic.">Field level only, no logic needed</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Field = sense and act. Automation = control logic. Management = people and data.</li>
+      <li>Each layer must survive the loss of the one above.</li>
+      <li>Protection and fast loops belong low; overview and optimisation belong high.</li>
+    </ul>
+  </section>
+
+  <!-- 1.3 -->
+  <section class="lesson" id="s3" data-num="1.3">
+    <h2>1.3 Data points: AI, AO, DI, DO, setpoints, states</h2>
+    <p>Everything a BMS knows is a <strong>data point</strong>. A medium building has thousands. Physical points
+      come in four basic types:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Type</th><th>Direction</th><th>Value</th><th>Typical signals</th><th>Examples</th></tr>
+      <tr><td><code>AI</code> Analog input</td><td>field → controller</td><td>number</td><td>PT1000, NTC, 0–10 V, 4–20 mA</td><td>temperature, CO₂, pressure</td></tr>
+      <tr><td><code>AO</code> Analog output</td><td>controller → field</td><td>number</td><td>0–10 V, 2–10 V, 4–20 mA</td><td>valve position, fan speed</td></tr>
+      <tr><td><code>DI</code> Digital input</td><td>field → controller</td><td>on/off</td><td>dry contact, 24 V</td><td>pump running, filter alarm, PIR</td></tr>
+      <tr><td><code>DO</code> Digital output</td><td>controller → field</td><td>on/off</td><td>relay, triac</td><td>pump start, boiler enable</td></tr>
+    </table></div>
+
+    <figure class="viz">
+      <svg viewBox="0 0 640 240" role="img" aria-label="Controller with an analog and a digital input on the left and an analog and a digital output on the right">
+        <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <rect class="box" x="240" y="30" width="160" height="180" rx="10"/>
+        <text class="big" x="320" y="58" text-anchor="middle">Controller</text>
+        <text class="small" x="320" y="76" text-anchor="middle">DDC / PLC</text>
+        <text x="252" y="104">AI</text><text x="252" y="174">DI</text>
+        <text x="388" y="104" text-anchor="end">AO</text><text x="388" y="174" text-anchor="end">DO</text>
+        <text class="small" x="320" y="140" text-anchor="middle">inputs ←  → outputs</text>
+        <rect class="box" x="20" y="72" width="150" height="50" rx="8"/><text x="95" y="94" text-anchor="middle">Temp. sensor</text><text class="small" x="95" y="111" text-anchor="middle">PT1000</text>
+        <rect class="box" x="20" y="142" width="150" height="50" rx="8"/><text x="95" y="164" text-anchor="middle">Pump status</text><text class="small" x="95" y="181" text-anchor="middle">dry contact</text>
+        <rect class="box" x="470" y="72" width="150" height="50" rx="8"/><text x="545" y="94" text-anchor="middle">Valve actuator</text><text class="small" x="545" y="111" text-anchor="middle">0–10 V</text>
+        <rect class="box" x="470" y="142" width="150" height="50" rx="8"/><text x="545" y="164" text-anchor="middle">Pump contactor</text><text class="small" x="545" y="181" text-anchor="middle">relay → 230 V coil</text>
+        <path class="wire" stroke="var(--accent)" d="M170,97 L240,97" marker-end="url(#ah2)"/>
+        <path class="wire" stroke="var(--accent)" d="M170,167 L240,167" marker-end="url(#ah2)"/>
+        <path class="wire" stroke="var(--accent)" d="M400,97 L470,97" marker-end="url(#ah2)"/>
+        <path class="wire" stroke="var(--accent)" d="M400,167 L470,167" marker-end="url(#ah2)"/>
+        <text class="small" x="205" y="88" text-anchor="middle">Ω</text>
+        <text class="small" x="205" y="158" text-anchor="middle">open/closed</text>
+        <text class="small" x="435" y="88" text-anchor="middle">volts</text>
+        <text class="small" x="435" y="158" text-anchor="middle">on/off</text>
+        <text class="small" x="320" y="232" text-anchor="middle">Pump contactor (DO) and pump status (DI) form a command + feedback pair</text>
+      </svg>
+    </figure>
+
+    <h3>Virtual (software) points</h3>
+    <p>Not every point is wired. Controllers and BMS software add points that exist only in logic:</p>
+    <ul>
+      <li><strong>Setpoints</strong>: the target, e.g. room 21 °C, supply air 18 °C.</li>
+      <li><strong>Modes / multistate</strong>: Off / Comfort / Eco / Frost protection.</li>
+      <li><strong>Alarms</strong>: derived states such as "temperature 5 K below setpoint for 30 min".</li>
+      <li><strong>Calculated values</strong>: averages, run hours, energy totals.</li>
+    </ul>
+    <p>BACnet names these <code>analog-value</code>, <code>binary-value</code> and <code>multi-state-value</code>.
+      In Home Assistant they map to entities like <code>sensor</code>, <code>binary_sensor</code>,
+      <code>number</code>, <code>select</code> and <code>switch</code>.</p>
+
+    <h3>Command vs. feedback</h3>
+    <p>A good design pairs every important command with feedback: <code>DO</code> "start pump" plus <code>DI</code>
+      "pump running". If they disagree for longer than a delay, raise a <em>discrepancy alarm</em>. Without feedback
+      the BMS only knows what it asked for, not what happened.</p>
+
+    <figure class="viz" id="timing">
+      <div class="controls seg" role="group" aria-label="Scenario">
+        <button data-sc="normal" aria-pressed="true">Normal</button>
+        <button data-sc="nostart">Fails to start</button>
+        <button data-sc="trip">Trips while running</button>
+        <button data-sc="stuck">Contactor stuck on</button>
+      </div>
+      <svg viewBox="0 0 620 250" role="img" aria-label="Timing diagram of pump command, running feedback and discrepancy alarm">
+        <text x="10" y="64">Command</text><text class="small" x="10" y="80">DO</text>
+        <text x="10" y="134">Feedback</text><text class="small" x="10" y="150">DI</text>
+        <text x="10" y="204">Alarm</text>
+        <path id="tCmd" class="wire" stroke="var(--accent)"/>
+        <path id="tFb" class="wire" stroke="var(--ok)"/>
+        <g id="tAlarm"></g>
+        <line x1="90" y1="225" x2="600" y2="225" class="arrow"/>
+        <g id="tAxis"></g>
+      </svg>
+      <div class="readout" id="timingText" aria-live="polite"></div>
+      <figcaption>Discrepancy alarm with a 10 s delay. The delay hides normal start-up lag.</figcaption>
+    </figure>
+
+    <h3>Point metadata</h3>
+    <p>A raw number is useless without context. Every point should carry: name, unit, range, scaling (e.g. 4 mA = 0
+      ppm, 20 mA = 2000 ppm), location, the equipment it belongs to, and how it is updated (polling interval or
+      change-of-value).</p>
+
+    <h3>Try it: scaling a 4–20 mA signal</h3>
+    <p>A CO₂ sensor sends 4 mA at 0 ppm and 20 mA at 2000 ppm. Why start at 4 and not 0? Because then
+      <strong>0 mA means a broken wire</strong>, not "no CO₂". This "live zero" lets the controller tell a fault from a
+      real reading. NAMUR NE43 defines the limits: below 3.6 mA or above 21 mA is a fault.</p>
+    <figure class="viz" id="scale">
+      <label for="mA"><strong>Loop current: <output id="mAOut">12.0</output> mA</strong></label>
+      <input type="range" id="mA" min="0" max="22" step="0.1" value="12" style="width:100%">
+      <svg viewBox="0 0 600 250" role="img" aria-label="Linear scaling from 4–20 mA to 0–2000 ppm with fault zones">
+        <rect x="80" y="20" width="81.8" height="190" class="fill-bad" opacity=".12"/>
+        <rect x="557.3" y="20" width="22.7" height="190" class="fill-bad" opacity=".12"/>
+        <text class="small" x="120.9" y="36" text-anchor="middle">fault</text>
+        <text class="small" x="568.6" y="36" text-anchor="middle">fault</text>
+        <line x1="80" y1="210" x2="580" y2="210" class="arrow"/>
+        <line x1="80" y1="20" x2="80" y2="210" class="arrow"/>
+        <line x1="80.0" y1="210" x2="80.0" y2="215" class="arrow"/><text class="small" x="80.0" y="228" text-anchor="middle">0</text><line x1="170.9" y1="210" x2="170.9" y2="215" class="arrow"/><text class="small" x="170.9" y="228" text-anchor="middle">4</text><line x1="261.8" y1="210" x2="261.8" y2="215" class="arrow"/><text class="small" x="261.8" y="228" text-anchor="middle">8</text><line x1="352.7" y1="210" x2="352.7" y2="215" class="arrow"/><text class="small" x="352.7" y="228" text-anchor="middle">12</text><line x1="443.6" y1="210" x2="443.6" y2="215" class="arrow"/><text class="small" x="443.6" y="228" text-anchor="middle">16</text><line x1="534.5" y1="210" x2="534.5" y2="215" class="arrow"/><text class="small" x="534.5" y="228" text-anchor="middle">20</text><text class="small" x="74" y="214.0" text-anchor="end">0</text><text class="small" x="74" y="171.8" text-anchor="end">500</text><text class="small" x="74" y="129.6" text-anchor="end">1000</text><text class="small" x="74" y="87.3" text-anchor="end">1500</text><text class="small" x="74" y="45.1" text-anchor="end">2000</text>
+        <line x1="170.9" y1="210.0" x2="534.5" y2="41.1" stroke="var(--accent)" stroke-width="3"/>
+        <line id="sGuideX" class="muted-s" stroke-dasharray="4 4"/>
+        <line id="sGuideY" class="muted-s" stroke-dasharray="4 4"/>
+        <circle id="sDot" r="7" class="fill-accent"/>
+        <text class="small" x="330" y="244" text-anchor="middle">mA</text>
+        <text class="small" x="20" y="16">ppm</text>
+      </svg>
+      <div class="readout" id="scaleText" aria-live="polite"></div>
+      <figcaption>ppm = (mA − 4) ÷ 16 × 2000</figcaption>
+    </figure>
+
+    <h3>Exercise: classify the points</h3>
+    <div class="classify" data-cats="AI,AO,DI,DO">
+      <div class="item" data-cat="AI" data-why="A PT1000 is a resistance sensor read as an analog value."><span class="label">Room temperature sensor (PT1000)</span></div>
+      <div class="item" data-cat="AO" data-why="A modulating actuator receives a 0–10 V position command."><span class="label">Mixing valve actuator, 0–10 V</span></div>
+      <div class="item" data-cat="DI" data-why="A contact that tells the controller the pump really runs."><span class="label">Pump running status contact</span></div>
+      <div class="item" data-cat="DO" data-why="A relay that lets the boiler fire."><span class="label">Boiler enable relay</span></div>
+      <div class="item" data-cat="DI" data-why="A differential pressure switch is just open or closed."><span class="label">Filter differential pressure switch</span></div>
+      <div class="item" data-cat="AI" data-why="4–20 mA is a classic analog sensor signal."><span class="label">CO₂ sensor, 4–20 mA</span></div>
+      <div class="item" data-cat="DO" data-why="Thermal floor heating actuators are on/off. 'Modulation' is done by pulsing them (PWM)."><span class="label">Floor heating thermal actuator, 230 V</span></div>
+      <div class="item" data-cat="AI" data-why="Position feedback is an analog value read back from the actuator."><span class="label">Damper position feedback, 2–10 V</span></div>
+      <div class="item" data-cat="DI" data-why="A PIR presents a relay contact: motion / no motion."><span class="label">PIR motion detector</span></div>
+      <div class="item" data-cat="AO" data-why="Fan speed reference is an analog command to the EC fan or VFD."><span class="label">AHU supply fan speed command</span></div>
+    </div>
+
+    <div class="callout example">Underfloor heating shows points on several layers: zone temperature sensors (AI), a thermal actuator per circuit (DO), a "zone is calling for heat" state (virtual binary), the room setpoint (virtual analog) and a health alarm such as "zone has no sensor reading for 30 min" (virtual alarm).</div>
+
+    <ul class="takeaways">
+      <li>Four physical types: AI, AO, DI, DO.</li>
+      <li>Setpoints, modes, alarms and calculations are virtual points.</li>
+      <li>Pair commands with feedback. A point without unit and scaling is just a number.</li>
+    </ul>
+  </section>
+
+  <!-- 1.4 -->
+  <section class="lesson" id="s4" data-num="1.4">
+    <h2>1.4 Open vs. proprietary systems</h2>
+    <p>"Open" is one of the most abused words in the industry. There are really three questions:</p>
+    <ol>
+      <li><strong>Open protocol?</strong> Is the communication standard published and usable by anyone?
+        (BACnet, Modbus, KNX, DALI, MQTT, M-Bus: yes.)</li>
+      <li><strong>Open engineering?</strong> Can any integrator program or reconfigure the controller, or only the
+        vendor's certified partner with a licensed tool?</li>
+      <li><strong>Open data?</strong> Can you get all points out, with history, without paying per point or going
+        through the vendor's cloud?</li>
+    </ol>
+    <p>A system can pass the first test and fail the other two: a controller speaks BACnet, but its program can only be
+      changed with a dongle-protected tool owned by one company.</p>
+
+    <div class="table-wrap"><table>
+      <tr><th></th><th>Open / multi-vendor</th><th>Proprietary / single-vendor</th></tr>
+      <tr><td>Initial cost</td><td>Often lower, more competition</td><td>Package deals can be cheap up front</td></tr>
+      <tr><td>Integration</td><td>Mix best-of-breed devices</td><td>Smooth inside the family, hard outside</td></tr>
+      <tr><td>Responsibility</td><td>Spread across vendors, integrator owns the gaps</td><td>One throat to choke</td></tr>
+      <tr><td>Lifetime cost</td><td>Any integrator can service it</td><td>Vendor lock-in for every change</td></tr>
+      <tr><td>Skills needed</td><td>Broader in-house knowledge</td><td>Less, but you depend on the vendor</td></tr>
+    </table></div>
+
+    <h3>Where common technologies sit</h3>
+    <figure class="viz" id="spectrum">
+      <div class="spectrum">
+        <div class="ends"><span>Fully open</span><span>Fully closed</span></div>
+        <div class="track"></div>
+      </div>
+      <div class="readout" id="specText" aria-live="polite" style="font-family:var(--font)"></div>
+      <figcaption>Click a dot. Positions are a judgement, not a measurement.</figcaption>
+    </figure>
+
+    <h3>Cloud dependency</h3>
+    <p>A newer kind of lock-in: devices that are controlled only through a vendor cloud. They are cheap and easy, but
+      the building now depends on an internet link, a foreign server and an API that can change or disappear. Prefer
+      devices with a <em>local</em> API (Modbus, MQTT, local REST) for anything that matters.</p>
+
+    <div class="callout example">A pragmatic mix is common: plant controllers stay vendor-specific (boiler, AHU, DSP) but are reached over open interfaces such as Modbus, MQTT or a documented TCP protocol through small gateways, while the supervisory platform is open source. Consumer devices that only offer a cloud API are the weakest links.</div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">A controller "supports BACnet/IP" but can only be reprogrammed with a vendor tool sold to certified partners. It is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Open communication does not mean open engineering.">Open at the protocol level, closed at the engineering level</button>
+        <button class="opt" data-opt="b" data-why="BACnet support alone does not make it fully open.">Fully open</button>
+        <button class="opt" data-opt="c" data-why="BACnet is an open, published standard (ISO 16484-5).">Fully proprietary</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>Ask three questions: open protocol, open engineering, open data.</li>
+      <li>Open systems shift responsibility to the integrator.</li>
+      <li>Prefer local APIs over cloud APIs for anything important.</li>
+    </ul>
+  </section>
+
+  <!-- 1.5 -->
+  <section class="lesson" id="s5" data-num="1.5">
+    <h2>1.5 Standards: EN ISO 16484, EN 15232 / ISO 52120</h2>
+
+    <h3>EN ISO 16484: how BACS are specified and built</h3>
+    <p>The main family of standards for building automation. The parts you will meet most:</p>
+    <ul>
+      <li><strong>Part 1</strong>: project specification and implementation.</li>
+      <li><strong>Part 2</strong>: hardware.</li>
+      <li><strong>Part 3</strong>: functions (what a point list and a control function must describe).</li>
+      <li><strong>Part 5</strong>: the BACnet data communication protocol.</li>
+      <li><strong>Part 6</strong>: BACnet conformance testing.</li>
+    </ul>
+
+    <h3>EN ISO 52120-1 (formerly EN 15232): how much a BACS saves</h3>
+    <p>This standard rates the energy performance of a building's automation in four <strong>BACS efficiency
+      classes</strong>. EN ISO 52120-1:2022 replaced EN 15232-1; many documents still cite the old number. Each
+      class is defined by which control functions are present: per-room control, demand-based ventilation, pump
+      control, scheduling, monitoring and so on. Drag the slider.</p>
+
+    <div class="demo">
+      <label for="cls">BACS efficiency class: <output id="clsOut">C</output></label>
+      <input type="range" id="cls" min="0" max="3" step="1" value="1">
+      <div class="bars" id="clsBars" style="margin-top:12px"></div>
+      <p id="clsText" style="margin-bottom:0"></p>
+    </div>
+
+    <p>The factors are typical values for thermal energy in offices. Other building types and electrical energy
+      use different tables. The point is the shape: going from D to C saves the most, and every class above C needs
+      more functions and more maintenance to keep the savings.</p>
+
+    <h3>Why it matters legally (EU)</h3>
+    <p>The Energy Performance of Buildings Directive (EPBD) makes BACS mandatory for larger non-residential
+      buildings. The 2018 revision set a threshold of 290 kW of heating, air-conditioning or combined ventilation
+      output by 2025. The 2024 recast lowers it to 70 kW by the end of 2029. Required capabilities: continuous
+      monitoring and logging of energy use, benchmarking, detecting efficiency losses and talking to other systems.
+      National law transposes the details, so check the local regulation.</p>
+
+    <h3>Other names you will see</h3>
+    <ul>
+      <li><strong>VDI 3814</strong> (Germany): practical BACS planning guideline, widely used in Europe.</li>
+      <li><strong>ISO 16739 (IFC) / BIM</strong>: building models that BMS data can be linked to.</li>
+      <li><strong>ISA-18.2, ISA-101</strong>: alarm management and HMI design (Chapters 20 and 21).</li>
+      <li><strong>IEC 62443</strong>: security for automation systems (Chapter 23).</li>
+    </ul>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">A tender asks for "BACS class B per EN 15232". What do you actually design against today?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="16484 describes how to specify and build a BACS, not the efficiency classes.">EN ISO 16484-3</button>
+        <button class="opt" data-opt="b" data-why="EN 15232-1 was replaced by EN ISO 52120-1, which keeps the A–D classes.">EN ISO 52120-1, class B</button>
+        <button class="opt" data-opt="c" data-why="The EPBD sets the legal duty but does not define the classes.">The EPBD directly</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>ISO 16484 = how to specify and build a BACS. Part 5 is BACnet.</li>
+      <li>ISO 52120-1 (ex EN 15232) = efficiency classes A–D. C is the reference.</li>
+      <li>The EPBD makes BACS mandatory above 290 kW now and above 70 kW by the end of 2029.</li>
+    </ul>
+  </section>
+
+  <!-- 1.6 -->
+  <section class="lesson" id="s6" data-num="1.6">
+    <h2>1.6 Smart building trends: IoT, cloud, digital twins</h2>
+    <p>The core of building automation changes slowly: a valve is still a valve. The layers around it are changing fast.</p>
+
+    <ol class="timeline" aria-label="History of building automation">
+      <li><b>1950s</b><strong>Pneumatics</strong><span>Air-pressure signals, local thermostats, no central view.</span></li>
+      <li><b>1970s</b><strong>Central supervision</strong><span>After the oil crises: minicomputers start and stop plant to save energy.</span></li>
+      <li><b>1980s</b><strong>DDC</strong><span>Microprocessor controllers replace pneumatics. Vendor buses everywhere.</span></li>
+      <li><b>1990s</b><strong>Open protocols</strong><span>BACnet (1995), LON, Modbus, EIB/KNX. Multi-vendor becomes possible.</span></li>
+      <li><b>2010s</b><strong>IP and IoT</strong><span>Ethernet to the field, MQTT, wireless sensors, cloud dashboards.</span></li>
+      <li><b>2020s</b><strong>Data and AI</strong><span>Semantic models, FDD, digital twins, open-source platforms.</span></li>
+    </ol>
+
+    <details open>
+      <summary>IT/OT convergence</summary>
+      <p>Building systems now run on the same Ethernet, VLANs, virtual machines and containers as office IT. Benefits:
+        cheaper infrastructure, standard tools, remote access. Costs: OT people need IT skills, and IT security
+        problems now reach the plant room (Chapters 03, 22, 23).</p>
+    </details>
+    <details>
+      <summary>IoT and wireless sensors</summary>
+      <p>Battery sensors (Zigbee, LoRaWAN, Thread) make retrofits cheap: no cables to every room. Trade-offs: battery
+        changes, radio coverage and the fact that a sensor with no reading is not the same as a sensor reading
+        nothing.</p>
+    </details>
+    <details>
+      <summary>Event-driven architectures and MQTT</summary>
+      <p>Instead of a central server polling every device, devices and gateways <em>publish</em> changes to a broker
+        and any number of consumers <em>subscribe</em>. This decouples systems and scales well. It is the reason MQTT
+        has its own chapter (Chapter 06).</p>
+    </details>
+    <details>
+      <summary>Edge and cloud</summary>
+      <p>Control stays on site (the edge). Analytics, long-term storage and fleet dashboards move to the cloud. The rule
+        from 1.1 still holds: the building must run without the cloud.</p>
+    </details>
+    <details>
+      <summary>Semantic models: Haystack, Brick</summary>
+      <p>Tagging points with meaning ("this is the supply air temperature of AHU-1, which serves zone 2") lets software
+        understand a building without a human reading point names. It is the basis for portable analytics.</p>
+    </details>
+    <details>
+      <summary>Digital twins</summary>
+      <p>A digital model of the building linked to live data: geometry from BIM, systems from the BMS. Useful for
+        visualisation, simulation and maintenance planning. In practice, a good point list and accurate as-built
+        drawings already give much of the value.</p>
+    </details>
+    <details>
+      <summary>Analytics, FDD and AI</summary>
+      <p>Fault detection and diagnostics (FDD) runs rules or models over trend data to find problems such as a valve
+        that is stuck, simultaneous heating and cooling or a schedule that no longer matches use. Machine learning
+        adds prediction (optimal start, load forecasting). All of it depends on clean, well-described data (1.3).</p>
+    </details>
+    <details>
+      <summary>Open-source and custom front ends</summary>
+      <p>Platforms such as Home Assistant, Node-RED and Grafana, plus custom web panels, are moving into commercial
+        buildings. They are flexible and free of licence fees. The owner then takes on the support, updates,
+        security and documentation a vendor would normally provide (Chapters 19 and 20).</p>
+    </details>
+
+    <div class="callout example">A modern mid-size building often combines all of this: VLAN-segmented IP networks, an MQTT broker as the integration hub, small custom gateways, a virtualised BMS server, a web panel with role-based access and AV over IP on the same infrastructure.</div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">What must every FDD, AI or digital-twin project have before it can work?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Cloud hosting is optional; analytics can run on site.">A cloud platform</button>
+        <button class="opt" data-opt="b" data-why="Nice to have, but many FDD systems work without a 3D model.">A BIM model</button>
+        <button class="opt" data-opt="c" data-why="Without reliable, well-described points, analytics produce noise.">Clean, well-described data points with history</button>
+      </div>
+    </div>
+
+    <ul class="takeaways">
+      <li>The plant changes slowly; networks, software and data change fast.</li>
+      <li>Publish/subscribe (MQTT) and IP everywhere are reshaping integration.</li>
+      <li>Every smart feature depends on good point data.</li>
+    </ul>
+  </section>
+
+  <!-- Chapter test -->
+  <section class="lesson" id="test" data-num="✓">
+    <h2>Chapter test</h2>
+    <p>Five questions across the chapter.</p>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">1. A pump has a start command but no running feedback. What can the BMS not detect?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="The BMS knows what it commanded.">That it sent the start command</button>
+        <button class="opt" data-opt="b" data-why="Without a DI for running status, a tripped or failed pump looks the same as a running one.">That the pump failed to start</button>
+        <button class="opt" data-opt="c" data-why="That comes from the schedule, not from feedback.">When the pump is scheduled to run</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="d">
+      <p class="q">2. A boiler controller loses its link to the BMS server. What should it do?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="That would make every network glitch a heating outage.">Shut down until the link returns</button>
+        <button class="opt" data-opt="b" data-why="Factory defaults may not match the building.">Reset to factory defaults</button>
+        <button class="opt" data-opt="c" data-why="It cannot wait for commands that will not come.">Wait for operator input</button>
+        <button class="opt" data-opt="d" data-why="Each layer must survive the loss of the one above.">Keep running with its last setpoints and local schedule</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="a">
+      <p class="q">3. Which signal is typical for a CO₂ sensor?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="4–20 mA or 0–10 V, read as an analog input.">4–20 mA analog input</button>
+        <button class="opt" data-opt="b" data-why="A relay output is a command, not a measurement.">Relay output</button>
+        <button class="opt" data-opt="c" data-why="DALI is a lighting bus.">DALI</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="c">
+      <p class="q">4. Which BACS efficiency class is the reference ("standard") in ISO 52120-1?</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="A is high energy performance.">A</button>
+        <button class="opt" data-opt="b" data-why="B is advanced.">B</button>
+        <button class="opt" data-opt="c" data-why="Class C has factor 1.0; the other classes are compared to it.">C</button>
+        <button class="opt" data-opt="d" data-why="D is non-energy-efficient.">D</button>
+      </div>
+    </div>
+
+    <div class="quiz" data-answer="b">
+      <p class="q">5. A smart thermostat can only be controlled through the vendor's cloud. The main risk is…</p>
+      <div class="opts">
+        <button class="opt" data-opt="a" data-why="Accuracy is unrelated to the API.">Poor measurement accuracy</button>
+        <button class="opt" data-opt="b" data-why="Internet loss, vendor outage or an API change removes control.">Losing control when the internet, the vendor or the API changes</button>
+        <button class="opt" data-opt="c" data-why="Cloud devices usually need less wiring, not more.">More cabling</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="chapter-nav">
+    <a class="btn secondary" href="../index.html">← All chapters</a>
+    <a class="btn" href="02-control-theory.html">Chapter 02 →</a>
+  </nav>
+</div>
+</main>
+</div>
+
+<script src="../assets/course.js"></script>
+<script>
+// Chapter 1 visualizations.
+
+// 1.1 Outage simulator.
+(() => {
+  const SYSTEMS = ["Heating plant", "Room heating zones", "Air handling units", "Lighting", "Network audio", "Intrusion alarm", "Fire alarm", "Remote alerts", "Operator panel", "Cloud-only devices"];
+  // [state, note] per system. ok = normal, warn = degraded, down = not working.
+  const S = {
+    normal: SYSTEMS.map(() => ["ok", "Normal operation"]),
+    bms: [["ok","Local controller keeps heating"],["warn","Last setpoints kept, no changes"],["ok","Local schedule runs"],["ok","Wall panels and scenes work"],["ok","DSP presets work"],["ok","Arms and disarms at keypad"],["ok","Independent and certified"],["down","No notifications"],["down","Nothing to show"],["warn","Vendor app still works"]],
+    network: [["ok","Local controller keeps heating"],["warn","Runs locally, no remote view"],["ok","Local schedule runs"],["warn","Local scenes only"],["down","Streams between switches stop"],["ok","Arms and disarms at keypad"],["ok","Independent and certified"],["down","No path to the internet"],["down","Cannot reach the BMS"],["down","Unreachable"]],
+    internet: [["ok","Normal"],["ok","Normal"],["ok","Normal"],["ok","Normal"],["ok","Normal"],["ok","Normal; remote monitoring station needs its own path"],["ok","Independent and certified"],["down","Messaging services unreachable"],["warn","Works on site only"],["down","No control at all"]],
+    power: [["down","Boilers and pumps stop"],["down","Actuators unpowered"],["down","Fans stop"],["warn","Emergency luminaires on own batteries"],["down","Amplifiers off"],["ok","Own standby battery"],["ok","Own certified battery"],["warn","Works while the UPS lasts"],["warn","On UPS until graceful shutdown"],["down","Off"]],
+  };
+  const fig = document.getElementById("outage");
+  const grid = fig.querySelector(".sys-grid");
+  const draw = (sc) => {
+    grid.innerHTML = SYSTEMS.map((n, i) => `<div class="sys ${S[sc][i][0]}"><b>${n}</b><div class="st">${S[sc][i][1]}</div></div>`).join("");
+    fig.querySelectorAll("[data-sc]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.sc === sc));
+  };
+  fig.querySelectorAll("[data-sc]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.sc)));
+  draw("normal");
+})();
+
+// 1.2 Value flowing through the layers.
+(() => {
+  const fig = document.getElementById("flow");
+  const $ = (id) => fig.querySelector("#" + id);
+  const pkt = $("pkt");
+  const STEPS = [
+    { lit: ["n-sensor"], at: [75, 68], txt: "1 · The sensor measures 19.2 °C. This is an analog input (AI) on the controller.", set: { sensor: "19.2 °C" } },
+    { lit: ["n-ctrl", "w1"], at: [265, 68], txt: "2 · The controller compares 19.2 °C with its setpoint of 21 °C. Too cold.", set: {} },
+    { lit: ["n-valve", "w2"], at: [265, 175], txt: "3 · The PI loop opens the heating valve to 60 % (analog output, AO). This happens locally, in seconds.", set: { valve: "60 %" } },
+    { lit: ["n-bms", "w3"], at: [465, 68], txt: "4 · The controller reports temperature and valve position to the BMS, which stores a trend.", set: { bms: "19.2 °C · 60 %" } },
+    { lit: ["n-op", "w4"], at: [585, 68], txt: "5 · The operator sees the room on the panel and lowers the setpoint to 20 °C for the night.", set: {} },
+    { lit: ["n-ctrl", "w3", "w4"], at: [265, 68], txt: "6 · The new setpoint travels down. The controller now regulates to 20 °C.", set: { ctrl: "SP 20 °C", valve: "35 %" } },
+    { lit: ["n-ctrl", "n-valve", "w2"], at: [265, 175], txt: "7 · The BMS link drops. The controller keeps regulating to 20 °C on its own. Only history and remote control are lost.", set: { bms: "offline" }, off: true },
+  ];
+  let i = -1;
+  const defaults = { sensor: "— °C", ctrl: "SP 21 °C", valve: "0 %", bms: "trend" };
+  const render = () => {
+    fig.querySelectorAll(".lit, .lit-line").forEach((e) => e.classList.remove("lit", "lit-line"));
+    const vals = { ...defaults };
+    for (let k = 0; k <= i; k++) Object.assign(vals, STEPS[k].set);
+    for (const k in vals) $("t-" + k).textContent = vals[k];
+    $("n-bms").style.opacity = i >= 0 && STEPS[i].off ? 0.35 : 1;
+    $("w3").style.strokeDasharray = i >= 0 && STEPS[i].off ? "4 4" : "";
+    if (i < 0) { pkt.style.opacity = 0; fig.querySelector("#flowText").textContent = "Press “Next step” to follow a room temperature through the system."; return; }
+    const s = STEPS[i];
+    s.lit.forEach((id) => $(id).classList.add(id.startsWith("w") ? "lit-line" : "lit"));
+    pkt.style.opacity = 1;
+    pkt.setAttribute("cx", s.at[0]); pkt.setAttribute("cy", s.at[1]);
+    fig.querySelector("#flowText").textContent = s.txt;
+  };
+  fig.querySelector("[data-act=next]").addEventListener("click", () => { i = Math.min(STEPS.length - 1, i + 1); render(); });
+  fig.querySelector("[data-act=prev]").addEventListener("click", () => { i = Math.max(-1, i - 1); render(); });
+  fig.querySelector("[data-act=reset]").addEventListener("click", () => { i = -1; render(); });
+  render();
+})();
+
+// 1.3 Command vs feedback timing diagram.
+(() => {
+  const fig = document.getElementById("timing");
+  const X = (t) => 90 + t * 8.5;          // 0–60 s
+  const HI = { cmd: 50, fb: 120 }, LO = { cmd: 85, fb: 155 };
+  const DELAY = 10;
+  const SC = {
+    normal: { fb: [[8, 47]], txt: "Feedback follows the command within 3 s. No alarm." },
+    nostart: { fb: [], txt: "The command is on but the pump never reports running. After 10 s: “Pump failed to start”." },
+    trip: { fb: [[8, 25]], txt: "The pump runs, then the motor protection trips at 25 s. After 10 s: “Pump tripped”." },
+    stuck: { fb: [[8, 60]], txt: "The command goes off at 45 s but the pump keeps running. After 10 s: “Pump running without command”." },
+  };
+  const wave = (ons, hi, lo) => {
+    let d = `M${X(0)},${lo}`;
+    ons.forEach(([a, b]) => { d += ` L${X(a)},${lo} L${X(a)},${hi} L${X(b)},${hi} L${X(b)},${lo}`; });
+    return d + ` L${X(60)},${lo}`;
+  };
+  const cmd = [[5, 45]];
+  // Discrepancy = command and feedback differ; alarm after DELAY seconds of continuous difference.
+  const alarms = (fb) => {
+    const on = (arr, t) => arr.some(([a, b]) => t >= a && t < b);
+    const out = []; let start = null;
+    for (let t = 0; t <= 60; t += 0.5) {
+      const diff = on(cmd, t) !== on(fb, t);
+      if (diff && start === null) start = t;
+      if (!diff && start !== null) { if (t - start > DELAY) out.push([start + DELAY, t]); start = null; }
+    }
+    if (start !== null && 60 - start > DELAY) out.push([start + DELAY, 60]);
+    return out;
+  };
+  fig.querySelector("#tAxis").innerHTML = [0, 10, 20, 30, 40, 50, 60].map((t) => `<text class="small" x="${X(t)}" y="242" text-anchor="middle">${t}s</text>`).join("");
+  fig.querySelector("#tCmd").setAttribute("d", wave(cmd, HI.cmd, LO.cmd));
+  const draw = (k) => {
+    fig.querySelector("#tFb").setAttribute("d", wave(SC[k].fb, HI.fb, LO.fb));
+    fig.querySelector("#tAlarm").innerHTML = alarms(SC[k].fb).map(([a, b]) => `<rect x="${X(a)}" y="188" width="${X(b) - X(a)}" height="24" rx="4" class="fill-bad"/><text x="${X(a) + 6}" y="205" style="fill:#fff;font-size:12px">ALARM</text>`).join("");
+    fig.querySelector("#timingText").textContent = SC[k].txt;
+    fig.querySelectorAll("[data-sc]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.sc === k));
+  };
+  fig.querySelectorAll("[data-sc]").forEach((b) => b.addEventListener("click", () => draw(b.dataset.sc)));
+  draw("normal");
+})();
+
+// 1.3 4–20 mA scaling.
+(() => {
+  const x = (mA) => 80 + (mA / 22) * 500, y = (ppm) => 210 - (ppm / 2250) * 190;
+  const r = document.getElementById("mA"), out = document.getElementById("mAOut"), txt = document.getElementById("scaleText");
+  const dot = document.getElementById("sDot"), gx = document.getElementById("sGuideX"), gy = document.getElementById("sGuideY");
+  const draw = () => {
+    const mA = Number(r.value);
+    out.textContent = mA.toFixed(1);
+    const fault = mA < 3.6 || mA > 21;
+    const ppm = ((Math.min(Math.max(mA, 4), 20) - 4) / 16) * 2000;
+    const py = fault ? 210 : y(ppm);
+    dot.setAttribute("cx", x(mA)); dot.setAttribute("cy", py);
+    dot.setAttribute("class", fault ? "fill-bad" : "fill-accent");
+    [["x1", x(mA)], ["y1", 210], ["x2", x(mA)], ["y2", py]].forEach(([a, v]) => gx.setAttribute(a, v));
+    [["x1", 80], ["y1", py], ["x2", x(mA)], ["y2", py]].forEach(([a, v]) => gy.setAttribute(a, v));
+    if (mA < 3.6) txt.textContent = `${mA.toFixed(1)} mA → FAULT: wire break or sensor dead. Do not show 0 ppm.`;
+    else if (mA > 21) txt.textContent = `${mA.toFixed(1)} mA → FAULT: short circuit or sensor failure.`;
+    else if (mA < 4 || mA > 20) txt.textContent = `${mA.toFixed(1)} mA → out of range, clamped to ${Math.round(ppm)} ppm. Warn, but still a valid signal.`;
+    else txt.textContent = `${mA.toFixed(1)} mA → ${Math.round(ppm)} ppm`;
+  };
+  r.addEventListener("input", draw); draw();
+})();
+
+// 1.4 Openness spectrum.
+(() => {
+  const ITEMS = [
+    [4, "MQTT", "Open OASIS standard, free brokers and clients. Openness then depends on whether topics and payloads are documented."],
+    [10, "Modbus", "Published, royalty-free, simple. But there is no standard point list: every device needs its vendor's register map."],
+    [16, "BACnet", "ISO 16484-5. Standard objects and services, discovery built in. Interoperability depends on the device profile (BTL listing)."],
+    [24, "DALI-2", "IEC 62386. Open and certified, but scene and group engineering is often done in a vendor tool."],
+    [32, "KNX", "Open ISO/IEC 14543 standard, many vendors. Engineering requires the ETS tool, which is licensed."],
+    [58, "Locked controller", "Speaks BACnet or Modbus on the outside, but the program can only be changed with a dongle-protected vendor tool."],
+    [76, "Vendor bus", "Proprietary field bus. Only the vendor's gateway can read it, often licensed per point."],
+    [92, "Cloud-only API", "Control only through the vendor's internet service. The API can change, rate-limit or disappear."],
+  ];
+  const fig = document.getElementById("spectrum");
+  const sp = fig.querySelector(".spectrum"), txt = fig.querySelector("#specText");
+  ITEMS.forEach(([pos, name, desc], i) => {
+    const b = document.createElement("button");
+    b.className = "dot"; b.style.left = pos + "%";
+    b.setAttribute("aria-label", name);
+    b.innerHTML = `<span style="${i % 2 ? "top:-22px" : ""}">${name}</span>`;
+    b.addEventListener("click", () => {
+      sp.querySelectorAll(".dot").forEach((d) => d.setAttribute("aria-pressed", d === b));
+      txt.innerHTML = `<strong>${name}.</strong> ${desc}`;
+    });
+    sp.appendChild(b);
+    if (i === 0) b.click();
+  });
+})();
+
+// 1.5 BACS class demo. Thermal energy, offices; typical ISO 52120-1 / EN 15232 factors.
+(() => {
+  const CLASSES = [
+    ["D", 1.51, "No electronic control or only basic timers. ~51 % more energy than class C."],
+    ["C", 1.0, "Reference. Central plant control, room thermostats, basic schedules."],
+    ["B", 0.8, "Networked room controllers, demand-based plant control, central monitoring. ~20 % less than C."],
+    ["A", 0.7, "Demand control everywhere, presence-based rooms, optimised plant, analytics and fault detection. ~30 % less than C."],
+  ];
+  const r = document.getElementById("cls"), out = document.getElementById("clsOut"), text = document.getElementById("clsText");
+  const bars = document.getElementById("clsBars");
+  bars.innerHTML = CLASSES.map(([n, f]) => `<div class="bar-row"><b>${n}</b><div class="track"><div class="fill" style="width:${(f / 1.6) * 100}%"></div><div class="ref" style="left:${100 / 1.6}%"></div></div><span class="v">${f.toFixed(2)}</span></div>`).join("") +
+    `<div class="small" style="font-size:12px;color:var(--muted)">Dashed line = class C reference (1.00). Shorter bar = less energy.</div>`;
+  const draw = () => {
+    const [name, f, desc] = CLASSES[r.value];
+    out.textContent = name;
+    text.innerHTML = `<strong>Efficiency factor ${f.toFixed(2)}</strong> · ${desc}`;
+    bars.querySelectorAll(".bar-row").forEach((row, k) => row.classList.toggle("on", k === Number(r.value)));
+  };
+  r.addEventListener("input", draw); draw();
+})();
+</script>
+</body>
+</html>
